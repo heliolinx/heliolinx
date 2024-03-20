@@ -343,7 +343,7 @@ std::tuple<py::array, py::array>linkRefineHerget(
 }
 
 
-PYBIND11_MODULE(heliohypy, m) {
+PYBIND11_MODULE(heliolinx, m) {
     m.doc() = "pybind11 I/O test"; // optional module docstring
     
     PYBIND11_NUMPY_DTYPE(hldet, MJD, RA, Dec, mag, trail_len, trail_PA, sigmag, sig_across, sig_along, image, idstring, band, obscode, known_obj, det_qual, index);

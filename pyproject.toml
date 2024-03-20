@@ -1,0 +1,9 @@
+[build-system]
+requires = [
+    "setuptools>=42",
+    "wheel",
+    "pybind11>=2.5.0",
+    "numpy",
+    "setuptools_scm[toml]>=3.4"  # Add setuptools_scm with toml support
+]
+build-backend = "setuptools.build_meta"
