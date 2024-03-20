@@ -50,6 +50,7 @@ void fill_struct(hlimage & out, hlimage const& in) {
     out.VX = in.VX;
     out.VY = in.VY;
     out.VZ = in.VZ;
+    out.exptime = in.exptime;
 }
 
 void fill_struct(tracklet & out, tracklet const& in) {
@@ -348,7 +349,7 @@ PYBIND11_MODULE(heliolinx, m) {
     
     PYBIND11_NUMPY_DTYPE(hldet, MJD, RA, Dec, mag, trail_len, trail_PA, sigmag, sig_across, sig_along, image, idstring, band, obscode, known_obj, det_qual, index);
     PYBIND11_NUMPY_DTYPE(EarthState, MJD, x, y, z, vx, vy, vz);
-    PYBIND11_NUMPY_DTYPE(hlimage, MJD, RA, Dec, obscode, X, Y, Z, VX, VY, VZ, startind, endind);
+    PYBIND11_NUMPY_DTYPE(hlimage, MJD, RA, Dec, obscode, X, Y, Z, VX, VY, VZ, startind, endind, exptime);
     PYBIND11_NUMPY_DTYPE(longpair, i1, i2);
     PYBIND11_NUMPY_DTYPE(tracklet, Img1, RA1, Dec1, Img2, RA2, Dec2, npts, trk_ID);
     PYBIND11_NUMPY_DTYPE(hlradhyp, HelioRad, R_dot, R_dubdot);
@@ -362,7 +363,7 @@ PYBIND11_MODULE(heliolinx, m) {
       .def(py::init<double &, double &, double &, double &, double &, double &, double &>());
     
     py::class_<hlimage>(m, "hlimage")
-      .def(py::init<double &, double &, double &, std::string &, double &, double &, double &, double &, double &, double &, int &, int &>());
+      .def(py::init<double &, double &, double &, std::string &, double &, double &, double &, double &, double &, double &, int &, int &, double &>());
 
     py::class_<longpair>(m, "longpair")
       .def(py::init<long &, long &>());
