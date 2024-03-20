@@ -3,7 +3,7 @@ import numpy.lib.recfunctions as rfn
 import sys
 
 sys.path.insert(1, '/home/aheinze/CppCode')
-import heliohypy
+import heliolinx.heliolinx as hl
 
 SSHORT = 'S20'
 SMIN = 'S5'
@@ -253,7 +253,7 @@ def image_add_observerpos(image, obsarr, earthpos, **kwargs):
         Long = float(observatory[1])
         pcos = float(observatory[2])
         psin = float(observatory[3])
-        obsx = heliohypy.observer_vel(mjd,Long,pcos,psin,earthpos)
+        obsx = hl.observer_vel(mjd,Long,pcos,psin,earthpos)
         a1 = 1
         b['MJD'][i] = image[i][0] #new
         b['RA'][i] = image[i][1]
