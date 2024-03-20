@@ -1,0 +1,5 @@
+setuptools
+wheel
+pybind11
+numpy
+setuptools_scm
