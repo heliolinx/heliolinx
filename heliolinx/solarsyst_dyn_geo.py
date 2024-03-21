@@ -64,6 +64,7 @@ hlimage = np.dtype(list(dict(
     VZ = float,
     startind = int,
     endind = int,
+    exptime = float,
 ).items()))
 
 hlradhyp = np.dtype(list(dict(
