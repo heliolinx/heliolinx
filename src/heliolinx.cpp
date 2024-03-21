@@ -296,7 +296,7 @@ std::tuple<py::array, py::array>heliolinc(
   std::vector <hlclust> outclust;
   std::vector <longpair> clust2det;
      
-  status = heliolinc_alg(image_log, detvec, tracklets, trk2det, radhyp, earthpos, config, outclust, clust2det);
+  status = heliolinc_alg_kd(image_log, detvec, tracklets, trk2det, radhyp, earthpos, config, outclust, clust2det);
   if(status!=0) {
     cerr << "ERROR: heliolinc returned failure status " << status << "\n";
     auto py_clustout = vec_to_ndarray<hlclust>({});
@@ -330,7 +330,7 @@ std::tuple<py::array, py::array>linkRefineHerget(
   std::vector <hlclust> outclust;
   std::vector <longpair> outclust2det;
      
-  status = link_refine_Herget(image_log, detvec, inclust, inclust2det, config, outclust, outclust2det);
+  status = link_refine_Herget_univar(image_log, detvec, inclust, inclust2det, config, outclust, outclust2det);
   if(status!=0) {
     cerr << "ERROR: link_refine_Herget returned failure status " << status << "\n";
     auto py_clustout = vec_to_ndarray<hlclust>({});
@@ -342,6 +342,41 @@ std::tuple<py::array, py::array>linkRefineHerget(
 
   return(std::make_tuple(py_detout1, py_detout2));
 }
+
+// link_Purify: March 08, 2024:
+// Minimalist wrapper, only handles the python <-> C++ translations.
+// All the interesting algorithmic stuff happens in functions called from solarsyst_dyn_geo01.
+
+std::tuple<py::array, py::array>linkPurify(
+    LinkPurifyConfig config,
+    py::array_t<hlimage> py_imglog,
+    py::array_t<hldet> py_detvec,
+    py::array_t<hlclust> py_inclust,
+    py::array_t<longpair> py_inclust2det
+  ) {
+  cout << "C++ wrapper for link_refine_Herget\n";
+  
+  std::vector <hlimage> image_log = ndarray_to_vec(py_imglog);
+  std::vector <hldet> detvec = ndarray_to_vec(py_detvec);
+  std::vector <hlclust> inclust = ndarray_to_vec(py_inclust);
+  std::vector <longpair> inclust2det = ndarray_to_vec(py_inclust2det);
+  int status = 0;
+  std::vector <hlclust> outclust;
+  std::vector <longpair> outclust2det;
+     
+  status = link_purify(image_log, detvec, inclust, inclust2det, config, outclust, outclust2det);
+  if(status!=0) {
+    cerr << "ERROR: link_purify returned failure status " << status << "\n";
+    auto py_clustout = vec_to_ndarray<hlclust>({});
+    return(std::make_tuple(py_clustout, py_clustout));
+  }
+      
+  auto py_detout1 = vec_to_ndarray<hlclust>(outclust);
+  auto py_detout2 = vec_to_ndarray<longpair>(outclust2det);
+
+  return(std::make_tuple(py_detout1, py_detout2));
+}
+
 
 
 PYBIND11_MODULE(heliolinx, m) {
@@ -390,14 +425,17 @@ PYBIND11_MODULE(heliolinx, m) {
       .def_readwrite("mintime", &MakeTrackletsConfig::mintime)
       .def_readwrite("imagerad", &MakeTrackletsConfig::imagerad)
       .def_readwrite("maxgcr", &MakeTrackletsConfig::maxgcr)
+      .def_readwrite("exptime", &MakeTrackletsConfig::exptime)
+      .def_readwrite("siglenscale", &MakeTrackletsConfig::siglenscale)
+      .def_readwrite("sigpascale", &MakeTrackletsConfig::sigpascale)
       .def_readwrite("forcerun", &MakeTrackletsConfig::forcerun)
       .def_readwrite("verbose", &MakeTrackletsConfig::verbose);
 
-    // Config class for Heliolinc
     py::class_<HeliolincConfig>(m, "HeliolincConfig")
       .def(py::init<>())
       .def_readwrite("MJDref", &HeliolincConfig::MJDref)
       .def_readwrite("clustrad", &HeliolincConfig::clustrad) 
+      .def_readwrite("clustchangerad", &HeliolincConfig::clustchangerad) 
       .def_readwrite("dbscan_npt", &HeliolincConfig::dbscan_npt) 
       .def_readwrite("minobsnights", &HeliolincConfig::minobsnights) 
       .def_readwrite("mintimespan", &HeliolincConfig::mintimespan)
@@ -406,9 +444,11 @@ PYBIND11_MODULE(heliolinx, m) {
       .def_readwrite("geologstep", &HeliolincConfig::geologstep)
       .def_readwrite("mingeoobs", &HeliolincConfig::mingeoobs)
       .def_readwrite("minimpactpar", &HeliolincConfig::minimpactpar)
+      .def_readwrite("use_univar", &HeliolincConfig::use_univar)
+      .def_readwrite("max_v_inf", &HeliolincConfig::max_v_inf)
       .def_readwrite("verbose", &HeliolincConfig::verbose);
 
-    
+    // Config class for LinkRefine    
     py::class_<LinkRefineConfig>(m, "LinkRefineConfig")
       .def(py::init<>())
       .def_readwrite("MJDref", &LinkRefineConfig::MJDref)
@@ -420,12 +460,31 @@ PYBIND11_MODULE(heliolinx, m) {
       .def_readwrite("maxrms", &LinkRefineConfig::maxrms)
       .def_readwrite("verbose", &LinkRefineConfig::verbose);
     
+    // Config class for LinkPurify
+    py::class_<LinkPurifyConfig>(m, "LinkPurifyConfig")
+      .def(py::init<>())
+      .def_readwrite("MJDref", &LinkPurifyConfig::MJDref)
+      .def_readwrite("simptype", &LinkPurifyConfig::simptype) 
+      .def_readwrite("ptpow", &LinkPurifyConfig::ptpow) 
+      .def_readwrite("nightpow", &LinkPurifyConfig::nightpow) 
+      .def_readwrite("timepow", &LinkPurifyConfig::timepow)
+      .def_readwrite("rmspow", &LinkPurifyConfig::rmspow)
+      .def_readwrite("maxrms", &LinkPurifyConfig::maxrms)
+      .def_readwrite("max_oop", &LinkPurifyConfig::max_oop)
+      .def_readwrite("rejfrac", &LinkPurifyConfig::rejfrac)
+      .def_readwrite("max_astrom_rms", &LinkPurifyConfig::max_astrom_rms)
+      .def_readwrite("minobsnights", &LinkPurifyConfig::minobsnights) 
+      .def_readwrite("minpointnum", &LinkPurifyConfig::minpointnum) 
+      .def_readwrite("use_heliovane", &LinkPurifyConfig::use_heliovane) 
+      .def_readwrite("verbose", &LinkPurifyConfig::verbose);
+    
     m.def("iotest02", &iotest02, "A function to test python I/O");
     m.def("observer_coords", &observer_coords, "calculate position of an observer on Earth");
     m.def("observer_vel", &observer_vel, "calculate position of an observer on Earth");
     m.def("makeTracklets", &makeTracklets,  "Make tracklets from set of detections.");
     m.def("heliolinc", &heliolinc,  "Link input tracklets into candidate discoveries.");
     m.def("linkRefineHerget", &linkRefineHerget, "Refine linkages, eliminating duplicates and preserving the best candidates.");
+    m.def("linkPurify", &linkPurify, "Purify linkages, eliminating duplicates, and rejecting astrometric outliers.");
    }
 
 
