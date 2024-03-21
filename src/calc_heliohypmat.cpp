@@ -15,7 +15,7 @@
 
 static void show_usage()
 {
-  cerr << "Usage: calc_heliohypmat -mindist minimum distance (AU) -maxdist maximum distance (AU) -distconst -distpwr -velconst -velpwr -accconst -accpwr -accchangerad -clustchangerad -outfile output file\n";
+  cerr << "Usage: calc_heliohypmat -mindist minimum distance (AU) -maxdist maximum distance (AU) -distconst -distpwr -velconst -velpwr -accconst -accpwr -accchangerad -clustchangerad -middle usemiddle -outfile output file\n";
 
 }
 
@@ -47,6 +47,7 @@ int main(int argc, char *argv[])
   accelstep = minacc = maxacc = vtan = xi = 0.0l;
   long accelnum,accelct,velnum,velct;
   string outfile;
+  int usemiddle=0;
   
   if(argc<3) show_usage();
   
@@ -163,6 +164,17 @@ int main(int argc, char *argv[])
 	show_usage();
 	return(1);
       }
+    } else if(string(argv[i]) == "-middle" || string(argv[i]) == "-usemiddle" || string(argv[i]) == "-hitmiddle") {
+      if(i+1 < argc) {
+	//There is still something to read;
+	usemiddle = stoi(argv[++i]); 
+	i++;
+      }
+      else {
+	cerr << "Middle keyword supplied with no corresponding argument\n";
+	show_usage();
+	return(1);
+      }
     } else if(string(argv[i]) == "-out" || string(argv[i]) == "-outfile" || string(argv[i]) == "--out" || string(argv[i]) == "--outfile") {
       if(i+1 < argc) {
 	//There is still something to read;
@@ -237,6 +249,13 @@ int main(int argc, char *argv[])
       
     if(verbose>=1) cout << "Distance is " << dist << " AU = " << distkm << " km, vesc = " << vesc*AU_KM/SOLARDAY << " km/sec, velstep = " << velstep*AU_KM/SOLARDAY << "km/sec, accelstep = " << accelstep << " km/sec^2, GMsun = " << g0 << " km/sec^2\n";
     velnum = ceil(2.0l*vesc/velstep);
+    if(usemiddle==1 && velnum>1 && velnum%2==0) {
+      // We are currently set to probe an even number of velocity
+      // points. This means we won't probe the v=0 midpoint, which
+      // is often the most probable. Add one additional point, to
+      // ensure that v=0 gets probed.
+      velnum+=1;
+    }
     if(velnum<=1) {
       // Velocity step is so large, we'll only probe radial velocity=0
       // Since radial velocity is zero, tangential velocity can be anywhere from 0 to vesc.
@@ -247,6 +266,14 @@ int main(int argc, char *argv[])
       velAU = velkm*SOLARDAY/AU_KM;
       if(verbose>=1) cout << "vel = " << velAU << " accelstep = " << accelstep << ", range is " << minacc << " to " << maxacc << "\n";
       accelnum = ceil((maxacc-minacc)/accelstep);
+      if(usemiddle==1 && accelnum>1 && accelnum%2==0) {
+	// We are currently set to probe an even number of acceleration
+	// points. This means we won't probe the center of the range
+	// of possible accelerations, which is often the most probable.
+	// Add one additional point, to ensure that the midpoint of
+	// the possible acceleration range gets probed.
+	accelnum+=1;
+      }
       if(accelnum<=1) {
 	// Acceleration step is so large, we'll only use average acceleration
 	outstream1 << dist << " " << velAU << " " << (maxacc+minacc)/2.0l/g0 << "\n";
@@ -275,6 +302,14 @@ int main(int argc, char *argv[])
 	minacc = g0*(1.0l - 2.0l*sqrt(1.0l - xi*xi));
 	if(verbose>=1) cout << "vel = " << velAU << " accelstep = " << accelstep << ", range is " << minacc << " to " << maxacc << "\n";
 	accelnum = ceil((maxacc-minacc)/accelstep);
+	if(usemiddle==1 && accelnum>1 && accelnum%2==0) {
+	  // We are currently set to probe an even number of acceleration
+	  // points. This means we won't probe the center of the range
+	  // of possible accelerations, which is often the most probable.
+	  // Add one additional point, to ensure that the midpoint of
+	  // the possible acceleration range gets probed.
+	  accelnum+=1;
+	}
 	if(accelnum<=1) {
 	  // Acceleration step is so large, we'll only use average acceleration
 	  outstream1 << dist << " " << velAU << " " << (maxacc+minacc)/2.0l/g0 << "\n";
