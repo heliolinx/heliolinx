@@ -17,7 +17,6 @@
 
 #define MAXCLUSTRMS 1.0e5
 #define DEBUG 1
-#define FTOL_HERGET_SIMPLEX 1e-5L
 #define ESCAPE_SCALE 0.99L // If the input velocity is above escape velocity, we
                            // scale it down by this amount.
 // New quantities in LinkPurifyConfig that are not in LinkRefineConfig:

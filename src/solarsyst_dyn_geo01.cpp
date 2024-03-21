@@ -26498,6 +26498,7 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
   // Launch master loop over all the input clusters.
   for(inclustct=0; inclustct<inclustnum; inclustct++) {
     onecluster = inclust[inclustct];
+    obsnights = onecluster.obsnights;
     if(inclustct!=onecluster.clusternum) {
       cerr << "ERROR: cluster index mismatch " << inclustct << " != " << onecluster.clusternum << " at input cluster " << inclustct << "\n";
       return(5);
