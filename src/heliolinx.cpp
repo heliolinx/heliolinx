@@ -7,6 +7,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <pybind11/numpy.h>
+#include <pybind11/stl_bind.h>
 
 namespace py = pybind11;
 
@@ -377,7 +378,11 @@ std::tuple<py::array, py::array>linkPurify(
   return(std::make_tuple(py_detout1, py_detout2));
 }
 
-
+template <typename S>
+py::array_t<S> create_recarray(size_t n) {
+    return py::array_t<S>(n);
+}
+#define NDARRAY_FACTORY(S) m.def("create_" #S, &create_recarray<S>);
 
 PYBIND11_MODULE(heliolinx, m) {
     m.doc() = "pybind11 I/O test"; // optional module docstring
@@ -390,8 +395,15 @@ PYBIND11_MODULE(heliolinx, m) {
     PYBIND11_NUMPY_DTYPE(hlradhyp, HelioRad, R_dot, R_dubdot);
     PYBIND11_NUMPY_DTYPE(hlclust, clusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, metric, rating, heliohyp0, heliohyp1, heliohyp2, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
 
-    
-    py::class_<hldet>(m, "hldet")
+    NDARRAY_FACTORY(hldet)
+    NDARRAY_FACTORY(EarthState)
+    NDARRAY_FACTORY(hlimage)
+    NDARRAY_FACTORY(longpair)
+    NDARRAY_FACTORY(tracklet)
+    NDARRAY_FACTORY(hlradhyp)
+    NDARRAY_FACTORY(hlclust)
+
+/*    py::class_<hldet>(m, "hldet")
       .def(py::init<double &, double &, double &, float &, float &, float &, float &, float &, float &, int &, std::string &, std::string &, std::string &, long &, long &, long &>());
     
     py::class_<EarthState>(m, "EarthState")
@@ -411,7 +423,7 @@ PYBIND11_MODULE(heliolinx, m) {
     
     py::class_<hlclust>(m, "hlclust")
       .def(py::init<long &, double &, double &, double &, double &, int &, double &, int &, int &, double &, std::string &, double &, double &, double &, double &, double &, double &, double &, double &, double &, double &, double &, double &, double &, double &, double &, double &, double &, double &, long &>());
-
+*/
 
     // Config class for MakeTracklets
     py::class_<MakeTrackletsConfig>(m, "MakeTrackletsConfig")
