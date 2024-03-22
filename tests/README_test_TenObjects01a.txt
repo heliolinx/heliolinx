@@ -4,10 +4,10 @@ time make_tracklets_new -dets test_TenObjects01a.csv -outimgs imgs_test_TenObjec
 
 EXPECTED FINAL OUTPUT AND TIMING:
 
-Writing paired detection file with 107 lines
-Writing tracklet file with 41 lines
-Writing trk2det file with 107 lines
-0.033u 0.006s 0:00.08 37.5%	0+0k 0+72io 0pf+0w
+Writing paired detection file with 109 lines
+Writing tracklet file with 42 lines
+Writing trk2det file with 109 lines
+0.065u 0.014s 0:00.11 63.6%	0+0k 2584+72io 1pf+0w
 
 
 INVOCATION FOR heliolinc:
@@ -16,11 +16,11 @@ time heliolinc_kd -imgs imgs_test_TenObjects01a.txt -pairdets pairdets_test_TenO
 
 EXPECTED FINAL OUTPUT AND TIMING:
 
-De-duplicating output set of 52 candidate linkages
-Final de-duplicating set contains 25 linkages
-Writing 25 lines to output cluster-summary file sum_test_TenObjects01a.csv
-Writing 255 lines to output clust2det file clust2det_test_TenObjects01a.csv
-0.008u 0.001s 0:00.02 0.0%	0+0k 0+24io 0pf+0w
+De-duplicating output set of 53 candidate linkages
+Final de-duplicating set contains 26 linkages
+Writing 26 lines to output cluster-summary file sum_test_TenObjects01a.csv
+Writing 269 lines to output clust2det file clust2det_test_TenObjects01a.csv
+0.035u 0.010s 0:00.06 66.6%	0+0k 2576+24io 1pf+0w
 
 
 SETUP AND INVOCATION FOR link_planarity:
@@ -33,4 +33,4 @@ EXPECTED FINAL OUTPUT AND TIMING:
 
 Writing 10 lines to output cluster-summary file LPLsum_test_TenObjects01a.csv
 Writing 105 lines to output clust2det file LPLclust2det_test_TenObjects01a.csv
-0.036u 0.000s 0:00.05 60.0%	0+0k 32+16io 0pf+0w
+0.072u 0.006s 0:00.08 87.5%	0+0k 0+16io 0pf+0w
