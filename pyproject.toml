@@ -1,9 +1,41 @@
+[project]
+name = "heliolinx"
+license = {file = "LICENSE"}
+readme = "README.md"
+authors = [
+    { name = "Mario Juric", email = "mjuric@astro.washington.edu" }
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: BSD License",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+]
+dynamic = ["version"]
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "pybind11>=2.5.0"
+]
+
 [build-system]
 requires = [
-    "setuptools>=42",
+    "setuptools>=61.2",
     "wheel",
     "pybind11>=2.5.0",
     "numpy",
     "setuptools_scm[toml]>=3.4"  # Add setuptools_scm with toml support
 ]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
+write_to = "heliolinx/_version.py"
+
+#[tool.setuptools]
+#include-package-data = false
+
+[tool.setuptools.packages.find]
+include = ["heliolinx*", "src*"]
+exclude = ["docs*", "tests*", "attic*"]

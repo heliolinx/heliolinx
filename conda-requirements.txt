@@ -3,3 +3,5 @@ wheel
 pybind11
 numpy
 setuptools_scm
+twine
+build
