@@ -12,6 +12,13 @@ pip install -e .
 We assume you have a C++14 (or higher) compliant C++ compiler installed
 (that can be invoked with `c++`)
 
+To build the binary packages for pypi, do the following on a machine where
+you have access to docker:
+```
+docker run --rm -v "$PWD":/io quay.io/pypa/manylinux2014_x86_64 /io/tools/build_wheels.sh
+twine upload dist/*
+```
+
 ## Why download heliolinc? ##
 
 The motivation for this implementation of the heliolinc algorithm is to enable asteroid discovery using the LSST survey strategy of taking just two images of each field per night, rather than the usual practice of taking four images per field per night. This simple change in survey strategy requires a paradigm shift in asteroid detection. Surveys taking the usual four images per night can identify candidate asteroid discoveries based on just a single night's data. With only two images per night, the attempt to do this would result in overwhelming numbers of false positives. Identifying a reasonable discovery candidate requires **linking** multiple detection pairs across multiple nights of data. The new C++ implementation of heliolinc has proven capability to link simulated **and real** asteroid detections across multiple nights, fast enough that ingesting detection catalogs spanning two weeks of output for major surveys -- including detections from more than one observing site -- is computationally tractable. 
