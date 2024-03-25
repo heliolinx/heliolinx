@@ -4,7 +4,7 @@
 
 To bootstrap your environment and build the Python bindings, do the following:
 ```
-mamba create -n heliolinx-dev $(cat conda-requirements.txt)
+mamba create -c conda-forge -n heliolinx-dev $(cat conda-requirements.txt)
 mamba activate heliolinx-dev
 pip install -e .
 ```
