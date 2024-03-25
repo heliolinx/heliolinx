@@ -1,4 +1,9 @@
-from setuptools import setup, Extension, find_packages
+#
+# This file only exists to configure/build the C++ extension code.
+# Everything else is done in pyproject.toml
+#
+
+from setuptools import setup, Extension
 import pybind11
 import numpy
 from pybind11.setup_helpers import Pybind11Extension, build_ext
@@ -14,21 +19,4 @@ heliolinx = Pybind11Extension(
 )
 
 # Setup function
-setup(
-#    name='heliolinx',
-#    use_scm_version={
-#        "root": ".",  # Directory of the root of the project
-#        "relative_to": __file__,  # Location of the file relative to the root
-#        "version_scheme": "guess-next-dev",  # Automatically guess the next development version
-#        "local_scheme": "dirty-tag"  # Append '.dirty' if the working directory is dirty
-#    },
-#    setup_requires=['setuptools_scm'],  # Needed for setuptools_scm to work
-#    author='Aren Heinze, Mario Juric, Siegfried Eggl',
-#    author_email='aheinze@uw.edu, mjuric@astro.washington.edu, eggls@uw.edu',
-#    description='heliolinx: the fast asteroid linking code.',
-#    long_description='',
-    ext_modules=[heliolinx],
-#    cmdclass={"build_ext": build_ext},
-#    packages=find_packages(),
-#    zip_safe=False,
-)
+setup(ext_modules=[heliolinx])

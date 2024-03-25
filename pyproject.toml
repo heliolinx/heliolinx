@@ -1,9 +1,12 @@
 [project]
 name = "heliolinx"
+description = "heliolinx: the fast asteroid linking code."
 license = {file = "LICENSE"}
 readme = "README.md"
 authors = [
-    { name = "Mario Juric", email = "mjuric@astro.washington.edu" }
+    { name = "Aren Heinze",    email = "aheinze@uw.edu" },
+    { name = "Mario Juric",    email = "mjuric@astro.washington.edu" },
+    { name = "Siegfried Eggl", email = "eggls@uw.edu" }
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -33,9 +36,7 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools_scm]
 write_to = "heliolinx/_version.py"
 
-#[tool.setuptools]
-#include-package-data = false
-
-[tool.setuptools.packages.find]
-include = ["heliolinx*", "src*"]
-exclude = ["docs*", "tests*", "attic*"]
+# without this, setuptools searches for the build .so module in
+# src/heliolinx (?!)
+[tool.setuptools.packages]
+find = {}
