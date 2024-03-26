@@ -18277,12 +18277,12 @@ int merge_pairs(const vector <hldet> &pairdets, vector <vector <long>> &indvecs,
   // Analyze paired detections in order of decreasing number of partners.
   // At the same time, load the tracklet file and the trk2det file
   cout << "Constructing tracklets, and loading output vectors\n";
-  
+
   for(i=detnum-1; i>=0 ;i--) {
     pdct=pair_partner_num[i].index; // Decode from pair_partner_num sorted list to actual pairdets index.
     istracklet=0; // Assume there is no tracklet unless one is confirmed to exist.
     if(long(indvecs[pdct].size()) > mintrkpts-1) { // Use mintrkpts-1 because the root detection pdct
-                                                     // is itself is a potential point in the tracklet
+                                                     // is itself a potential point in the tracklet
       if(verbose>=1) {
 	cout << "Working on detection " << i << " = " << pdct << " of " << detnum << ", with " << pair_partner_num[i].lelem << " = " << indvecs[pdct].size() << " pair partners";
 	if(verbose>=3) {
@@ -18635,6 +18635,580 @@ int merge_pairs(const vector <hldet> &pairdets, vector <vector <long>> &indvecs,
       }
     }
     // Close loop over all detections
+  }
+  return(0);
+}
+
+#define MIN_EXCLUSIVE_TRK_SIZE 3 // Tracklets with at least this many points
+                                 // are exclusive: that is, no tracklets that
+                                 // overlap them will be created.
+
+//merge_pairs2: March 25, 2024: Note date one year and one day after previous vesion.
+// This one differs in that it seeks to choose, from different ovelapping
+// tracklets of the same length, the one with the smallest Great Circle Residual
+// (GCR). By contrast, the previous code would effectively pick from the
+// equal-length tracklets at random (specifically, I believe it would choose
+// the one with the earliest index in the pairdets table).
+// The overall operation is the same as the previous code:
+// Given the output from find_pairs, merge pairs into tracklets with
+// more than two points, if possible
+int merge_pairs2(const vector <hldet> &pairdets, vector <vector <long>> &indvecs, const vector <longpair> &pairvec, vector <tracklet> &tracklets, vector <longpair> &trk2det, int mintrkpts, double maxgcr, double minarc, double minvel, double maxvel, int verbose)
+{
+  long detnum = pairdets.size();
+  long detct=0;
+  long i = 0;
+  long pdct=0;
+  int istracklet=0;
+  vector <hldet> ppset = {};
+  vector <vector <long>> ppind = {};
+  xy_index xyind=xy_index(0.0, 0.0, 0);
+  vector <xy_index> axyvec = {};
+  double dist = 0.0l;
+  double pa = 0.0l;
+  tracklet track1 = tracklet(0,0.0l,0.0l,0,0.0l,0.0l,0,0);
+  longpair onepair = longpair(0,0);
+  long j=0;
+  long k=0;
+  int biggest_tracklet = -1;
+  int tracklet_size = 0;
+  point3d_index p3di = point3d_index(0.0l,0.0l,0.0l,0);
+  vector <point3d_index>   track_mrdi_vec;
+  int trkptnum=0;
+  int istimedup=1;
+  vector <double> timevec;
+  vector <double> xvec;
+  vector <double> yvec;
+  vector <long> detindexvec;
+  double slopex,slopey,interceptx,intercepty,worsterr;
+  slopex = slopey = interceptx = intercepty = worsterr = 0.0l;
+  vector <double> fiterr = {};
+  vector <double> fiterr2 = {};
+  int worstpoint=-1;
+  double dtref,dt,dx,dy,angvel;
+  dtref = dt = dx = dy = angvel = 0.0l;
+  double outra1,outdec1,outra2,outdec2;
+  outra1 = outdec1 = outra2 = outdec2 = 0.0l;
+  int rp1,rp2,instep;
+  rp1=rp2=instep=0;
+  double GCR=0;
+  vector <vector <long>> indvecs2;
+  
+  long lelem = 0;
+  double delem = 0.0l;
+  long index = 0;
+  longpd_index one_ldi = longpd_index(lelem,delem,index);
+  vector <longpd_index> ldivec = {};
+
+  if(detnum != long(indvecs.size())) {
+    cerr << "ERROR: merge_pairs received input vectors pairdets and indvecs\n";
+    cerr << "with different lengths (" << detnum << " and " << indvecs.size() << "\n";
+    return(4);
+  }
+  if(verbose) {
+    cout << "Input vector lengths: pairdets: " << detnum << ", indvecs: " << indvecs.size() << ", pairvec: " << pairvec.size() << "\n";
+  }
+
+  // Load indvecs2 with empty vectors
+  for(detct=0; detct<detnum; detct++) {
+    detindexvec={};
+    indvecs2.push_back(detindexvec);
+  }
+  
+  // Sanity-check indvecs
+  cout << "merge_pairs is sanity-checking indvecs\n";
+  for(detct=0; detct<detnum; detct++) {
+    for(i=0; i<long(indvecs[detct].size()); i++) {
+      if(indvecs[detct][i]<0 || indvecs[detct][i]>=detnum) {
+	cerr << "ERROR: indvecs[" << detct << "][" << i << "] out of range: " << indvecs[detct][i] << "\n";
+	cerr << "Acceptable range is 0 to " << detnum << "\n";
+	return(9);
+      }
+    }
+  }
+  cout << "Sanity-check finished\n";
+  
+  tracklets={};
+  trk2det={}; // Wipe output vectors.
+  
+  // Loop over all detections, and find the best multi-point tracklet,
+  // if any, containing each detection.
+  for(i=0; i<detnum; i++) {
+    istracklet=0; // Assume there is no tracklet unless one is confirmed to exist.
+    if(long(indvecs[i].size()) >= mintrkpts-1 && long(indvecs[i].size())>=2) {
+      // The above condition uses mintrkpts-1 because the root detection i
+      // is itself a potential point in the tracklet
+      if(verbose>=1) {
+	cout << "Working on detection " << i << " of " << detnum << ", with " << indvecs[i].size() << " pair partners";
+	if(verbose>=3) {
+	  cout << ":\n";
+	  for(j=0; j<long(indvecs[i].size()); j++) {
+	    cout << indvecs[i][j] << ", ";
+	  }
+	  cout << "\n";
+	} else cout << "\n";
+      }
+      // Detection i is paired with more than one
+      // other detection.
+      // Project all of these pairs relative to detection i,
+      // storing x,y projected coordinates in axyvec.
+      axyvec={};
+      ppset={};
+      ppind={};
+      for(j=0; j<long(indvecs[i].size()); j++) { // Loop over the pair-partners of detection i.
+	detct = indvecs[i][j]; // detct is the pairdets index of a pair-partner to detection i.
+	if(detct<0 || detct>=long(indvecs.size())) {
+	  cerr << "Error: merge_pairs attempting to query detct=" << detct << ", out of range 0-" << long(indvecs.size()) << " = " << detnum << "\n";
+	  return(8);
+	}
+	// Project detct into an arc-WCS style x,y coords centered on i.
+	distradec02(pairdets[i].RA, pairdets[i].Dec, pairdets[detct].RA, pairdets[detct].Dec, &dist, &pa);
+	dist *= 3600.0L; // Convert distance from degrees to arcsec.
+	xyind = xy_index(dist*sin(pa/DEGPRAD),dist*cos(pa/DEGPRAD),detct);
+	axyvec.push_back(xyind);
+	ppset.push_back(pairdets[detct]);
+	ppind.push_back({}); // We need these vectors mainly just to have some way to store the
+	                     // indices of mutually consistent pair partners on the next step
+      }
+      if(verbose>=2) cout << "Loaded axyvec and ppset vectors OK, with sizes " << axyvec.size() << " and " << ppset.size() << "\n";
+      if(axyvec.size() != ppset.size() || axyvec.size() != ppind.size()) {
+	cerr << "ERROR: vectors of projected and original\n";
+	cerr << "pair partner candidates do not have the same length!\n";
+	cerr << axyvec.size() << ", " << ppset.size() << ", and " << ppind.size() << " must all be the same, and are not!\n";
+	return(3);
+      }
+      // Perform n^2 search on the projected points stored in axyvec
+      // to find the largest subset that lie along a consistent line.
+      for(j=0; j<long(axyvec.size()); j++) {
+	dtref = ppset[j].MJD - pairdets[i].MJD; // Time from anchor detection i to pair-partner j.
+	if(dtref == 0.0l) {
+	  cerr << "ERROR: paired detections with no time separation!\n";
+	  cerr << fixed << setprecision(6) << "timej, timei, dtref = " << ppset[j].MJD << " " << pairdets[i].MJD << " " << dtref << "\n";
+	  cerr << "idstring and image for j, i: " << ppset[j].idstring << " " << ppset[j].image << " " << pairdets[i].idstring << " " << pairdets[i].image << "\n";
+	  return(4);
+	}
+	// Make sure corresponding index vector in ppset is empty
+	ppind[j] = {};
+	// Count addition pair partners (besides ppset[j]) that plausibly
+	// lie along the line defined by i and ppset[j].
+	if(DEBUG>=2) cout << "Counting consistent pair partners\n";
+	for(k=0; k<long(axyvec.size()); k++) {
+	  if(j!=k) {
+	    dt = ppset[k].MJD - pairdets[i].MJD; // Time from anchor detection i to pair-partner j.
+	    // Find out if the projected x,y coords scale with time from i
+	    // in a consistent way for detections j and k.
+	    dx = axyvec[k].x - axyvec[j].x*(dt/dtref);
+	    dy = axyvec[k].y - axyvec[j].y*(dt/dtref);
+	    dist = sqrt(dx*dx + dy*dy); 
+	    if(verbose>=3) cout << "Detection " << axyvec[j].index << ":" << axyvec[k].index << " dist = " << dist << "\n";
+	    if(dist < 2.0*maxgcr) {
+	      // Detections j, k, and i all lie along a plausibly
+	      // linear, constant-velocity trajectory on the sky.
+	      ppind[j].push_back(k); // Store detection k as possible tracklet partner for i and j.
+	    }
+	  }
+	}
+      }
+      // Now, ppset stores all the possible pair-partners of detection i,
+      // and ppind stores, for each one of these, the ppset indices of ADDITIONAL ones that
+      // lie on a potentially consistent trajectory with it: that is, are tracklet partners.
+      // Find which detection in ppset has the largest number of possible tracklet partners.
+      biggest_tracklet=-1;
+      tracklet_size=0;
+      for(j=0; j<long(ppset.size()); j++) {
+	if(long(ppind[j].size())+2 > tracklet_size) {
+	  tracklet_size = ppind[j].size()+2; //We add one for i, one for j, to get actual tracklet size
+	  biggest_tracklet = j;
+	  if(DEBUG>=2) cout << "bt = " << biggest_tracklet << ", size = " << tracklet_size << "\n";
+	} else if(DEBUG>=2) cout << "not the biggest\n";
+      }
+      if(verbose>=2 && biggest_tracklet>=0) cout << "Biggest tracklet is " << biggest_tracklet << ", which corresponds to " << axyvec[biggest_tracklet].index << ", with size " << tracklet_size << "\n";
+      istracklet=0; // Assume there is no tracklet until one is confirmed to exist.
+      if(tracklet_size < mintrkpts || tracklet_size<3) {
+	istracklet=0;
+      } else {
+	// Perform linear fits to x and y vs time.
+	// Load all the points from the biggest potential tracklet.
+	track_mrdi_vec={}; // We need this vector purely so we can do a time-sort.
+	                   // mrdi stands for MJD, RA, Dec, index
+	// Load the reference point
+	p3di = point3d_index(0.0l,0.0l,0.0l,i);
+	track_mrdi_vec.push_back(p3di);
+	// Load anchor point corresponding to biggest_tracklet
+	p3di = point3d_index(ppset[biggest_tracklet].MJD - pairdets[i].MJD,axyvec[biggest_tracklet].x,axyvec[biggest_tracklet].y,axyvec[biggest_tracklet].index);
+	track_mrdi_vec.push_back(p3di);
+	// Load the other points
+ 	for(j=0; j<long(ppind[biggest_tracklet].size()); j++) {
+	  p3di = point3d_index(ppset[ppind[biggest_tracklet][j]].MJD - pairdets[i].MJD,axyvec[ppind[biggest_tracklet][j]].x,axyvec[ppind[biggest_tracklet][j]].y,axyvec[ppind[biggest_tracklet][j]].index);
+	  track_mrdi_vec.push_back(p3di);
+	}
+	// Sort track_mrdi_vec by time.
+	sort(track_mrdi_vec.begin(), track_mrdi_vec.end(), lower_point3d_index_x());
+	// Load time, x, y, and index vectors from sorted track_mrdi_vec.
+	timevec=xvec=yvec={};
+	detindexvec={};
+	for(j=0;j<long(track_mrdi_vec.size());j++)
+	  {
+	    timevec.push_back(track_mrdi_vec[j].x);
+	    xvec.push_back(track_mrdi_vec[j].y);
+	    yvec.push_back(track_mrdi_vec[j].z);
+	    detindexvec.push_back(track_mrdi_vec[j].index);
+	  }
+	if(track_mrdi_vec.size() != timevec.size() || track_mrdi_vec.size() != xvec.size() || track_mrdi_vec.size() != yvec.size() || track_mrdi_vec.size() != detindexvec.size()) {
+	  cerr << "ERROR: vector length mismatch in vectors for tracklet-fitting!\n";
+	  cerr << "Lengths of track_mrdi_vec, timevec, xvec, yvec, and detindexvec:\n";
+	  cerr << track_mrdi_vec.size() << ", " << timevec.size()  << ", " << xvec.size()  << ", " << yvec.size()  << ", " << detindexvec.size() << "\n";
+	  return(6);
+	}
+ 	if(DEBUG>=2) {
+	  cout << "First iteration linear fit vectors:\n";
+	  for(j=0; j<long(timevec.size()); j++) {
+	    cout << detindexvec[j] << " " << timevec[j] << " " << xvec[j] << " " << yvec[j] << "\n";
+	  }
+	}
+
+	// Perform fit to projected x coordinate as a function of time
+	linfituw01(timevec, xvec, slopex, interceptx);
+ 	// Perform fit to projected y coordinate as a function of time
+	linfituw01(timevec, yvec, slopey, intercepty);
+	// Load vector of residuals
+	fiterr = {};
+	GCR=0.0l;
+	for(j=0; j<long(timevec.size()); j++) {
+	  double square_err = DSQUARE(timevec[j]*slopex+interceptx-xvec[j]) + DSQUARE(timevec[j]*slopey+intercepty-yvec[j]);
+	  GCR += square_err;
+	  fiterr.push_back(sqrt(square_err));
+	}
+	GCR = sqrt(GCR/double(timevec.size()));
+	// Ditch duplicate times, if there are any
+	istimedup=1; // Guilty until proven innocent
+	while(istimedup==1 && timevec.size() > 3 && long(timevec.size()) > mintrkpts) {
+	  istimedup=0;
+	  j=1;
+	  while(j<long(timevec.size()) && istimedup==0) {
+	    if(fabs(timevec[j] - timevec[j-1]) < IMAGETIMETOL/SOLARDAY) {
+	      istimedup=1; // Point j and j-1 are time-duplicates.
+	      // Mark for rejection whichever one has the largest fitting error
+	      if(fiterr[j]>=fiterr[j-1]) worstpoint = j; 
+	      else worstpoint = j-1;
+	    }
+	    j++;
+	  }
+	  if(istimedup==1) {
+	    // Reject the bad point
+	    trkptnum=timevec.size();
+	    for(j=worstpoint; j<trkptnum-1; j++) {
+	      timevec[j] = timevec[j+1];
+	      xvec[j] = xvec[j+1];
+	      yvec[j] = yvec[j+1];
+	      detindexvec[j] = detindexvec[j+1];
+	    }
+	    trkptnum--;
+	    timevec.resize(trkptnum);
+	    xvec.resize(trkptnum);
+	    yvec.resize(trkptnum);
+	    detindexvec.resize(trkptnum);
+	    if(timevec.size() != xvec.size() || timevec.size() != yvec.size() || timevec.size() != detindexvec.size()) {
+	      cerr << "ERROR: vector length mismatch in vectors for tracklet-fitting!\n";
+	      cerr << "Lengths of timevec, xvec, yvec, and detindexvec:\n";
+	      cerr  << timevec.size()  << ", " << xvec.size()  << ", " << yvec.size()  << ", " << detindexvec.size() << "\n";
+	      return(6);
+	    }
+	    // Re-do linear fit
+	    // Perform fit to projected x coordinate as a function of time
+	    linfituw01(timevec, xvec, slopex, interceptx);
+	    // Perform fit to projected y coordinate as a function of time
+	    linfituw01(timevec, yvec, slopey, intercepty);
+	    // Load vector of residuals
+	    fiterr = {};
+	    GCR=0.0l;
+	    for(j=0; j<long(timevec.size()); j++) {
+	      double square_err = DSQUARE(timevec[j]*slopex+interceptx-xvec[j]) + DSQUARE(timevec[j]*slopey+intercepty-yvec[j]);
+	      GCR += square_err;
+	      fiterr.push_back(sqrt(square_err));
+	    }
+	    GCR = sqrt(GCR/double(timevec.size()));
+	  }
+	}
+	// Find worst error.  
+	worsterr = 0.0l;
+	for(j=0; j<long(timevec.size()); j++) {
+	  if(fiterr[j]>worsterr) {
+	    worsterr = fiterr[j];
+	    worstpoint = j;
+	  }
+	}
+	// Reject successive points until either there are only three left
+	// or the worst error drops below maxgcr.
+	while(worsterr>maxgcr && timevec.size() > 3 && long(timevec.size()) > mintrkpts) {
+	  // Reject the worst point
+	  trkptnum=timevec.size();
+	  for(j=worstpoint; j<trkptnum-1; j++) {
+	    timevec[j] = timevec[j+1];
+	    xvec[j] = xvec[j+1];
+	    yvec[j] = yvec[j+1];
+	    detindexvec[j] = detindexvec[j+1];
+	  }
+	  trkptnum--;
+	  timevec.resize(trkptnum);
+	  xvec.resize(trkptnum);
+	  yvec.resize(trkptnum);
+	  detindexvec.resize(trkptnum);	  
+	  if(timevec.size() != xvec.size() || timevec.size() != yvec.size() || timevec.size() != detindexvec.size()) {
+	    cerr << "ERROR: vector length mismatch in vectors for tracklet-fitting!\n";
+	    cerr << "Lengths of timevec, xvec, yvec, and detindexvec:\n";
+	    cerr  << timevec.size()  << ", " << xvec.size()  << ", " << yvec.size()  << ", " << detindexvec.size() << "\n";
+	    return(6);
+	  }
+	  // Perform fit to projected x coordinate as a function of time
+	  linfituw01(timevec, xvec, slopex, interceptx);
+	  // Perform fit to projected y coordinate as a function of time
+	  linfituw01(timevec, yvec, slopey, intercepty);
+	  // Load vector of residuals
+	  fiterr = {};
+	  GCR=0.0l;
+	  for(j=0; j<long(timevec.size()); j++) {
+	    double square_err = DSQUARE(timevec[j]*slopex+interceptx-xvec[j]) + DSQUARE(timevec[j]*slopey+intercepty-yvec[j]);
+	    GCR += square_err;
+	    fiterr.push_back(sqrt(square_err));
+	  }
+	  GCR = sqrt(GCR/double(timevec.size()));
+	  // Find worst error.  
+	  worsterr = 0.0l;
+	  if(fiterr.size() != timevec.size()) {
+	    cerr << "Error: fiterr and timevec have different sizes: " << fiterr.size() << "vs. " << timevec.size() << "\n";
+	    return(7);
+	  }
+	  for(j=0; j<long(timevec.size()); j++) {
+	    if(fiterr[j]>worsterr) {
+	      worsterr = fiterr[j];
+	      worstpoint = j;
+	    }
+	  }
+	}
+	// See if we've rejected the anchor point i
+	istracklet=0;
+	for(j=0; j<long(detindexvec.size()); j++) {
+	  if(detindexvec[j] == i) {
+	    // Anchor point has not been rejected!
+	    istracklet=1;
+	  }
+	}
+	if(istracklet==1 && worsterr<=maxgcr && timevec.size()>=3 && long(timevec.size())>=mintrkpts) {
+	  // We succeeded in finding a tracklet with no time-duplicates, and
+	  // no outliers beyond maxgcr, and we have not rejected the anchor point.
+	  // Evaluate angular velocity and arc length,
+	  // to make sure it meets all validity criteria.
+	  instep = (timevec.size()-1)/4;
+	  rp1 = instep;
+	  rp2 = timevec.size()-1-instep;
+	  if(rp1==rp2) {
+	    cerr << "ERROR: both representative points for a tracklet are the same!\n";
+	    cerr << "size, instep, rp1, rp2: " << timevec.size() << " " << instep << " " << rp1 << " " << rp2 << "\n";
+	    return(5);
+	  }
+	  // Calculate angular velocity in deg/day. The slope values
+	  // correspond to velocities in arcsec/day.
+	  angvel = sqrt(slopex*slopex + slopey*slopey)/3600.0l;
+	  
+	  // Determine improved RA, Dec based on tracklet fit for the representative points
+	  // Calculated projected x, y at rp1
+	  dx = timevec[rp1]*slopex + interceptx;
+	  dy = timevec[rp1]*slopey + intercepty;
+	  // Calculate equivalent celestial position angle.
+	  if(dx==0l && dy>=0l) pa = 0.0l;
+	  else if(dx==0l && dy<0l) pa = M_PI;
+	  else if(dx>0l) pa = M_PI/2.0l - atan(dy/dx);
+	  else if(dx<0l) pa = 3.0l*M_PI/2.0l - atan(dy/dx);
+	  else {
+	    cerr << "ERROR: logical impossibility while trying to solve for PA\n";
+	    cerr << "dx = " << dx << " dy = " << dy << "\n";
+	  }
+	  dist = sqrt(dx*dx + dy*dy)/3600.0l; // renders distance in degrees, not arcsec.
+	  pa*=DEGPRAD; // position angle in degrees, not radians.
+	  arc2cel01(pairdets[i].RA, pairdets[i].Dec, dist, pa, outra1, outdec1);
+	  if(!isnormal(outra1)) {
+	    cerr << "NAN WARNING: dx, dy, dist, pa: " << dx << " " << dy << " " << dist << " " << pa << "\n";
+	  }
+	  // Calculated projected x, y at rp2
+	  dx = timevec[rp2]*slopex + interceptx;
+	  dy = timevec[rp2]*slopey + intercepty;
+	  // Calculate equivalent celestial position angle.
+	  if(dx==0l && dy>=0l) pa = 0.0l;
+	  else if(dx==0l && dy<0l) pa = M_PI;
+	  else if(dx>0l) pa = M_PI/2.0l - atan(dy/dx);
+	  else if(dx<0l) pa = 3.0l*M_PI/2.0l - atan(dy/dx);
+	  else {
+	    cerr << "ERROR: logical impossibility while trying to solve for PA\n";
+	    cerr << "dx = " << dx << " dy = " << dy << "\n";
+	  }
+	  dist = sqrt(dx*dx + dy*dy)/3600.0l; // renders distance in degrees, not arcsec.
+	  pa*=DEGPRAD; // position angle in degrees, not radians.
+	  arc2cel01(pairdets[i].RA, pairdets[i].Dec, dist, pa, outra2, outdec2);
+	  // Calculate total angular arc
+	  distradec02(outra1, outdec1, outra2, outdec2, &dist, &pa);
+	  dist *= 3600.0l;
+	  // Note: it can be argued that the dist calculated above is not really the total
+	  // angular arc, because it's the span between the two representative points instead
+	  // of all the way from the beginning of the tracklet to its end. There are at
+	  // least two alternative ways of calculating such a value: use the actual
+	  // extreme points, or just multiply the total time span by the angular velocity.
+	  // I haven't been able to convince myself that either of them is a better idea
+	  // than the above. Here's how one might do them, just in case:
+	  // distradec02(pairdets[detindexvec[0]].RA, pairdets[detindexvec[0]].Dec, pairdets[detindexvec[detindexvec.size()-1]].RA, pairdets[detindexvec[detindexvec.size()-1]].Dec, &dist, &pa);
+	  // dist *= 3600.0l
+	  // OR:
+	  // dist = angvel*(pairdets[detindexvec[detindexvec.size()-1]].MJD - pairdets[detindexvec[0]].MJD)*3600.0l;
+	  if(dist>=minarc && angvel>=minvel && angvel<=maxvel) {
+	    // This tracklet meets all criteria
+	    // Write its anchor detection index (i),
+	    // the number of points, and the GCR to ldivec. Note ldi means long, double, index.
+	    lelem = long(timevec.size());
+	    delem = GCR;
+	    index = i;
+	    one_ldi = longpd_index(lelem,delem,index);
+	    ldivec.push_back(one_ldi);
+	    indvecs2[i] = detindexvec; // Unlike indvecs, indvecs2 includes the anchor point itself.
+	  } else {
+	    istracklet=0;
+	    if(verbose>=1) cout << "A tracklet was rejected: arc = " << setprecision(3) << fixed << dist << " < " << minarc << " or angvel = " << setprecision(5) << fixed << angvel << " not in range " << setprecision(3) << fixed << minvel << "-" << maxvel << "\n";
+	  }
+	  // Close if-statement checking number of points and GCR.
+	} else istracklet=0;
+	// Close else-statement confirming there was a candidate for
+	// being an aligned tracklet.
+      }
+      // Close if-statement checking that detection i has more than
+      // one pair-partner, and hence COULD be part of a tracklet
+    } else istracklet=0;
+    // Close loop over all detections
+  }
+  // Sort the vector ldivec, which will put the detections that
+  // anchor tracklets with many detections and low GCR at the end.
+  sort(ldivec.begin(), ldivec.end(), lower_longpd_index());
+
+  // LOOP BACK FOR FINAL WRITING OF TRACKLETS WITH MORE THAN TWO POINTS
+  for(i=long(ldivec.size()-1); i>=0; i--) {
+    pdct = ldivec[i].index;
+    // Load vectors for linear fitting
+    if(long(indvecs2[pdct].size()) >= mintrkpts && indvecs2[pdct].size()>=3) {
+      // Sanity check: this condition should always be satisfied.
+      // Project all the detections onto an arc-WCS style x,y coords centered on pdct.
+      timevec=xvec=yvec={};
+      detindexvec={};
+      for(j=0; j<long(indvecs2[pdct].size()); j++) { // Iterates over ALL points in the tracklet,
+	detct = indvecs2[pdct][j];                   // including the anchor point.
+	if(long(indvecs[detct].size()) > 0) {  // Point has not previously been claimed by an exclusive tracklet
+	  distradec02(pairdets[pdct].RA, pairdets[pdct].Dec, pairdets[detct].RA, pairdets[detct].Dec, &dist, &pa);
+	  dist *= 3600.0L; // Convert distance from degrees to arcsec.
+	  timevec.push_back(pairdets[detct].MJD - pairdets[pdct].MJD);
+	  xvec.push_back(dist*sin(pa/DEGPRAD));
+	  yvec.push_back(dist*cos(pa/DEGPRAD));
+	  detindexvec.push_back(detct);
+	}
+      }
+      if(long(timevec.size()) >= mintrkpts && timevec.size() >= 3) {
+	// Perform fit to projected x coordinate as a function of time
+	linfituw01(timevec, xvec, slopex, interceptx);
+	// Perform fit to projected y coordinate as a function of time
+	linfituw01(timevec, yvec, slopey, intercepty);
+	// Select points that will represent this tracklet.
+	instep = (timevec.size()-1)/4;
+	rp1 = instep;
+	rp2 = timevec.size()-1-instep;
+	if(rp1==rp2) {
+	  cerr << "ERROR: both representative points for a tracklet are the same!\n";
+	  cerr << "size, instep, rp1, rp2: " << timevec.size() << " " << instep << " " << rp1 << " " << rp2 << "\n";
+	  return(5);
+	}
+	// Calculate angular velocity in deg/day. The slope values
+	// correspond to velocities in arcsec/day.
+	angvel = sqrt(slopex*slopex + slopey*slopey)/3600.0l;
+
+	// Determine improved RA, Dec based on tracklet fit for the representative points
+	// Calculated projected x, y at rp1
+	dx = timevec[rp1]*slopex + interceptx;
+	dy = timevec[rp1]*slopey + intercepty;
+	// Calculate equivalent celestial position angle.
+	if(dx==0l && dy>=0l) pa = 0.0l;
+	else if(dx==0l && dy<0l) pa = M_PI;
+	else if(dx>0l) pa = M_PI/2.0l - atan(dy/dx);
+	else if(dx<0l) pa = 3.0l*M_PI/2.0l - atan(dy/dx);
+	else {
+	  cerr << "ERROR: logical impossibility while trying to solve for PA\n";
+	  cerr << "dx = " << dx << " dy = " << dy << "\n";
+	}
+	dist = sqrt(dx*dx + dy*dy)/3600.0l; // renders distance in degrees, not arcsec.
+	pa*=DEGPRAD; // position angle in degrees, not radians.
+	arc2cel01(pairdets[pdct].RA, pairdets[pdct].Dec, dist, pa, outra1, outdec1);
+	if(!isnormal(outra1)) {
+	  cerr << "NAN WARNING: dx, dy, dist, pa: " << dx << " " << dy << " " << dist << " " << pa << "\n";
+	}
+	// Calculated projected x, y at rp2
+	dx = timevec[rp2]*slopex + interceptx;
+	dy = timevec[rp2]*slopey + intercepty;
+	// Calculate equivalent celestial position angle.
+	if(dx==0l && dy>=0l) pa = 0.0l;
+	else if(dx==0l && dy<0l) pa = M_PI;
+	else if(dx>0l) pa = M_PI/2.0l - atan(dy/dx);
+	else if(dx<0l) pa = 3.0l*M_PI/2.0l - atan(dy/dx);
+	else {
+	  cerr << "ERROR: logical impossibility while trying to solve for PA\n";
+	  cerr << "dx = " << dx << " dy = " << dy << "\n";
+	}
+	dist = sqrt(dx*dx + dy*dy)/3600.0l; // renders distance in degrees, not arcsec.
+	pa*=DEGPRAD; // position angle in degrees, not radians.
+	arc2cel01(pairdets[pdct].RA, pairdets[pdct].Dec, dist, pa, outra2, outdec2);
+	// Calculate total angular arc
+	distradec02(outra1, outdec1, outra2, outdec2, &dist, &pa);
+	dist *= 3600.0l;
+	// Note: it can be argued that the dist calculated above is not really the total
+	// angular arc, because it's the span between the two representative points instead
+	// of all the way from the beginning of the tracklet to its end. There are at
+	// least two alternative ways of calculating such a value: use the actual
+	// extreme points, or just multiply the total time span by the angular velocity.
+	// I haven't been able to convince myself that either of them is a better idea
+	// than the above. Here's how one might do them, just in case:
+	// distradec02(pairdets[detindexvec[0]].RA, pairdets[detindexvec[0]].Dec, pairdets[detindexvec[detindexvec.size()-1]].RA, pairdets[detindexvec[detindexvec.size()-1]].Dec, &dist, &pa);
+	// dist *= 3600.0l
+	// OR:
+	// dist = angvel*(pairdets[detindexvec[detindexvec.size()-1]].MJD - pairdets[detindexvec[0]].MJD)*3600.0l;
+	if(dist>=minarc && angvel>=minvel && angvel<=maxvel) {
+	  // Write out representative pair, followed by RA, Dec and the total number of constituent points
+	  track1 = tracklet(pairdets[detindexvec[rp1]].image,outra1,outdec1,pairdets[detindexvec[rp2]].image,outra2,outdec2,detindexvec.size(),tracklets.size());
+	  tracklets.push_back(track1);
+	  for(j=0; j<long(detindexvec.size()); j++) {
+	    onepair = longpair(tracklets[tracklets.size()-1].trk_ID,detindexvec[j]);
+	    // Wipe indvecs entry for all sources, if tracklet is long enough to be exclusive
+	    if(long(detindexvec.size()) >= MIN_EXCLUSIVE_TRK_SIZE) indvecs[detindexvec[j]] = {};
+	    trk2det.push_back(onepair);
+	  }
+	}
+      }
+    }
+  }
+  if(mintrkpts==2) {
+    // Also write out pairs.
+    for(i=0;i<detnum;i++) {
+      if(indvecs[i].size()>0) {
+	for(j=0; j<long(indvecs[i].size()); j++) {
+	  k=indvecs[i][j];
+	  // Calculate angular arc and angular velocity
+	  distradec02(pairdets[i].RA,pairdets[i].Dec,pairdets[k].RA,pairdets[k].Dec, &dist, &pa);
+	  angvel = dist/fabs(pairdets[i].MJD-pairdets[k].MJD); // Degrees per day
+	  dist *= 3600.0l; // Arcseconds
+	  if(indvecs[k].size()>0 && pairdets[k].MJD>pairdets[i].MJD && angvel>=minvel && dist>=minarc && angvel<=maxvel) {
+	    track1 = tracklet(pairdets[i].image,pairdets[i].RA,pairdets[i].Dec,pairdets[k].image,pairdets[k].RA,pairdets[k].Dec,2,tracklets.size());
+	    tracklets.push_back(track1);
+	    onepair = longpair(tracklets.size()-1,i);
+	    trk2det.push_back(onepair);
+	    onepair = longpair(tracklets.size()-1,k);
+	    trk2det.push_back(onepair);
+	  } else if(angvel<minvel || dist<minarc) {
+	    if(verbose>=1) cout << "A pair was rejected: arc = " << setprecision(3) << fixed << dist << " < " << minarc << " or angvel = " << setprecision(5) << fixed << angvel << " not in range " << setprecision(3) << fixed << minvel << "-" << maxvel << "\n";
+	  }
+	}
+      }
+    }
   }
   return(0);
 }
@@ -19342,6 +19916,81 @@ int make_tracklets(vector <hldet> &detvec, vector <hlimage> &image_log, MakeTrac
   } else cout << "merge_pairs finished OK\n";
   return(0);
 }
+
+// make_tracklets2: March 26, 2024: test new function merge_pairs2
+int make_tracklets2(vector <hldet> &detvec, vector <hlimage> &image_log, MakeTrackletsConfig config, vector <hldet> &pairdets,vector <tracklet> &tracklets, vector <longpair> &trk2det)
+{
+ 
+  long i=0;
+  std::vector <longpair> pairvec;
+  std::vector <vector <long>> indvecs;
+  
+  // Echo config struct
+  cout << "Configuration parameters for new make_tracklets:\n";
+  cout << "Min. number of tracklet points: " << config.mintrkpts << "\n";
+  cout << "Time-tolerance for matching detections on the same image: " << config.imagetimetol << " days (" << config.imagetimetol*SOLARDAY << " seconds)\n";
+  cout << "Maximum angular velocity: " << config.maxvel << " deg/day\n";
+  cout << "Minimum angular velocity: " << config.minvel << " deg/day\n";
+  cout << "Minimum angular arc: " << config.minarc << " arcsec\n";
+  cout << "Maximum inter-image time interval: " << config.maxtime << " days (" << config.maxtime*1440.0 << " minutes)\n";
+  cout << "Minimum inter-image time interval: " << config.mintime << " days (" << config.mintime*1440.0 << " minutes)\n";
+  cout << "Image radius: " << config.imagerad << " degrees\n";
+  cout << "Maximum Great Circle Residual for tracklets with more than two points: " << config.maxgcr << " arcsec\n";
+  if(config.forcerun) {
+    cout << "forcerun has been invoked: execution will attempt to push through\n";
+    cout << "any errors that are not immediately fatal, including those that\n";
+    cout << "could produce inaccurate final results.\n";
+  }
+  if(config.verbose) cout << "Verbose output has been requested\n";
+  
+  int status = load_image_indices(image_log, detvec, config.imagetimetol, config.forcerun);
+  if(status!=0) {
+    cerr << "ERROR: failed to load_image_indices from detection vector\n";
+    return(status);
+  }
+  
+  // Echo detection vector
+  //for(i=0;i<detvec.size();i++) {
+  //  cout << "det " << i << " " << detvec[i].MJD << " " << detvec[i].RA << " " << detvec[i].Dec << " " << detvec[i].mag  << " " << detvec[i].obscode << " " << detvec[i].image << "\n";
+  //}
+  // Echo image log
+  for(i=0;i<long(image_log.size());i++) {
+    cout << "image " << i << " " << image_log[i].MJD << " " << image_log[i].RA << " " << image_log[i].Dec << " " << image_log[i].X << " " << image_log[i].obscode  << " " << image_log[i].startind  << " " << image_log[i].endind << "\n";
+  }
+
+  // Create pairs, output a vector pairdets of type hldet; a vector indvecs of type vector <long>,
+  // with the same length as pairdets, giving the indices of all the detections paired with a given detection;
+  // and the vector pairvec of type longpair, giving all the pairs of detections.
+  status = find_pairs(detvec, image_log, pairdets, indvecs, pairvec, config.mintime, config.maxtime, config.imagerad, config.maxvel, config.verbose);
+  
+  if(status!=0) {
+    cerr << "ERROR: find_pairs reports failure status " << status << "\n";
+    return(status);
+  }
+
+  // Sanity-check indvecs
+  cout << "make_tracklets is sanity-checking indvecs\n";
+  long detnum = indvecs.size();
+  long detct=0;
+  for(detct=0; detct<detnum; detct++) {
+    for(i=0; i<long(indvecs[detct].size()); i++) {
+      if(indvecs[detct][i]<0 || indvecs[detct][i]>=detnum) {
+	cerr << "ERROR: indvecs[" << detct << "][" << i << "] out of range: " << indvecs[detct][i] << "\n";
+	cerr << "Acceptable range is 0 to " << detnum << "\n";
+	return(9);
+      }
+    }
+  }
+  cout << "Sanity-check finished\n";
+   
+  status = merge_pairs2(pairdets, indvecs, pairvec, tracklets, trk2det, config.mintrkpts, config.maxgcr, config.minarc, config.minvel, config.maxvel, config.verbose);
+  if(status!=0) {
+    cerr << "ERROR: merge_pairs reports failure status " << status << "\n";
+    return(status);
+  } else cout << "merge_pairs finished OK\n";
+  return(0);
+}
+
 
 // make_trailed_tracklets: February 14, 2024: like make_tracklets,
 // but makes use of trail information through the new function

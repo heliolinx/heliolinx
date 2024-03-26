@@ -592,7 +592,7 @@ int main(int argc, char *argv[])
       outstream1.close();
     }
 
-  make_tracklets(detvec, img_log, config, pairdets, tracklets, trk2det);
+  make_tracklets2(detvec, img_log, config, pairdets, tracklets, trk2det);
 
   // Write paired detection file
   cout << "Writing paired detection file with " << pairdets.size() << " lines\n";
