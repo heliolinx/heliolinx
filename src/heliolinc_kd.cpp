@@ -628,7 +628,7 @@ int main(int argc, char *argv[])
       return(1);
     } else {
       cout << "\nUser did not input a positive-valued reference MJD in the\n";
-      cout << "\nacceptable range, so heliolinc will generate one internally\n";
+      cout << "acceptable range, so heliolinc will generate one internally\n";
       cout << "MJD range is " << minMJD << " to " << maxMJD << "\n";
       cout << fixed << setprecision(2) << "Suggested reference value is " << minMJD*0.5L + maxMJD*0.5L << "\n";
       config.MJDref = round(minMJD*50.0l + maxMJD*50.0l)/100.0l;
