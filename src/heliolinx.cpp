@@ -88,6 +88,7 @@ void fill_struct(hlclust & out, hlclust const& in) {
     out.obsnights = in.obsnights;
     out.metric = in.metric;
     memcpy(out.rating, in.rating, sizeof(in.rating));
+    out.reference_MJD = in.reference_MJD;
     out.heliohyp0 = in.heliohyp0;
     out.heliohyp1 = in.heliohyp1;
     out.heliohyp2 = in.heliohyp2;
@@ -428,7 +429,7 @@ PYBIND11_MODULE(heliolinx, m) {
     PYBIND11_NUMPY_DTYPE(longpair, i1, i2);
     PYBIND11_NUMPY_DTYPE(tracklet, Img1, RA1, Dec1, Img2, RA2, Dec2, npts, trk_ID);
     PYBIND11_NUMPY_DTYPE(hlradhyp, HelioRad, R_dot, R_dubdot);
-    PYBIND11_NUMPY_DTYPE(hlclust, clusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, metric, rating, heliohyp0, heliohyp1, heliohyp2, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
+    PYBIND11_NUMPY_DTYPE(hlclust, clusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, metric, rating, reference_MJD, heliohyp0, heliohyp1, heliohyp2, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
 
     NDARRAY_FACTORY(hldet)
     NDARRAY_FACTORY(EarthState)
@@ -475,12 +476,14 @@ PYBIND11_MODULE(heliolinx, m) {
       .def_readwrite("exptime", &MakeTrackletsConfig::exptime)
       .def_readwrite("siglenscale", &MakeTrackletsConfig::siglenscale)
       .def_readwrite("sigpascale", &MakeTrackletsConfig::sigpascale)
+      .def_readwrite("max_netl", &MakeTrackletsConfig::max_netl)
       .def_readwrite("forcerun", &MakeTrackletsConfig::forcerun)
       .def_readwrite("verbose", &MakeTrackletsConfig::verbose);
 
     py::class_<HeliolincConfig>(m, "HeliolincConfig")
       .def(py::init<>())
       .def_readwrite("MJDref", &HeliolincConfig::MJDref)
+      .def_readwrite("autorun", &HeliolincConfig::autorun)
       .def_readwrite("clustrad", &HeliolincConfig::clustrad) 
       .def_readwrite("clustchangerad", &HeliolincConfig::clustchangerad) 
       .def_readwrite("dbscan_npt", &HeliolincConfig::dbscan_npt) 
@@ -510,7 +513,7 @@ PYBIND11_MODULE(heliolinx, m) {
     // Config class for LinkPurify
     py::class_<LinkPurifyConfig>(m, "LinkPurifyConfig")
       .def(py::init<>())
-      .def_readwrite("MJDref", &LinkPurifyConfig::MJDref)
+      .def_readwrite("useorbMJD", &LinkPurifyConfig::useorbMJD) 
       .def_readwrite("simptype", &LinkPurifyConfig::simptype) 
       .def_readwrite("ptpow", &LinkPurifyConfig::ptpow) 
       .def_readwrite("nightpow", &LinkPurifyConfig::nightpow) 
@@ -519,6 +522,7 @@ PYBIND11_MODULE(heliolinx, m) {
       .def_readwrite("maxrms", &LinkPurifyConfig::maxrms)
       .def_readwrite("max_oop", &LinkPurifyConfig::max_oop)
       .def_readwrite("rejfrac", &LinkPurifyConfig::rejfrac)
+      .def_readwrite("maxrejnum", &LinkPurifyConfig::maxrejnum)
       .def_readwrite("max_astrom_rms", &LinkPurifyConfig::max_astrom_rms)
       .def_readwrite("minobsnights", &LinkPurifyConfig::minobsnights) 
       .def_readwrite("minpointnum", &LinkPurifyConfig::minpointnum) 

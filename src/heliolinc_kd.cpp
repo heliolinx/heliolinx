@@ -176,7 +176,7 @@
 
 static void show_usage()
 {
-  cerr << "Usage: heliolinc_kd -imgs imfile -pairdets paired detection file -tracklets tracklet file -trk2det tracklet-to-detection file -mjd mjdref -obspos observer_position_file -heliodist heliocentric_dist_vel_acc_file -clustrad clustrad -clustchangerad min_distance_for_cluster_scaling -npt dbscan_npt -minobsnights minobsnights -mintimespan mintimespan -mingeodist minimum_geocentric_distance -maxgeodist maximum_geocentric_distance -geologstep logarithmic_step_size_for_geocentric_distance_bins -mingeoobs min_geocentric_dist_at_observation(AU) -minimpactpar min_impact_parameter(km) -useunivar 1_for_univar_0_for_fgfunc -vinf max_v_inf  -outsum summary_file -clust2det clust2detfile -verbose verbosity\n";
+  cerr << "Usage: heliolinc_kd -imgs imfile -pairdets paired detection file -tracklets tracklet file -trk2det tracklet-to-detection file -mjd mjdref -autorun 1=yes_auto-generate_MJDref -obspos observer_position_file -heliodist heliocentric_dist_vel_acc_file -clustrad clustrad -clustchangerad min_distance_for_cluster_scaling -npt dbscan_npt -minobsnights minobsnights -mintimespan mintimespan -mingeodist minimum_geocentric_distance -maxgeodist maximum_geocentric_distance -geologstep logarithmic_step_size_for_geocentric_distance_bins -mingeoobs min_geocentric_dist_at_observation(AU) -minimpactpar min_impact_parameter(km) -useunivar 1_for_univar_0_for_fgfunc -vinf max_v_inf  -outsum summary_file -clust2det clust2detfile -verbose verbosity\n";
   cerr << "\nor, at minimum:\n\n";
   cerr << "heliolinc_kd -dets detfile -trk2det tracklet-to-detection file -mjd mjdref -obspos observer_position_file -heliodist heliocentric_dist_vel_acc_file\n";
   cerr << "\nNote that the minimum invocation leaves some things set to defaults\n";
@@ -213,7 +213,8 @@ int main(int argc, char *argv[])
   ofstream outstream1;
   long i=0;
   long clustct=0;
-  int status=0;  
+  int status=0;
+  int automjd=0;
   
   i=1;
   while(i<argc) {
@@ -270,6 +271,17 @@ int main(int argc, char *argv[])
       }
       else {
 	cerr << "Reference MJD keyword supplied with no corresponding argument";
+	show_usage();
+	return(1);
+      }
+    } else if(string(argv[i]) == "-autorun" || string(argv[i]) == "-auto" || string(argv[i ]) == "-automjd" || string(argv[i]) == "-autoMJD" || string(argv[i]) == "--auto_mjd" || string(argv[i]) == "--autoMJD" || string(argv[i]) == "--autorun" || string(argv[i]) == "--automjd") {
+      if(i+1 < argc) {
+	//There is still something to read;
+	config.autorun=stoi(argv[++i]);
+	i++;
+      }
+      else {
+	cerr << "Autorun keyword supplied with no corresponding argument";
 	show_usage();
 	return(1);
       }
@@ -492,20 +504,6 @@ int main(int argc, char *argv[])
   }
   if(config.minobsnights > config.dbscan_npt) config.minobsnights = config.dbscan_npt; // Otherwise the low setting of dbscan_npt is not operative.
 
-  // Do something useful in the specific case that there is
-  // an input data file, but no reference MJD
-  if(pairdetfile.size()>0 && config.MJDref<=0L) {
-    // Read input detection file to suggest optimal MJDref
-    read_pairdet_file(pairdetfile, detvec, config.verbose);
-    sort(detvec.begin(), detvec.end(), early_hldet());
-    cout << "\nERROR: input positive-valued reference MJD is required\n";
-    cout << "MJD range is " << detvec[0].MJD << " to " << detvec[detvec.size()-1].MJD << "\n";
-    cout << fixed << setprecision(2) << "Suggested reference value is " << detvec[0].MJD*0.5L + detvec[detvec.size()-1].MJD*0.5L << "\n";
-    cout << "based on your input detection catalog " << pairdetfile << "\n\n\n";
-    show_usage();
-    return(1);
-  }
-  
   if(argc<11)
     {
       cerr << "Too few arguments even for minimalist invocation:\n";
@@ -610,6 +608,35 @@ int main(int argc, char *argv[])
    return(1);
   }
   cout << "Read " << detvec.size() << " data lines from paired detection file " << pairdetfile << "\n";
+
+  // Find MJD for first and last detections.
+  double minMJD = detvec[0].MJD;
+  double maxMJD = detvec[0].MJD;
+  for(i=0; i<long(detvec.size()); i++) {
+    if(minMJD > detvec[i].MJD) minMJD = detvec[i].MJD;
+    if(maxMJD < detvec[i].MJD) maxMJD = detvec[i].MJD;
+  }
+  // Do something useful in the specific case that there is
+  // an input data file, but no reference MJD
+  if(!isnormal(config.MJDref) || config.MJDref < minMJD || config.MJDref > maxMJD) {
+    if(config.autorun<=0) {
+      cout << "\nERROR: input positive-valued reference MJD is required\n";
+      cout << "MJD range is " << minMJD << " to " << maxMJD << "\n";
+      cout << fixed << setprecision(2) << "Suggested reference value is " << minMJD*0.5L + maxMJD*0.5L << "\n";
+      cout << "based on your input detection catalog " << pairdetfile << "\n\n\n";
+      show_usage();
+      return(1);
+    } else {
+      cout << "\nUser did not input a positive-valued reference MJD in the\n";
+      cout << "\nacceptable range, so heliolinc will generate one internally\n";
+      cout << "MJD range is " << minMJD << " to " << maxMJD << "\n";
+      cout << fixed << setprecision(2) << "Suggested reference value is " << minMJD*0.5L + maxMJD*0.5L << "\n";
+      config.MJDref = round(minMJD*50.0l + maxMJD*50.0l)/100.0l;
+      cout << fixed << setprecision(2) << "Adopting reference MJD = " << config.MJDref << "\n";
+      cout << "based on your input detection catalog " << pairdetfile << "\n\n\n";
+      automjd=1;
+    } 
+  }
   
   image_log={};
   status=read_image_file2(imfile, image_log);
@@ -651,7 +678,7 @@ int main(int argc, char *argv[])
     outstream1 << fixed << setprecision(3) << outclust[clustct].clusternum << "," << outclust[clustct].posRMS << "," << outclust[clustct].velRMS << "," << outclust[clustct].totRMS << ",";
     outstream1 << fixed << setprecision(4) << outclust[clustct].astromRMS << ",";
     outstream1 << fixed << setprecision(6) << outclust[clustct].pairnum << "," << outclust[clustct].timespan << "," << outclust[clustct].uniquepoints << "," << outclust[clustct].obsnights << "," << outclust[clustct].metric << "," << outclust[clustct].rating << ",";
-    outstream1 << fixed << setprecision(6) << outclust[clustct].heliohyp0 << "," << outclust[clustct].heliohyp1 << "," << outclust[clustct].heliohyp2 << ",";
+    outstream1 << fixed << setprecision(6) << outclust[clustct].reference_MJD << "," << outclust[clustct].heliohyp0 << "," << outclust[clustct].heliohyp1 << "," << outclust[clustct].heliohyp2 << ",";
     outstream1 << fixed << setprecision(1) << outclust[clustct].posX << "," << outclust[clustct].posY << "," << outclust[clustct].posZ << ",";
     outstream1 << fixed << setprecision(4) << outclust[clustct].velX << "," << outclust[clustct].velY << "," << outclust[clustct].velZ << ",";
     outstream1 << fixed << setprecision(6) << outclust[clustct].orbit_a << "," << outclust[clustct].orbit_e << "," << outclust[clustct].orbit_MJD << ",";
@@ -666,6 +693,9 @@ int main(int argc, char *argv[])
     outstream1 << clust2det[clustct].i1 << "," << clust2det[clustct].i2 << "\n";
   }
   outstream1.close();
+  if(automjd) {
+    cout << "Automatically calcuated reference MJD was " << config.MJDref << "\n";
+  }
   
   return(0);
 }

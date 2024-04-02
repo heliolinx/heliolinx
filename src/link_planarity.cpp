@@ -27,7 +27,7 @@
 
 static void show_usage()
 {
-  cerr << "Usage: link_planarity -imgs imfile -pairdet pairdet_file -lflist link_file_list -mjd mjdref -simptype simplex_type -rejfrac max fraction of points that can be rejected -max_astrom_rms max astrometric RMS (arcsec) -oop RMS out of plane deviation -minobsnights min number of distinct nights -minpointnum min number of individual detections -ptpow point_num_exponent -nightpow night_num_exponent -timepow timespan_exponent -rmspow astrom_rms_exponent -maxrms maxrms -outsum summary_file -clust2det clust2detfile -heliovane 1 -verbose verbosity\n\nOR, at minimum:\nlink_planarity -imgs imfile -pairdet pairdet_file -lflist link_file_list -mjd mjdref\n";
+  cerr << "Usage: link_planarity -imgs imfile -pairdet pairdet_file -lflist link_file_list -simptype simplex_type -rejfrac max fraction of points that can be rejected -rejnum max number of points that can be rejected -max_astrom_rms max astrometric RMS (arcsec) -oop RMS out of plane deviation -minobsnights min number of distinct nights -minpointnum min number of individual detections -useorbMJD 1=use_orbitMJD_if_available -ptpow point_num_exponent -nightpow night_num_exponent -timepow timespan_exponent -rmspow astrom_rms_exponent -maxrms maxrms -outsum summary_file -clust2det clust2detfile -heliovane 1 -verbose verbosity\n\nOR, at minimum:\nlink_planarity -imgs imfile -pairdet pairdet_file -lflist link_file_list\n";
 }
 
 int main(int argc, char *argv[])
@@ -56,6 +56,8 @@ int main(int argc, char *argv[])
   default_simptype = default_ptpow = default_nightpow = default_timepow = 1;
   int default_rmspow, default_maxrms, default_max_oop, default_sumfile, default_clust2det;
   default_rmspow = default_maxrms = default_max_oop = default_sumfile = default_clust2det = 1;
+  int default_maxrejnum, default_minpointnum, default_max_astrom_rms, default_minobsnights, default_rejfrac;
+  default_maxrejnum = default_max_astrom_rms = default_minpointnum = default_minobsnights = default_rejfrac = 1;
   //  vector <long> pointind;
   //  vector <long> deletelist;
   //  vector <vector <long>> pointind_mat;
@@ -105,14 +107,14 @@ int main(int argc, char *argv[])
 	show_usage();
 	return(1);
       }
-    }  else if(string(argv[i]) == "-m" || string(argv[i]) == "-mjd" || string(argv[i]) == "-mjdref" || string(argv[i]) == "-MJD" || string(argv[i]) == "--mjd" || string(argv[i]) == "--MJD" || string(argv[i]) == "--modifiedjulianday" || string(argv[i]) == "--ModifiedJulianDay") {
+    } else if(string(argv[i]) == "-useorbMJD" || string(argv[i]) == "-orbMJD" || string(argv[i]) == "-use_orbit_MJD" || string(argv[i]) == "-use_orb_MJD" || string(argv[i]) == "-useorb" || string(argv[i]) == "--useorbMJD" || string(argv[i]) == "-useorbmjd" || string(argv[i]) == "-orbmjd") {
       if(i+1 < argc) {
 	//There is still something to read;
-	config.MJDref=stold(argv[++i]);
+	config.useorbMJD=stoi(argv[++i]);
 	i++;
       }
       else {
-	cerr << "Reference MJD keyword supplied with no corresponding argument";
+	cerr << "Orbit MJD use keyword " << argv[i] << " supplied with no corresponding argument";
 	show_usage();
 	return(1);
       }
@@ -132,7 +134,7 @@ int main(int argc, char *argv[])
       if(i+1 < argc) {
 	//There is still something to read;
 	config.rejfrac=stol(argv[++i]);
-	default_simptype=0;
+	default_rejfrac=0;
 	i++;
       }
       else {
@@ -140,11 +142,23 @@ int main(int argc, char *argv[])
 	show_usage();
 	return(1);
       }
+    } else if(string(argv[i]) == "-rejnum" || string(argv[i]) == "-maxrej" || string(argv[i]) == "-maxrejnum" || string(argv[i]) == "-rnum" || string(argv[i]) == "--rnum" || string(argv[i]) == "-max_rej_num" || string(argv[i]) == "--rejnum" ) {
+      if(i+1 < argc) {
+	//There is still something to read;
+	config.maxrejnum=stol(argv[++i]);
+	default_maxrejnum=0;
+	i++;
+      }
+      else {
+	cerr << "Max rejection number keyword supplied with no corresponding argument";
+	show_usage();
+	return(1);
+      }
     } else if(string(argv[i]) == "-max_astrom_rms" || string(argv[i]) == "-maxastromrms" || string(argv[i]) == "-astrom_rms" || string(argv[i]) == "-arms" || string(argv[i]) == "-marms" || string(argv[i]) == "-max_astrometric_rms" || string(argv[i]) == "--max_arms" ) {
       if(i+1 < argc) {
 	//There is still something to read;
 	config.max_astrom_rms=stod(argv[++i]);
-	default_simptype=0;
+	default_max_astrom_rms=0;
 	i++;
       }
       else {
@@ -180,7 +194,7 @@ int main(int argc, char *argv[])
       if(i+1 < argc) {
 	//There is still something to read;
 	config.minpointnum=stoi(argv[++i]);
-	default_ptpow=0;
+	default_minpointnum=0;
 	i++;
       }
       else {
@@ -313,17 +327,10 @@ int main(int argc, char *argv[])
     cout << "\nERROR: input cluster list file is required\n";
     show_usage();
     return(1);
-  } else if(config.MJDref<=0.0l) {
-    cout << "\nERROR: input reference MJD is required. Note that\n";
-    cout << "it should match the reference MJD used in the heliolinc run\n";
-    cout << "that produced the input files.\n";
-    show_usage();
-    return(1);
-  }
+  } 
 
   cout << "input paired detection file " << pairdetfile << "\n";
   cout << "input cluster list file " << clusterlist << "\n";
-  cout << "Reference MJD: " << config.MJDref << "\n";
   cout << "Maximum RMS in km: " << config.maxrms << "\n";
   cout << "Maximum out-of-plane RMS in km: " << config.max_oop << "\n";
   cout << "Maximum astrometric RMS: " << config.max_astrom_rms << "\n";
@@ -333,9 +340,27 @@ int main(int argc, char *argv[])
   cout << "output cluster file " << outclust2detfile << "\n";
   cout << "output rms file " << outsumfile << "\n";
 
+  if(config.useorbMJD>0) {
+    cout << "Reference MJD will be set to MJD-at-the-epoch from a previous orbit fit, if available.\n";
+  } else {
+    cout << "Reference MJD will be kept fixed at the value used in the heliolinc run.\n";
+  }
   if(default_simptype==1) cout << "Defaulting to simplex type = " << config.simptype << "\n";
   else cout << "user-specified simplex type " << config.simptype << "\n\n";
   
+  cout << "Maximum fraction of points that can be rejected = " << config.rejfrac;
+  if(default_rejfrac==1) cout << ", which is the default.\n";
+  else cout << ", as specified by the user\n";
+  cout << "Maximum number of points that can be rejected = " << config.maxrejnum;
+  if(default_maxrejnum==1) cout << ", which is the default.\n";
+  else cout << ", as specified by the user\n";
+  cout << "Minimum number of distinct nights of observations for a discovery is " << config.minobsnights;
+  if(default_minobsnights==1) cout << ", which is the default.\n";
+  else cout << ", as specified by the user\n";
+  cout << "Minimum number of unique observations for a discovery is " << config.minpointnum;
+  if(default_minpointnum==1) cout << ", which is the default.\n";
+  else cout << ", as specified by the user\n";
+
   cout << "In calculating the cluster quality metric, the number of\n";
   cout << "unique points will be raised to the power of " << config.ptpow << ",\n";
   if(default_ptpow==1) cout << "which is the default.\n";
@@ -440,7 +465,7 @@ int main(int argc, char *argv[])
     outstream1 << fixed << setprecision(3) << outclust[clustct].clusternum << "," << outclust[clustct].posRMS << "," << outclust[clustct].velRMS << "," << outclust[clustct].totRMS << ",";
     outstream1 << fixed << setprecision(4) << outclust[clustct].astromRMS << ",";
     outstream1 << fixed << setprecision(6) << outclust[clustct].pairnum << "," << outclust[clustct].timespan << "," << outclust[clustct].uniquepoints << "," << outclust[clustct].obsnights << "," << outclust[clustct].metric << "," << outclust[clustct].rating << ",";
-    outstream1 << fixed << setprecision(6) << outclust[clustct].heliohyp0 << "," << outclust[clustct].heliohyp1 << "," << outclust[clustct].heliohyp2 << ",";
+    outstream1 << fixed << setprecision(6) << outclust[clustct].reference_MJD << outclust[clustct].heliohyp0 << "," << outclust[clustct].heliohyp1 << "," << outclust[clustct].heliohyp2 << ",";
     outstream1 << fixed << setprecision(1) << outclust[clustct].posX << "," << outclust[clustct].posY << "," << outclust[clustct].posZ << ",";
     outstream1 << fixed << setprecision(4) << outclust[clustct].velX << "," << outclust[clustct].velY << "," << outclust[clustct].velZ << ",";
     outstream1 << fixed << setprecision(6) << outclust[clustct].orbit_a << "," << outclust[clustct].orbit_e << "," << outclust[clustct].orbit_MJD << ",";

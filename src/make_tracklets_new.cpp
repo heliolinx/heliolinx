@@ -36,6 +36,7 @@ static void show_usage()
   cerr << "-colformat column format file -imrad image radius(deg)/ \n";
   cerr << "-maxtime max inter-image time interval (hr) -mintime min inter-image time interval (hr)/ \n";
   cerr << "-maxGCR maximum GRC -mintrkpts min. num. of tracklet points/ \n";
+  cerr << "-max_netl maximum number of points for a non-exclusive (overlap permitted) tracklet/ \n";
   cerr << "-minvel minimum angular velocity (deg/day) -maxvel maximum angular velocity (deg/day)/ \n";
   cerr << "-minarc minimum total angular arc (arcsec) -earth earthfile -obscode obscodefile -forcerun\n";
   cerr << "\nor, at minimum\n\n";
@@ -87,12 +88,12 @@ int main(int argc, char *argv[])
   inimfile_set = outimfile_set = colformatfile_set = 0;
   int pairdetfile_default,trackletfile_default,trk2detfile_default,imagerad_default;
   int maxtime_default,mintime_default,minvel_default,maxvel_default;
-  int maxgcr_default,minarc_default,mintrkpts_default;
+  int maxgcr_default,minarc_default,mintrkpts_default,maxnetl_default;
   MakeTrackletsConfig config;
   
   pairdetfile_default = trackletfile_default = trk2detfile_default = imagerad_default = 1;
   maxtime_default = mintime_default = minvel_default = maxvel_default = 1;
-  maxgcr_default = minarc_default = mintrkpts_default = 1;
+  maxgcr_default = minarc_default = mintrkpts_default = maxnetl_default = 1;
 
   if(argc<7)
     {
@@ -318,7 +319,19 @@ int main(int argc, char *argv[])
 	show_usage();
 	return(1);
       }
-    }  else if(string(argv[i]) == "-obscode" || string(argv[i]) == "-obs" || string(argv[i]) == "-oc" || string(argv[i]) == "-obscodes" || string(argv[i]) == "--obscode" || string(argv[i]) == "--obscodes" || string(argv[i]) == "--observatorycodes") {
+    } else if(string(argv[i]) == "-max_netl" || string(argv[i]) == "-maxnetl" || string(argv[i]) == "-maxNETL" || string(argv[i]) == "-max_NETL" || string(argv[i]) == "--maximum_non-exclusive_tracklet_length" || string(argv[i]) == "--maximum_non_exclusive_tracklet_length" || string(argv[i]) == "--max_netl") {
+      if(i+1 < argc) {
+	//There is still something to read;
+	config.max_netl=stoi(argv[++i]);
+	maxnetl_default = 0;
+	i++;
+      }
+      else {
+	cerr << "Min. tracklet points keyword supplied with no corresponding argument\n";
+	show_usage();
+	return(1);
+      }
+    } else if(string(argv[i]) == "-obscode" || string(argv[i]) == "-obs" || string(argv[i]) == "-oc" || string(argv[i]) == "-obscodes" || string(argv[i]) == "--obscode" || string(argv[i]) == "--obscodes" || string(argv[i]) == "--observatorycodes") {
       if(i+1 < argc) {
 	//There is still something to read;
 	obscodefile=argv[++i];
@@ -429,6 +442,8 @@ int main(int argc, char *argv[])
   else cout << "Defaulting to maximum angular velocity = " << config.maxvel << " deg/day.\n";
   if(mintrkpts_default == 0) cout << "Minimum number of points per tracklet = " << config.mintrkpts << "\n";
   else cout << "Defaulting to minimum number of points per tracklet = " << config.mintrkpts << "\n";
+  if(maxnetl_default == 0) cout << "Maximum number of points for a non-exclusive tracklet = " << config.max_netl << "\n";
+  else cout << "Defaulting to maximum number of points for a non-exclusive tracklet = " << config.max_netl << "\n";
   if(minarc_default == 0) cout << "Minimum tracklet length = " << config.minarc << " arcsec.\n";
   else cout << "Defaulting to minimum tracklet length = " << config.minarc << " arcsec.\n";
   if(maxgcr_default == 0) cout << "Maximum tracklet Great Circle residual = " << config.maxgcr << " arcsec.\n";
@@ -595,7 +610,7 @@ int main(int argc, char *argv[])
   make_tracklets2(detvec, img_log, config, pairdets, tracklets, trk2det);
 
   // Write paired detection file
-  cout << "Writing paired detection file with " << pairdets.size() << " lines\n";
+  cout << "Writing paired detection file " << pairdetfile << " with " << pairdets.size() << " lines\n";
   outstream1.open(pairdetfile);
   outstream1 << "#MJD,RA,Dec,mag,trail_len,trail_PA,sigmag,sig_across,sig_along,image,idstring,band,obscode,known_obj,det_qual,origindex\n";
   for(i=0;i<long(pairdets.size());i++) {
@@ -611,7 +626,7 @@ int main(int argc, char *argv[])
   outstream1.close();
 
   // Write tracklet file
-  cout << "Writing tracklet file with " << tracklets.size() << " lines\n";
+  cout << "Writing tracklet file " << trackletfile << " with " << tracklets.size() << " lines\n";
   outstream1.open(trackletfile);
   outstream1 << "#Image1,RA1,Dec1,Image2,RA2,Dec2,npts,trk_ID\n";
   for(i=0;i<long(tracklets.size());i++) {
@@ -622,7 +637,7 @@ int main(int argc, char *argv[])
   outstream1.close();
 
    // Write trk2det file
-  cout << "Writing trk2det file with " << trk2det.size() << " lines\n";
+  cout << "Writing trk2det file " << trk2detfile << " with " << trk2det.size() << " lines\n";
   outstream1.open(trk2detfile);
   outstream1 << "#trk_ID,detnum\n";
   for(i=0;i<long(trk2det.size());i++) {

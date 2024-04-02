@@ -16144,8 +16144,8 @@ int read_clustersum_file(string sumfile, vector <hlclust> &clustvec, int verbose
   double metric=0.0l;
   char rating[SHORTSTRINGLEN];
   stringncopy01(rating,"NULL",SHORTSTRINGLEN);
-  double heliohyp0,heliohyp1,heliohyp2;
-  heliohyp0 = heliohyp1 = heliohyp2 = 0.0l;
+  double reference_MJD,heliohyp0,heliohyp1,heliohyp2;
+  reference_MJD = heliohyp0 = heliohyp1 = heliohyp2 = 0.0l;
   double posX,posY,posZ,velX,velY,velZ;
   posX = posY = posZ = velX = velY = velZ = 0.0l;
   double orbit_a,orbit_e,orbit_MJD;
@@ -16153,7 +16153,7 @@ int read_clustersum_file(string sumfile, vector <hlclust> &clustvec, int verbose
   double orbitX,orbitY,orbitZ,orbitVX,orbitVY,orbitVZ;
   orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
   long orbit_eval_count=0;
-  hlclust onecluster = hlclust(clusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, metric, rating, heliohyp0, heliohyp1, heliohyp2, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY,  orbitVZ, orbit_eval_count);
+  hlclust onecluster = hlclust(clusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, metric, rating, reference_MJD, heliohyp0, heliohyp1, heliohyp2, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY,  orbitVZ, orbit_eval_count);
   ifstream instream1;
   string lnfromfile,stest;
   int badread=0;
@@ -16262,6 +16262,14 @@ int read_clustersum_file(string sumfile, vector <hlclust> &clustvec, int verbose
       if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
       if(endpoint>0) stringncopy01(rating,stest,SHORTSTRINGLEN);
       else badread=1;
+      // Read the reference MJD
+      startpoint = endpoint+1;
+      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
+      if(endpoint>0) {
+	try { reference_MJD = stod(stest); }
+	catch(...) { cerr << "ERROR: cannot read reference_MJD string " << stest << " from line " << lnfromfile << "\n";
+	  badread = 1; }
+      } else badread=1;
       // Read heliohyp0
       startpoint = endpoint+1;
       if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
@@ -16415,7 +16423,7 @@ int read_clustersum_file(string sumfile, vector <hlclust> &clustvec, int verbose
 	  badread = 1; }
       } else badread=1;
       if(badread==0) {
-	onecluster = hlclust(clusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, metric, rating, heliohyp0, heliohyp1, heliohyp2, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY,  orbitVZ, orbit_eval_count);
+	onecluster = hlclust(clusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, metric, rating, reference_MJD, heliohyp0, heliohyp1, heliohyp2, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY,  orbitVZ, orbit_eval_count);
 	clustvec.push_back(onecluster);
       }
     } else if(instream1.eof()) reachedeof=1; //End of file, fine.
@@ -16466,6 +16474,7 @@ int append_clustersum_file(string sumfile, vector <hlclust> &clustvec, int verbo
   double metric=0.0l;
   char rating[SHORTSTRINGLEN];
   stringncopy01(rating,"NULL",SHORTSTRINGLEN);
+  double reference_MJD = 0.0l;
   double heliohyp0,heliohyp1,heliohyp2;
   heliohyp0 = heliohyp1 = heliohyp2 = 0.0l;
   double posX,posY,posZ,velX,velY,velZ;
@@ -16475,7 +16484,7 @@ int append_clustersum_file(string sumfile, vector <hlclust> &clustvec, int verbo
   double orbitX,orbitY,orbitZ,orbitVX,orbitVY,orbitVZ;
   orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
   long orbit_eval_count=0;
-  hlclust onecluster = hlclust(clusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, metric, rating, heliohyp0, heliohyp1, heliohyp2, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY,  orbitVZ, orbit_eval_count);
+  hlclust onecluster = hlclust(clusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, metric, rating, reference_MJD, heliohyp0, heliohyp1, heliohyp2, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY,  orbitVZ, orbit_eval_count);
   ifstream instream1;
   string lnfromfile,stest;
   int badread=0;
@@ -16582,6 +16591,14 @@ int append_clustersum_file(string sumfile, vector <hlclust> &clustvec, int verbo
       if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
       if(endpoint>0) stringncopy01(rating,stest,SHORTSTRINGLEN);
       else badread=1;
+      // Read reference_MJD
+      startpoint = endpoint+1;
+      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
+      if(endpoint>0) {
+	try { reference_MJD = stod(stest); }
+	catch(...) { cerr << "ERROR: cannot read reference_MJD string " << stest << " from line " << lnfromfile << "\n";
+	  badread = 1; }
+      } else badread=1;
       // Read heliohyp0
       startpoint = endpoint+1;
       if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
@@ -16741,7 +16758,7 @@ int append_clustersum_file(string sumfile, vector <hlclust> &clustvec, int verbo
 	  cerr << "ERROR in append_clustersum_file: cluster index mismatch " << est_clusternum << " vs. " << clusternum << "\n";
 	  return(3);
 	}
-	onecluster = hlclust(clusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, metric, rating, heliohyp0, heliohyp1, heliohyp2, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY,  orbitVZ, orbit_eval_count);
+	onecluster = hlclust(clusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, metric, rating, reference_MJD, heliohyp0, heliohyp1, heliohyp2, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY,  orbitVZ, orbit_eval_count);
 	clustvec.push_back(onecluster);
       }
     } else if(instream1.eof()) reachedeof=1; //End of file, fine.
@@ -18639,9 +18656,6 @@ int merge_pairs(const vector <hldet> &pairdets, vector <vector <long>> &indvecs,
   return(0);
 }
 
-#define MIN_EXCLUSIVE_TRK_SIZE 3 // Tracklets with at least this many points
-                                 // are exclusive: that is, no tracklets that
-                                 // overlap them will be created.
 
 //merge_pairs2: March 25, 2024: Note date one year and one day after previous vesion.
 // This one differs in that it seeks to choose, from different ovelapping
@@ -18652,7 +18666,7 @@ int merge_pairs(const vector <hldet> &pairdets, vector <vector <long>> &indvecs,
 // The overall operation is the same as the previous code:
 // Given the output from find_pairs, merge pairs into tracklets with
 // more than two points, if possible
-int merge_pairs2(const vector <hldet> &pairdets, vector <vector <long>> &indvecs, const vector <longpair> &pairvec, vector <tracklet> &tracklets, vector <longpair> &trk2det, int mintrkpts, double maxgcr, double minarc, double minvel, double maxvel, int verbose)
+int merge_pairs2(const vector <hldet> &pairdets, vector <vector <long>> &indvecs, const vector <longpair> &pairvec, vector <tracklet> &tracklets, vector <longpair> &trk2det, int mintrkpts, int max_netl, double maxgcr, double minarc, double minvel, double maxvel, int verbose)
 {
   long detnum = pairdets.size();
   long detct=0;
@@ -18788,7 +18802,7 @@ int merge_pairs2(const vector <hldet> &pairdets, vector <vector <long>> &indvecs
 	}
 	// Make sure corresponding index vector in ppset is empty
 	ppind[j] = {};
-	// Count addition pair partners (besides ppset[j]) that plausibly
+	// Count additional pair partners (besides ppset[j]) that plausibly
 	// lie along the line defined by i and ppset[j].
 	if(DEBUG>=2) cout << "Counting consistent pair partners\n";
 	for(k=0; k<long(axyvec.size()); k++) {
@@ -19178,8 +19192,11 @@ int merge_pairs2(const vector <hldet> &pairdets, vector <vector <long>> &indvecs
 	  tracklets.push_back(track1);
 	  for(j=0; j<long(detindexvec.size()); j++) {
 	    onepair = longpair(tracklets[tracklets.size()-1].trk_ID,detindexvec[j]);
-	    // Wipe indvecs entry for all sources, if tracklet is long enough to be exclusive
-	    if(long(detindexvec.size()) >= MIN_EXCLUSIVE_TRK_SIZE) indvecs[detindexvec[j]] = {};
+	    // Wipe indvecs entry for all sources, if tracklet is long enough to be exclusive.
+	    // max_netl is the minimum non-exclusive tracklet length, which defaults to 2,
+	    // but can be set to larger values by the user. Tracklets with this number of points
+	    // or fewer are allowed unlimited overlap; all longer tracklets are exclusive.
+	    if(long(detindexvec.size()) > max_netl) indvecs[detindexvec[j]] = {};
 	    trk2det.push_back(onepair);
 	  }
 	}
@@ -19983,7 +20000,7 @@ int make_tracklets2(vector <hldet> &detvec, vector <hlimage> &image_log, MakeTra
   }
   cout << "Sanity-check finished\n";
    
-  status = merge_pairs2(pairdets, indvecs, pairvec, tracklets, trk2det, config.mintrkpts, config.maxgcr, config.minarc, config.minvel, config.maxvel, config.verbose);
+  status = merge_pairs2(pairdets, indvecs, pairvec, tracklets, trk2det, config.mintrkpts, config.max_netl, config.maxgcr, config.minarc, config.minvel, config.maxvel, config.verbose);
   if(status!=0) {
     cerr << "ERROR: merge_pairs reports failure status " << status << "\n";
     return(status);
@@ -21756,7 +21773,7 @@ point3d earthpos01(const vector <EarthState> &earthpos, double mjd)
 }
 
 
-int form_clusters(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, int verbose)
+int form_clusters(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, int verbose)
 {
   int geobinct = 0;
   long detnum = detvec.size();
@@ -21781,7 +21798,7 @@ int form_clusters(const vector <point6ix2> &allstatevecs, const vector <hldet> &
   int daysteps = 0;
   int obsnights = 0;
   longpair c2d = longpair(0,0);
-  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
   double posRMS = 0.0l;
   double velRMS = 0.0l;
   double totRMS = 0.0l;
@@ -21965,7 +21982,7 @@ int form_clusters(const vector <point6ix2> &allstatevecs, const vector <hldet> &
 	  orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
 	  orbit_eval_count = 0;
 	  // Write overall cluster statistics to the outclust array.	
-	  onecluster = hlclust(realclusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, clustmetric, rating, heliodist/AU_KM, heliovel/SOLARDAY, helioacc*1000.0/SOLARDAY/SOLARDAY, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
+	  onecluster = hlclust(realclusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, clustmetric, rating, reference_MJD, heliodist/AU_KM, heliovel/SOLARDAY, helioacc*1000.0/SOLARDAY/SOLARDAY, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
 	  // cout << "kdload velrms: " << velRMS << " " << kdclust[clusterct].rmsvec[7] << " " << onecluster.velRMS << "\n";
 	  outclust.push_back(onecluster);
 	  realclusternum++;
@@ -21983,7 +22000,7 @@ int form_clusters(const vector <point6ix2> &allstatevecs, const vector <hldet> &
 // form_clusters_kd: December 04, 2023: 
 // Like form_clusters, but uses a simple KD range-query,
 // rather than DBSCAN, to create clusters.
-int form_clusters_kd(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, int verbose)
+int form_clusters_kd(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, int verbose)
 {
   int geobinct = 0;
   long detnum = detvec.size();
@@ -22008,7 +22025,7 @@ int form_clusters_kd(const vector <point6ix2> &allstatevecs, const vector <hldet
   int daysteps = 0;
   int obsnights = 0;
   longpair c2d = longpair(0,0);
-  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
   double posRMS = 0.0l;
   double velRMS = 0.0l;
   double totRMS = 0.0l;
@@ -22192,7 +22209,7 @@ int form_clusters_kd(const vector <point6ix2> &allstatevecs, const vector <hldet
 	  orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
 	  orbit_eval_count = 0;
 	  // Write overall cluster statistics to the outclust array.	
-	  onecluster = hlclust(realclusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, clustmetric, rating, heliodist/AU_KM, heliovel/SOLARDAY, helioacc*1000.0/SOLARDAY/SOLARDAY, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
+	  onecluster = hlclust(realclusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, clustmetric, rating, reference_MJD, heliodist/AU_KM, heliovel/SOLARDAY, helioacc*1000.0/SOLARDAY/SOLARDAY, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
 	  // cout << "kdload velrms: " << velRMS << " " << kdclust[clusterct].rmsvec[7] << " " << onecluster.velRMS << "\n";
 	  outclust.push_back(onecluster);
 	  realclusternum++;
@@ -22314,7 +22331,7 @@ long blend_vector(vector<long> vec)
 // form_clusters_kd2: December 04, 2023: 
 // Like form_clusters_kd, but does filtering
 // to remove exact duplicates.
-int form_clusters_kd2(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, int verbose)
+int form_clusters_kd2(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, int verbose)
 {
   long detnum = detvec.size();
   double georadmin=0l;
@@ -22332,7 +22349,7 @@ int form_clusters_kd2(const vector <point6ix2> &allstatevecs, const vector <hlde
   int daysteps = 0;
   int obsnights = 0;
   longpair c2d = longpair(0,0);
-  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
   double posRMS = 0.0l;
   double velRMS = 0.0l;
   double totRMS = 0.0l;
@@ -22555,7 +22572,7 @@ int form_clusters_kd2(const vector <point6ix2> &allstatevecs, const vector <hlde
 	  orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
 	  orbit_eval_count = 0;
 	  // Write overall cluster statistics to the outclust array.	
-	  onecluster = hlclust(realclusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, clustmetric, rating, heliodist/AU_KM, heliovel/SOLARDAY, helioacc*1000.0/SOLARDAY/SOLARDAY, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
+	  onecluster = hlclust(realclusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, clustmetric, rating, reference_MJD, heliodist/AU_KM, heliovel/SOLARDAY, helioacc*1000.0/SOLARDAY/SOLARDAY, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
 	  // cout << "kdload velrms: " << velRMS << " " << kdclust[clusterct].rmsvec[7] << " " << onecluster.velRMS << "\n";
 	  outclust.push_back(onecluster);
 	  //	  pointind_mat.push_back(pointind);
@@ -22578,7 +22595,7 @@ int form_clusters_kd2(const vector <point6ix2> &allstatevecs, const vector <hlde
 // intelligently than form_clusters_kd2, by not
 // invoking the .insert function, which is evil because
 // it's agonizingly slow for long vectors.
-int form_clusters_kd3(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, int verbose)
+int form_clusters_kd3(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, int verbose)
 {
   long detnum = detvec.size();
   double georadmin=0l;
@@ -22595,7 +22612,7 @@ int form_clusters_kd3(const vector <point6ix2> &allstatevecs, const vector <hlde
   int daysteps = 0;
   int obsnights = 0;
   longpair c2d = longpair(0,0);
-  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
   double posRMS = 0.0l;
   double velRMS = 0.0l;
   double totRMS = 0.0l;
@@ -22825,7 +22842,7 @@ int form_clusters_kd3(const vector <point6ix2> &allstatevecs, const vector <hlde
 	  orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
 	  orbit_eval_count = 0;
 	  // Write overall cluster statistics to the outclust array.	
-	  onecluster = hlclust(realclusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, clustmetric, rating, heliodist/AU_KM, heliovel/SOLARDAY, helioacc*1000.0/SOLARDAY/SOLARDAY, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
+	  onecluster = hlclust(realclusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, clustmetric, rating, reference_MJD, heliodist/AU_KM, heliovel/SOLARDAY, helioacc*1000.0/SOLARDAY/SOLARDAY, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
 	  // cout << "kdload velrms: " << velRMS << " " << kdclust[clusterct].rmsvec[7] << " " << onecluster.velRMS << "\n";
 	  outclust.push_back(onecluster);
 	  realclusternum++;
@@ -22857,7 +22874,7 @@ int form_clusters_kd3(const vector <point6ix2> &allstatevecs, const vector <hlde
 // geocentric distance in AU within which the clustering
 // radius will no longer change with geocentric distance.
 // Original behavior is recovered for clustchangerad = 0.0;
-int form_clusters_kd4(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, int verbose)
+int form_clusters_kd4(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, int verbose)
 {
   long detnum = detvec.size();
   double georadmin=0l;
@@ -22874,7 +22891,7 @@ int form_clusters_kd4(const vector <point6ix2> &allstatevecs, const vector <hlde
   int daysteps = 0;
   int obsnights = 0;
   longpair c2d = longpair(0,0);
-  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
   double posRMS = 0.0l;
   double velRMS = 0.0l;
   double totRMS = 0.0l;
@@ -23111,7 +23128,7 @@ int form_clusters_kd4(const vector <point6ix2> &allstatevecs, const vector <hlde
 	  orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
 	  orbit_eval_count = 0;
 	  // Write overall cluster statistics to the outclust2 array.	
-	  onecluster = hlclust(0, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, clustmetric, rating, heliodist/AU_KM, heliovel/SOLARDAY, helioacc*1000.0/SOLARDAY/SOLARDAY, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
+	  onecluster = hlclust(0, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, clustmetric, rating, reference_MJD, heliodist/AU_KM, heliovel/SOLARDAY, helioacc*1000.0/SOLARDAY/SOLARDAY, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
 	  // cout << "kdload velrms: " << velRMS << " " << kdclust[clusterct].rmsvec[7] << " " << onecluster.velRMS << "\n";
 	  outclust2.push_back(onecluster);
 	  pointind_mat.push_back(pointind);
@@ -23277,7 +23294,7 @@ int heliolinc_alg(const vector <hlimage> &image_log, const vector <hldet> &detve
     if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
     if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
     if(status!=0) {
       cerr << "ERROR: form_clusters exited with error code " << status << "\n";
       return(status);
@@ -23383,7 +23400,7 @@ int heliolinc_alg_fgfunc(const vector <hlimage> &image_log, const vector <hldet>
     if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
     if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
     if(status!=0) {
       cerr << "ERROR: form_clusters exited with error code " << status << "\n";
       return(status);
@@ -23489,7 +23506,7 @@ int heliolinc_alg_univar(const vector <hlimage> &image_log, const vector <hldet>
     if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
     if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
     if(status!=0) {
       cerr << "ERROR: form_clusters exited with error code " << status << "\n";
       return(status);
@@ -23601,7 +23618,7 @@ int heliolinc_alg_danby(const vector <hlimage> &image_log, const vector <hldet> 
     if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
     if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
     if(status!=0) {
       cerr << "ERROR: form_clusters exited with error code " << status << "\n";
       return(status);
@@ -23735,7 +23752,7 @@ int heliovane_alg_danby(const vector <hlimage> &image_log, const vector <hldet> 
     if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
     if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, lambdahyp[lambdact].HelioRad, lambdahyp[lambdact].R_dot, lambdahyp[lambdact].R_dubdot, chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, lambdahyp[lambdact].HelioRad, lambdahyp[lambdact].R_dot, lambdahyp[lambdact].R_dubdot, chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
     if(status!=0) {
       cerr << "ERROR: form_clusters exited with error code " << status << "\n";
       return(status);
@@ -23852,7 +23869,7 @@ int heliolinc_alg_omp(const vector <hlimage> &image_log, const vector <hldet> &d
     if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
     if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
     if(status!=0) {
       cerr << "ERROR: form_clusters exited with error code " << status << "\n";
       return(status);
@@ -23958,7 +23975,7 @@ int heliolinc_alg_omp2(const vector <hlimage> &image_log, const vector <hldet> &
     if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
     if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
     if(status!=0) {
       cerr << "ERROR: form_clusters exited with error code " << status << "\n";
       return(status);
@@ -24097,7 +24114,7 @@ int heliolinc_alg_omp3(const vector <hlimage> &image_log, const vector <hldet> &
 	// trk2statevec probably ran OK, and some clusters possible.
 	if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-	status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+	status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
 	if(status!=0) {
 	  cerr << "ERROR: form_clusters exited with error code " << status << "\n";
 	}
@@ -24265,7 +24282,7 @@ int heliolinc_alg_ompdanby(const vector <hlimage> &image_log, const vector <hlde
 	// trk2statevec probably ran OK, and some clusters possible.
 	if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-	status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+	status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
 	if(status!=0) {
 	  cerr << "ERROR: form_clusters exited with error code " << status << "\n";
 	}
@@ -24433,7 +24450,7 @@ int heliolinc_alg_ompkd(const vector <hlimage> &image_log, const vector <hldet> 
 	// trk2statevec probably ran OK, and some clusters possible.
 	if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-	status = form_clusters_kd2(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+	status = form_clusters_kd2(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
 	allstatevecs = vector<point6ix2>();
 	allstatevecs = {};
 	if(status!=0) {
@@ -24603,7 +24620,7 @@ int heliolinc_alg_ompkd3(const vector <hlimage> &image_log, const vector <hldet>
 	// trk2statevec probably ran OK, and some clusters possible.
 	if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-	status = form_clusters_kd3(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+	status = form_clusters_kd3(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
 	if(status!=0) {
 	  cerr << "ERROR: form_clusters exited with error code " << status << "\n";
 	}
@@ -24771,7 +24788,7 @@ int heliolinc_alg_ompkd4(const vector <hlimage> &image_log, const vector <hldet>
 	// trk2statevec probably ran OK, and some clusters possible.
 	if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-	status = form_clusters_kd4(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+	status = form_clusters_kd4(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
 	if(status!=0) {
 	  cerr << "ERROR: form_clusters exited with error code " << status << "\n";
 	}
@@ -24807,6 +24824,9 @@ int heliolinc_alg_ompkd4(const vector <hlimage> &image_log, const vector <hldet>
   vector  <longpair> outclust2det2;
   link_dedup(outclust, clust2det, outclust2, outclust2det2);
   outclust = outclust2;
+  for(long i=0; i<long(outclust.size()); i++) {
+    outclust[i].reference_MJD = config.MJDref;
+  }
   clust2det = outclust2det2;
   cout << "Final de-duplicating set contains " << outclust.size() << " linkages\n";
 
@@ -24915,7 +24935,7 @@ int heliolinc_alg_kd(const vector <hlimage> &image_log, const vector <hldet> &de
     if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
     if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-    status = form_clusters_kd4(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+    status = form_clusters_kd4(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
     if(status!=0) {
       cerr << "ERROR: form_clusters_kd4 exited with error code " << status << "\n";
     }
@@ -24927,6 +24947,9 @@ int heliolinc_alg_kd(const vector <hlimage> &image_log, const vector <hldet> &de
   vector  <longpair> outclust2det2;
   link_dedup(outclust, clust2det, outclust2, outclust2det2);
   outclust = outclust2;
+  for(long i=0; i<long(outclust.size()); i++) {
+    outclust[i].reference_MJD = config.MJDref;
+  }
   clust2det = outclust2det2;
   cout << "Final de-duplicating set contains " << outclust.size() << " linkages\n";
 
@@ -25097,7 +25120,7 @@ int heliovane_alg_ompdanby(const vector <hlimage> &image_log, const vector <hlde
 	// trk2statevane probably ran OK, and some clusters possible.
 	if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-	status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, lambdahyp[lambdact].HelioRad, lambdahyp[lambdact].R_dot, lambdahyp[lambdact].R_dubdot, chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+	status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, lambdahyp[lambdact].HelioRad, lambdahyp[lambdact].R_dot, lambdahyp[lambdact].R_dubdot, chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
 	if(status!=0) {
 	  cerr << "ERROR: form_clusters exited with error code " << status << "\n";
 	}
@@ -25151,7 +25174,7 @@ int link_refine_Herget(const vector <hlimage> &image_log, const vector <hldet> &
   long inclustct=0;
   long clusternum=0;
   double clustmetric = 0.0l;
-  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
   vector <long> clustind;
   vector <hldet> clusterdets;
   vector <hlclust> holdclust;
@@ -25186,8 +25209,9 @@ int link_refine_Herget(const vector <hlimage> &image_log, const vector <hldet> &
   clustindmat={};
   outclust={};
   outclust2det={};
- 
-  cout << "Reference MJD: " << config.MJDref << "\n";
+
+  
+  cout << "Reference MJD is: " << config.MJDref << "\n";
   cout << "Maximum RMS in km: " << config.maxrms << "\n";
   cout << "In calculating the cluster quality metric, the number of\nunique points will be raised to the power of " << config.ptpow << ";\n";
   cout << "the number of unique nights will be raised to the power of " << config.nightpow << ";\n";
@@ -25426,7 +25450,7 @@ int link_refine_Herget_univar(const vector <hlimage> &image_log, const vector <h
   long inclustct=0;
   long clusternum=0;
   double clustmetric = 0.0l;
-  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
   vector <long> clustind;
   vector <hldet> clusterdets;
   vector <hlclust> holdclust;
@@ -25461,9 +25485,10 @@ int link_refine_Herget_univar(const vector <hlimage> &image_log, const vector <h
   clustindmat={};
   outclust={};
   outclust2det={};
+  
  
   cout << "Launching link_refine_Herget_univar()\n";
-  cout << "Reference MJD: " << config.MJDref << "\n";
+  cout << "Reference MJD is: " << config.MJDref << "\n";
   cout << "Maximum RMS in km: " << config.maxrms << "\n";
   cout << "In calculating the cluster quality metric, the number of\nunique points will be raised to the power of " << config.ptpow << ";\n";
   cout << "the number of unique nights will be raised to the power of " << config.nightpow << ";\n";
@@ -26077,9 +26102,6 @@ int planepolefind(const vector <point3d> &invecs, point3d &polevec)
 //  int config.minobsnights = 3;         Minimum number of distinct observing nights for a valid linkage
 //  int config.minpointnum = 6;          Minimum number of individual detections for a valid linkage
 
-#define MAXREJ 50 // Maximum number of points that can be rejected, before the effort to
-                  // salvage a high-RMS linkage is abandoned.
-
 int link_purify(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <hlclust> &inclust1, const vector  <longpair> &inclust2det1, LinkPurifyConfig config, vector <hlclust> &outclust, vector <longpair> &outclust2det)
 {
   vector <hlclust> inclust;
@@ -26092,7 +26114,7 @@ int link_purify(const vector <hlimage> &image_log, const vector <hldet> &detvec,
   long inclustct=0;
   long clusternum=0;
   double clustmetric = 0.0l;
-  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
   vector <long> clustind;
   vector <hldet> clusterdets;
   vector <hlclust> holdclust;
@@ -26130,8 +26152,9 @@ int link_purify(const vector <hlimage> &image_log, const vector <hldet> &detvec,
   outclust={};
   outclust2det={};
  
-  cout << "Launching link_refine_Herget_univar()\n";
-  cout << "Reference MJD: " << config.MJDref << "\n";
+  cout << "Launching link_purify()\n";
+  if(config.useorbMJD>0) cout << "Epoch-of-orbit MJD will be used as MJDref, if available.\n";
+  else  cout << "Old reference MJD from heliolinc will be used as MJDref\n";
   cout << "Maximum RMS in km: " << config.maxrms << "\n";
   cout << "In calculating the cluster quality metric, the number of\nunique points will be raised to the power of " << config.ptpow << ";\n";
   cout << "the number of unique nights will be raised to the power of " << config.nightpow << ";\n";
@@ -26214,26 +26237,47 @@ int link_purify(const vector <hlimage> &image_log, const vector <hldet> &detvec,
 	onepoint = point3d(X,Y,Z);
 	observerpos.push_back(onepoint);
       }
-      // Use mean state vectors to estimate positions
-      startpos.x = onecluster.posX;
-      startpos.y = onecluster.posY;
-      startpos.z = onecluster.posZ;
-      startvel.x = onecluster.velX;
-      startvel.y = onecluster.velY;
-      startvel.z = onecluster.velZ;
-      // There used to be a check against solar escape velocity here,
-      // but it isn't needed since we are using the universal variables
-      // formulation, able to handle unbound as well as bound orbits.
+      // All points now loaded; set up for orbit-fitting
+      if(config.useorbMJD>0 && onecluster.orbit_MJD>0.0) {
+	// A previous execution of link_purify or link_planarity has fit
+	// an orbit and supplied us with a value for MJD at the epoch.
+	// Use state vectors from the orbit fit
+	startpos.x = onecluster.orbitX;
+	startpos.y = onecluster.orbitY;
+	startpos.z = onecluster.orbitZ;
+	startvel.x = onecluster.orbitVX;
+	startvel.y = onecluster.orbitVY;
+	startvel.z = onecluster.orbitVZ;
+	// Use the MJD at the orbit epoch as the reference MJD.
+	// Calculate position at first observation
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, obsMJD[0], endpos, endvel);
+      } else {
+	// Use mean state vectors to estimate positions
+	startpos.x = onecluster.posX;
+	startpos.y = onecluster.posY;
+	startpos.z = onecluster.posZ;
+	startvel.x = onecluster.velX;
+	startvel.y = onecluster.velY;
+	startvel.z = onecluster.velZ;
+	// There used to be a check against solar escape velocity here,
+	// but it isn't needed since we are using the universal variables
+	// formulation, able to handle unbound as well as bound orbits.
+	// Calculate position at first observation
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, obsMJD[0], endpos, endvel);
+      }
       
-      // Calculate position at first observation
-      Kepler_univ_int(GMSUN_KM3_SEC2, config.MJDref, startpos, startvel, obsMJD[0], endpos, endvel);
       // Find vector relative to the observer by subtracting off the observer's position.
       endpos.x -= observerpos[0].x;
       endpos.y -= observerpos[0].y;
       endpos.z -= observerpos[0].z;
       geodist1 = vecabs3d(endpos)/AU_KM;
-      // Calculate position at last observation
-      Kepler_univ_int(GMSUN_KM3_SEC2, config.MJDref, startpos, startvel, obsMJD[ptnum-1], endpos, endvel);
+      if(config.useorbMJD>0 && onecluster.orbit_MJD>0.0) {
+	// Calculate position at last observation
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, obsMJD[ptnum-1], endpos, endvel);
+      } else {
+	// Calculate position at last observation
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, obsMJD[ptnum-1], endpos, endvel);
+      }
       endpos.x -= observerpos[ptnum-1].x;
       endpos.y -= observerpos[ptnum-1].y;
       endpos.z -= observerpos[ptnum-1].z;
@@ -26298,7 +26342,7 @@ int link_purify(const vector <hlimage> &image_log, const vector <hldet> &detvec,
 	rejnum = 0;
 	rejmax = config.rejfrac*ptnum;
 	if(rejmax > ptnum-config.minpointnum) rejmax = ptnum - config.minpointnum;
-	if(rejmax > MAXREJ) rejmax=MAXREJ; // Insurance policy against excessive runtimes in pathological cases.
+	if(rejmax > config.maxrejnum) rejmax=config.maxrejnum; // Insurance policy against excessive runtimes in pathological cases.
 	// Main while loop, which iteratively removes outliers
 	while(rejnum<rejmax && ptnum>config.minpointnum) {
 	  if(astromrms>config.max_astrom_rms) {
@@ -26557,6 +26601,10 @@ int link_purify(const vector <hlimage> &image_log, const vector <hldet> &detvec,
 
 // link_purify2: March 11, 2024:
 // Like like_purify, but performs an additional round of duplication elimination.
+// NOTE: NOT RECOMMENDED FOR PRODUCTION. While it remains logically interesting,
+// this program's scheme of removing all linkages that are **subsets of** other
+// linkages, instead of just those that are identical, appears to be too aggressive:
+// the small speedup is not worth the likelihood of creating a less-pure output set.
 int link_purify2(const vector <hlimage> &image_log, const vector <hldet> &detvec, vector <hlclust> &inclust1, vector  <longpair> &inclust2det1, LinkPurifyConfig config, vector <hlclust> &outclust, vector <longpair> &outclust2det)
 {
   vector <hlclust> inclust;
@@ -26569,7 +26617,7 @@ int link_purify2(const vector <hlimage> &image_log, const vector <hldet> &detvec
   long inclustct=0;
   long clusternum=0;
   double clustmetric = 0.0l;
-  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
   vector <long> clustind;
   vector <hldet> clusterdets;
   vector <hlclust> holdclust;
@@ -26607,8 +26655,9 @@ int link_purify2(const vector <hlimage> &image_log, const vector <hldet> &detvec
   outclust={};
   outclust2det={};
  
-  cout << "Launching link_refine_Herget_univar()\n";
-  cout << "Reference MJD: " << config.MJDref << "\n";
+  cout << "Launching link_purify2()\n";
+  if(config.useorbMJD>0) cout << "Epoch-of-orbit MJD will be used as MJDref, if available.\n";
+  else  cout << "Old reference MJD from heliolinc will be used as MJDref\n";
   cout << "Maximum RMS in km: " << config.maxrms << "\n";
   cout << "In calculating the cluster quality metric, the number of\nunique points will be raised to the power of " << config.ptpow << ";\n";
   cout << "the number of unique nights will be raised to the power of " << config.nightpow << ";\n";
@@ -26703,26 +26752,48 @@ int link_purify2(const vector <hlimage> &image_log, const vector <hldet> &detvec
 	onepoint = point3d(X,Y,Z);
 	observerpos.push_back(onepoint);
       }
-      // Use mean state vectors to estimate positions
-      startpos.x = onecluster.posX;
-      startpos.y = onecluster.posY;
-      startpos.z = onecluster.posZ;
-      startvel.x = onecluster.velX;
-      startvel.y = onecluster.velY;
-      startvel.z = onecluster.velZ;
-      // There used to be a check against solar escape velocity here,
-      // but it isn't needed since we are using the universal variables
-      // formulation, able to handle unbound as well as bound orbits.
-      
-      // Calculate position at first observation
-      Kepler_univ_int(GMSUN_KM3_SEC2, config.MJDref, startpos, startvel, obsMJD[0], endpos, endvel);
+
+      // All points now loaded; set up for orbit-fitting
+      if(config.useorbMJD>0 && onecluster.orbit_MJD>0.0) {
+	// A previous execution of link_purify or link_planarity has fit
+	// an orbit and supplied us with a value for MJD at the epoch.
+	// Use state vectors from the orbit fit
+	startpos.x = onecluster.orbitX;
+	startpos.y = onecluster.orbitY;
+	startpos.z = onecluster.orbitZ;
+	startvel.x = onecluster.orbitVX;
+	startvel.y = onecluster.orbitVY;
+	startvel.z = onecluster.orbitVZ;
+	// Use the MJD at the orbit epoch as the reference MJD.
+	// Calculate position at first observation
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, obsMJD[0], endpos, endvel);
+      } else {
+	// Use mean state vectors to estimate positions
+	startpos.x = onecluster.posX;
+	startpos.y = onecluster.posY;
+	startpos.z = onecluster.posZ;
+	startvel.x = onecluster.velX;
+	startvel.y = onecluster.velY;
+	startvel.z = onecluster.velZ;
+	// There used to be a check against solar escape velocity here,
+	// but it isn't needed since we are using the universal variables
+	// formulation, able to handle unbound as well as bound orbits.
+	// Calculate position at first observation
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, obsMJD[0], endpos, endvel);
+      }
       // Find vector relative to the observer by subtracting off the observer's position.
       endpos.x -= observerpos[0].x;
       endpos.y -= observerpos[0].y;
       endpos.z -= observerpos[0].z;
       geodist1 = vecabs3d(endpos)/AU_KM;
       // Calculate position at last observation
-      Kepler_univ_int(GMSUN_KM3_SEC2, config.MJDref, startpos, startvel, obsMJD[ptnum-1], endpos, endvel);
+      if(config.useorbMJD>0 && onecluster.orbit_MJD>0.0) {
+	// Calculate position at last observation
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, obsMJD[ptnum-1], endpos, endvel);
+      } else {
+	// Calculate position at last observation
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, obsMJD[ptnum-1], endpos, endvel);
+      }
       endpos.x -= observerpos[ptnum-1].x;
       endpos.y -= observerpos[ptnum-1].y;
       endpos.z -= observerpos[ptnum-1].z;
@@ -26787,7 +26858,7 @@ int link_purify2(const vector <hlimage> &image_log, const vector <hldet> &detvec
 	rejnum = 0;
 	rejmax = config.rejfrac*ptnum;
 	if(rejmax > ptnum-config.minpointnum) rejmax = ptnum - config.minpointnum;
-	if(rejmax > MAXREJ) rejmax=MAXREJ; // Insurance policy against excessive runtimes in pathological cases.
+	if(rejmax > config.maxrejnum) rejmax=config.maxrejnum; // Insurance policy against excessive runtimes in pathological cases.
 	// Main while loop, which iteratively removes outliers
 	while(rejnum<rejmax && ptnum>config.minpointnum) {
 	  if(astromrms>config.max_astrom_rms) {
@@ -27063,7 +27134,7 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
   long inclustct=0;
   long clusternum=0;
   double clustmetric = 0.0l;
-  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
   vector <long> clustind;
   vector <hldet> clusterdets;
   vector <hldet> clusterdets2;
@@ -27123,10 +27194,11 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
   outclust={};
   outclust2det={};
  
-  cout << "Launching link_refine_Herget_univar()\n";
-  cout << "Reference MJD: " << config.MJDref << "\n";
+  cout << "Launching link_planarity()\n";
   cout << "Maximum RMS in km: " << config.maxrms << "\n";
   cout << "Maximum out-of-plane RMS in km: " << config.max_oop << "\n";
+  if(config.useorbMJD>0) cout << "Epoch-of-orbit MJD will be used as MJDref, if available.\n";
+  else  cout << "Old reference MJD from heliolinc will be used as MJDref\n";
   cout << "In calculating the cluster quality metric, the number of\nunique points will be raised to the power of " << config.ptpow << ";\n";
   cout << "the number of unique nights will be raised to the power of " << config.nightpow << ";\n";
   cout << "the total timespan will be raised to the power of " << config.timepow << ";\n";
@@ -27192,7 +27264,16 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
       helioacc = onecluster.heliohyp2;
       for(ptct=0; ptct<ptnum; ptct++) {
 	// Calculate approximate heliocentric distance from the input quadratic approximation.
-	delta1 = (clusterdets[ptct].MJD - config.MJDref)*SOLARDAY;
+	if(config.useorbMJD>0 && onecluster.orbit_MJD>0.0) {
+	  // A previous execution of link_purify or link_planarity has fit
+	  // an orbit and supplied us with a value for MJD at the epoch.
+	  // Use this as the reference MJD.
+	  delta1 = (clusterdets[ptct].MJD - onecluster.orbit_MJD)*SOLARDAY;
+	} else {
+	  // Either not requested to use an MJD at the epoch, or none exists:
+	  // default to using the old reference MJD from heliolinc.
+	  delta1 = (clusterdets[ptct].MJD - onecluster.reference_MJD)*SOLARDAY;
+	}
 	heliodistvec.push_back(heliodist*AU_KM + heliovel*delta1 + 0.5*helioacc*delta1*delta1/1000.0l);
       }
       // Now infer the 3-D positions, and heliocentric polar coordinates, of each point
@@ -27244,7 +27325,15 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
       lambdavec={};
       for(ptct=0; ptct<ptnum; ptct++) {
 	// Calculate approximate heliocentric ecliptic longitude from the input quadratic approximation.
-	delta1 = clusterdets[ptct].MJD - config.MJDref;
+	
+	if(config.useorbMJD>0 && onecluster.orbit_MJD>0.0) {
+	  // A previous execution of link_purify or link_planarity has fit
+	  // an orbit and supplied us with a value for MJD at the epoch.
+	  // Use this as the reference MJD.
+	  delta1 = clusterdets[ptct].MJD - onecluster.orbit_MJD;
+	} else {
+	  delta1 = clusterdets[ptct].MJD - onecluster.reference_MJD;
+	} 
 	lambdavec.push_back(lambda0 + lambda_dot*delta1 + 0.5*lambda_ddot*delta1*delta1);
       }
       // Now infer the 3-D positions, and heliocentric polar coordinates, of each point
@@ -27332,7 +27421,7 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
       rejnum = 0;
       rejmax = config.rejfrac*ptnum;
       if(rejmax > ptnum-config.minpointnum) rejmax = ptnum - config.minpointnum;
-      if(rejmax > MAXREJ) rejmax=MAXREJ; // Insurance policy against excessive runtimes in pathological cases.
+      if(rejmax > config.maxrejnum) rejmax=config.maxrejnum; // Insurance policy against excessive runtimes in pathological cases.
       // Main while loop, which iteratively removes outliers
       while(rejnum<rejmax && ptnum>config.minpointnum) {
 	if(config.verbose>=1 || inclustct%1000==0) {
@@ -27513,26 +27602,44 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
       onepoint = point3d(X,Y,Z);
       observerpos.push_back(onepoint);
     }
-    // Use mean state vectors to estimate positions
-    startpos.x = onecluster.posX;
-    startpos.y = onecluster.posY;
-    startpos.z = onecluster.posZ;
-    startvel.x = onecluster.velX;
-    startvel.y = onecluster.velY;
-    startvel.z = onecluster.velZ;
-    // There used to be a check against solar escape velocity here,
-    // but it isn't needed since we are using the universal variables
-    // formulation, able to handle unbound as well as bound orbits.
       
     // Calculate position at first observation
-    Kepler_univ_int(GMSUN_KM3_SEC2, config.MJDref, startpos, startvel, obsMJD[0], endpos, endvel);
+    if(config.useorbMJD>0 && onecluster.orbit_MJD>0.0) {
+      // A previous execution of link_purify or link_planarity has fit
+      // an orbit and supplied us with a value for MJD at the epoch.
+      // Use state vectors from the orbit fit
+      startpos.x = onecluster.orbitX;
+      startpos.y = onecluster.orbitY;
+      startpos.z = onecluster.orbitZ;
+      startvel.x = onecluster.orbitVX;
+      startvel.y = onecluster.orbitVY;
+      startvel.z = onecluster.orbitVZ;
+      // Use the MJD at the orbit epoch as the reference MJD.
+      Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, obsMJD[0], endpos, endvel);
+    } else {
+      // Use mean state vectors to estimate positions
+      startpos.x = onecluster.posX;
+      startpos.y = onecluster.posY;
+      startpos.z = onecluster.posZ;
+      startvel.x = onecluster.velX;
+      startvel.y = onecluster.velY;
+      startvel.z = onecluster.velZ;
+      // There used to be a check against solar escape velocity here,
+      // but it isn't needed since we are using the universal variables
+      // formulation, able to handle unbound as well as bound orbits.
+      Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, obsMJD[0], endpos, endvel);
+    }
     // Find vector relative to the observer by subtracting off the observer's position.
     endpos.x -= observerpos[0].x;
     endpos.y -= observerpos[0].y;
     endpos.z -= observerpos[0].z;
     geodist1 = vecabs3d(endpos)/AU_KM;
     // Calculate position at last observation
-    Kepler_univ_int(GMSUN_KM3_SEC2, config.MJDref, startpos, startvel, obsMJD[ptnum-1], endpos, endvel);
+    if(config.useorbMJD>0 && onecluster.orbit_MJD>0.0) {
+      Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, obsMJD[ptnum-1], endpos, endvel);
+    } else {
+      Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, obsMJD[ptnum-1], endpos, endvel);
+    }
     endpos.x -= observerpos[ptnum-1].x;
     endpos.y -= observerpos[ptnum-1].y;
     endpos.z -= observerpos[ptnum-1].z;
@@ -27603,7 +27710,7 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
       rejnum = 0;
       rejmax = config.rejfrac*ptnum;
       if(rejmax > ptnum-config.minpointnum) rejmax = ptnum - config.minpointnum;
-      if(rejmax > MAXREJ) rejmax=MAXREJ; // Insurance policy against excessive runtimes in pathological cases.
+      if(rejmax > config.maxrejnum) rejmax=config.maxrejnum; // Insurance policy against excessive runtimes in pathological cases.
       // Main while loop, which iteratively removes outliers
       while(rejnum<rejmax && ptnum>config.minpointnum) {
 	if(astromrms>config.max_astrom_rms) {
@@ -27856,7 +27963,6 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
   return(0);
 }
 
-#undef MAXREJ
 
 // link_refine_Herget_omp: July 04, 2023:
 // Algorithmic portion to be called by wrappers,
@@ -27922,7 +28028,7 @@ int link_refine_Herget_omp(const vector <hlimage> &image_log, const vector <hlde
     int ithread = omp_get_thread_num();
     long inclustct=0;
     double clustmetric = 0.0l;
-    hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+    hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
     vector <long> clustind;
     vector <hldet> clusterdets;
     int ptnum,ptct,istimedup;
@@ -28121,7 +28227,7 @@ int link_refine_Herget_omp(const vector <hlimage> &image_log, const vector <hlde
   clustindmat={};
   clusterct=0;
   for(threadct=0; threadct<nt; threadct++) {
-    hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+    hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
     long clusternum = holdclust.size();
     for(long i=0;i<long(holdclust_mat[threadct].size());i++) {
       onecluster = holdclust_mat[threadct][i];
@@ -28468,7 +28574,7 @@ int link_refine_Herget_omp2(const vector <hlimage> &image_log, const vector <hld
   clustindmat={};
   clusterct=0;
   for(threadct=0; threadct<nt; threadct++) {
-    hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+    hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
     long clusternum = holdclust.size();
     for(long i=0;i<long(holdclust_mat[threadct].size());i++) {
       onecluster = holdclust_mat[threadct][i];
@@ -28618,7 +28724,7 @@ int link_refine_Herget_omp3(const vector <hlimage> &image_log, const vector <hld
 
   // Make sure the matrices have the right size.
   for(long threadct=0; threadct<nt; threadct++) {
-    hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+    hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
     vector <point3d> ov1;
     vector <double> ov2;
     vector <long> ov3;
