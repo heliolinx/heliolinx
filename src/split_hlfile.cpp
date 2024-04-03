@@ -186,7 +186,7 @@ int main(int argc, char *argv[])
 	outstream1 << fixed << setprecision(3) << sumvecmain[clustct].clusternum-indexoffset << "," << sumvecmain[clustct].posRMS << "," << sumvecmain[clustct].velRMS << "," << sumvecmain[clustct].totRMS << ",";
 	outstream1 << fixed << setprecision(4) << sumvecmain[clustct].astromRMS << ",";
 	outstream1 << fixed << setprecision(6) << sumvecmain[clustct].pairnum << "," << sumvecmain[clustct].timespan << "," << sumvecmain[clustct].uniquepoints << "," << sumvecmain[clustct].obsnights << "," << sumvecmain[clustct].metric << "," << sumvecmain[clustct].rating << ",";
-	outstream1 << fixed << setprecision(6)  << sumvecmain[clustct].reference_MJD << sumvecmain[clustct].heliohyp0 << "," << sumvecmain[clustct].heliohyp1 << "," << sumvecmain[clustct].heliohyp2 << ",";
+	outstream1 << fixed << setprecision(6)  << sumvecmain[clustct].reference_MJD << "," << sumvecmain[clustct].heliohyp0 << "," << sumvecmain[clustct].heliohyp1 << "," << sumvecmain[clustct].heliohyp2 << ",";
 	outstream1 << fixed << setprecision(1) << sumvecmain[clustct].posX << "," << sumvecmain[clustct].posY << "," << sumvecmain[clustct].posZ << ",";
 	outstream1 << fixed << setprecision(4) << sumvecmain[clustct].velX << "," << sumvecmain[clustct].velY << "," << sumvecmain[clustct].velZ << ",";
 	outstream1 << fixed << setprecision(6) << sumvecmain[clustct].orbit_a << "," << sumvecmain[clustct].orbit_e << "," << sumvecmain[clustct].orbit_MJD << ",";
