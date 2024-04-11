@@ -63,10 +63,10 @@ int main(int argc, char *argv[])
   int imct=0;
   string indetfile;
   string inimfile;
-  string outimfile;
   string earthfile;
   string obscodefile;
   string colformatfile;
+  string outimfile="outimfile01.csv";
   string pairdetfile="pairdetfile01.csv";
   string trackletfile="trackletfile01.csv";
   string trk2detfile="trk2detfile01.csv";
@@ -84,14 +84,14 @@ int main(int argc, char *argv[])
   ifstream instream1;
   ofstream outstream1;
   string stest;
-  int inimfile_set,outimfile_set,colformatfile_set;
-  inimfile_set = outimfile_set = colformatfile_set = 0;
-  int pairdetfile_default,trackletfile_default,trk2detfile_default,imagerad_default;
+  int inimfile_set,colformatfile_set;
+  inimfile_set = colformatfile_set = 0;
+  int outimfile_default,pairdetfile_default,trackletfile_default,trk2detfile_default,imagerad_default;
   int maxtime_default,mintime_default,minvel_default,maxvel_default;
   int maxgcr_default,minarc_default,mintrkpts_default,maxnetl_default;
   MakeTrackletsConfig config;
   
-  pairdetfile_default = trackletfile_default = trk2detfile_default = imagerad_default = 1;
+  outimfile_default = pairdetfile_default = trackletfile_default = trk2detfile_default = imagerad_default = 1;
   maxtime_default = mintime_default = minvel_default = maxvel_default = 1;
   maxgcr_default = minarc_default = mintrkpts_default = maxnetl_default = 1;
 
@@ -131,7 +131,7 @@ int main(int argc, char *argv[])
       if(i+1 < argc) {
 	//There is still something to read;
 	outimfile=argv[++i];
-	outimfile_set = 1;
+	outimfile_default = 0;
 	i++;
       }
       else {
@@ -399,8 +399,6 @@ int main(int argc, char *argv[])
   if(inimfile_set == 1) cout << "Input image file = " << inimfile << "\n";
   else cout << "No input image file specified: image catalog will be generated internally.\n";	
 
-  if(outimfile_set ==1) cout << "output image file = " << outimfile << "\n";
-  else cout << "No output image file specified: required image information will only be used internally.\n";
 
   if(colformatfile_set == 1) cout << "column formatting file = " << colformatfile << "\n";
   else {
@@ -416,6 +414,9 @@ int main(int argc, char *argv[])
   }
   
   cout << "Observatory code file " << obscodefile << "\n";
+
+  if(outimfile_default == 0) cout << "Output image file will be called " << outimfile << "\n";
+  else cout << "Defaulting to output image file name = " << outimfile << "\n";
 
   if(pairdetfile_default == 0) cout << "Output paired detection file will be called " << pairdetfile << "\n";
   else cout << "Defaulting to output paired detection file name = " << pairdetfile << "\n";
@@ -592,20 +593,16 @@ int main(int argc, char *argv[])
     outstream1.close();
   }
   
-  if(outimfile.size()>0)
-    {
-      // Write and print image log table
-      outstream1.open(outimfile);
-      for(imct=0;imct<long(img_log.size());imct++)
-	{
-	  outstream1 << fixed << setprecision(10) << img_log[imct].MJD << " " << img_log[imct].RA;
-	  outstream1 << fixed << setprecision(10) << " " << img_log[imct].Dec << " " << img_log[imct].obscode << " ";
-	  outstream1 << fixed << setprecision(1) << img_log[imct].X << " " << img_log[imct].Y << " " << img_log[imct].Z << " ";
-	  outstream1 << fixed << setprecision(4) << img_log[imct].VX << " " << img_log[imct].VY << " " << img_log[imct].VZ << " ";
-	  outstream1 << img_log[imct].startind << " " << img_log[imct].endind << "\n";
-	}
-      outstream1.close();
-    }
+  // Write and print image log table
+  outstream1.open(outimfile);
+  for(imct=0;imct<long(img_log.size());imct++) {
+    outstream1 << fixed << setprecision(10) << img_log[imct].MJD << " " << img_log[imct].RA;
+    outstream1 << fixed << setprecision(10) << " " << img_log[imct].Dec << " " << img_log[imct].obscode << " ";
+    outstream1 << fixed << setprecision(1) << img_log[imct].X << " " << img_log[imct].Y << " " << img_log[imct].Z << " ";
+    outstream1 << fixed << setprecision(4) << img_log[imct].VX << " " << img_log[imct].VY << " " << img_log[imct].VZ << " ";
+    outstream1 << img_log[imct].startind << " " << img_log[imct].endind << "\n";
+  }
+  outstream1.close();
 
   make_tracklets2(detvec, img_log, config, pairdets, tracklets, trk2det);
 
