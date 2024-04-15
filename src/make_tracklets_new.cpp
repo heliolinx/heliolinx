@@ -66,7 +66,7 @@ int main(int argc, char *argv[])
   string earthfile;
   string obscodefile;
   string colformatfile;
-  string outimfile="outimfile01.csv";
+  string outimfile="outimfile01.txt";
   string pairdetfile="pairdetfile01.csv";
   string trackletfile="trackletfile01.csv";
   string trk2detfile="trk2detfile01.csv";
@@ -582,7 +582,7 @@ int main(int argc, char *argv[])
 
   if(DEBUGB==1) cout << "Preparing to load the image table\n";
   status = load_image_table(img_log, detvec, observatory_list, EarthMJD, Earthpos, Earthvel);
- if(DEBUGB==1) cout << "Loaded the image table\n";
+  if(DEBUGB==1) cout << "Loaded the image table\n";
 
   if(DEBUG>=2) {
     // Test: print out time-sorted detection table.
@@ -594,6 +594,7 @@ int main(int argc, char *argv[])
   }
   
   // Write and print image log table
+  cout << "Writing output image catalog " << outimfile << " with " << img_log.size() << " lines\n";
   outstream1.open(outimfile);
   for(imct=0;imct<long(img_log.size());imct++) {
     outstream1 << fixed << setprecision(10) << img_log[imct].MJD << " " << img_log[imct].RA;
@@ -605,7 +606,8 @@ int main(int argc, char *argv[])
   outstream1.close();
 
   make_tracklets2(detvec, img_log, config, pairdets, tracklets, trk2det);
-
+  
+  cout << "Output image catalog " << outimfile << ", with " << img_log.size() << " lines, has been written\n";
   // Write paired detection file
   cout << "Writing paired detection file " << pairdetfile << " with " << pairdets.size() << " lines\n";
   outstream1.open(pairdetfile);
