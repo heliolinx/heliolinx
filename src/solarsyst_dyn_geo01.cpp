@@ -14780,20 +14780,35 @@ int mpc80_parseline(const string &lnfromfile, string &object, double *MJD, doubl
   for(i=15;i<19;i++) {
     sdat.push_back(lnfromfile[i]);
   }
-  year = stoi(sdat);
+  try {
+    year = stoi(sdat);
+  } catch(std::invalid_argument const& ex) {
+    cerr << "ERROR: unable to read year from line " << lnfromfile << "\n";
+    return(2);
+  }
   // Read the month
   sdat = {};
   for(i=20;i<22;i++) {
     sdat.push_back(lnfromfile[i]);
   }
-  month = stoi(sdat);
+  try {
+    month = stoi(sdat);
+  } catch(std::invalid_argument const& ex) {
+    cerr << "ERROR: unable to read month from line " << lnfromfile << "\n";
+    return(2);
+  }
   // Read the day
   sdat = {};
   for(i=23;i<32;i++) {
     c=lnfromfile[i];
     if(c!=' ') sdat.push_back(c);
   }
-  day = stod(sdat);
+  try {
+    day = stod(sdat);
+  } catch(std::invalid_argument const& ex) {
+    cerr << "ERROR: unable to read day from line " << lnfromfile << "\n";
+    return(2);
+  }
   if(year<1900 || month<1 || month>12 || day < 1.0l || day > 32.0l) {
     cerr << "mpc80_readline cannot read a valid date from the line:\n";
     cerr << lnfromfile << "\n";
@@ -14807,13 +14822,25 @@ int mpc80_parseline(const string &lnfromfile, string &object, double *MJD, doubl
   for(i=32;i<34;i++) {
     sdat.push_back(lnfromfile[i]);
   }
-  hour = stod(sdat);
+  try {
+    hour = stod(sdat);
+  } catch(std::invalid_argument const& ex) {
+    cerr << "ERROR: unable to read hour from line " << lnfromfile << "\n";
+    return(2);
+  }
   // minutes
   sdat = {};
   for(i=35;i<37;i++) {
     sdat.push_back(lnfromfile[i]);
   }
-  if(sdat.size()>0) min = stod(sdat);
+  if(sdat.size()>0) {
+    try {
+      min = stod(sdat);
+    } catch(std::invalid_argument const& ex) {
+      cerr << "ERROR: unable to read minute from line " << lnfromfile << "\n";
+      return(2);
+    }
+  }
   else min = 0.0l;
   // seconds
   sdat = {};
@@ -14821,7 +14848,14 @@ int mpc80_parseline(const string &lnfromfile, string &object, double *MJD, doubl
     c = lnfromfile[i];
     if(c != ' ') sdat.push_back(c);
   }
-  if(sdat.size()>0) sec = stod(sdat);
+  if(sdat.size()>0) {
+    try {
+      sec = stod(sdat);
+    } catch(std::invalid_argument const& ex) {
+      cerr << "ERROR: unable to read second from line " << lnfromfile << "\n";
+      return(2);
+    }
+  }
   else sec = 0.0l;
   // Convert the Right Ascension to decimal degrees
   raread = 15.0l*hour + min/4.0l + sec/240.0l;
@@ -14845,13 +14879,25 @@ int mpc80_parseline(const string &lnfromfile, string &object, double *MJD, doubl
   for(i=45;i<47;i++) {
     sdat.push_back(lnfromfile[i]);
   }
-  deg = stod(sdat);
+  try {
+    deg = stod(sdat);
+  } catch(std::invalid_argument const& ex) {
+    cerr << "ERROR: unable to read Declination from line " << lnfromfile << "\n";
+    return(2);
+  }
   // minutes
   sdat = {};
   for(i=48;i<50;i++) {
     sdat.push_back(lnfromfile[i]);
   }
-  if(sdat.size()>0) min = stod(sdat);
+  if(sdat.size()>0) {
+    try {
+      min = stod(sdat);
+    } catch(std::invalid_argument const& ex) {
+      cerr << "ERROR: unable to read Declination from line " << lnfromfile << "\n";
+      return(2);
+    }
+  }
   else min = 0.0l;
   // seconds
   sdat = {};
@@ -14859,7 +14905,14 @@ int mpc80_parseline(const string &lnfromfile, string &object, double *MJD, doubl
     c = lnfromfile[i];
     if(c != ' ') sdat.push_back(c);
   }
-  if(sdat.size()>0) sec = stod(sdat);
+  if(sdat.size()>0) {
+    try {
+      sec = stod(sdat);
+    } catch(std::invalid_argument const& ex) {
+      cerr << "ERROR: unable to read Declination from line " << lnfromfile << "\n";
+      return(2);
+    }
+  }
   else sec = 0.0l;
   // Convert the Declination to decimal degrees
   decread = deg + min/60.0l + sec/3600.0l;
@@ -14876,7 +14929,14 @@ int mpc80_parseline(const string &lnfromfile, string &object, double *MJD, doubl
     c = lnfromfile[i];
     if(c != ' ') sdat.push_back(c);
   }
-  if(sdat.size()>0) *mag = stod(sdat);
+  if(sdat.size()>0) {
+    try {
+      *mag = stod(sdat);
+    } catch(std::invalid_argument const& ex) {
+      cerr << "ERROR: unable to read magnitude from line " << lnfromfile << "\n";
+      return(2);
+    }
+  }
   else *mag = 0.0l;
 
   // Read the band
@@ -29472,6 +29532,245 @@ int greatcircfit(const vector <hldet> &trackvec, double &poleRA, double &poleDec
   for(i=0;i<npoints;i++) {
     oldpolera=0.0;
     poleswitch02(trackvec[i].RA, trackvec[i].Dec, tpoleRA, tpoleDec, oldpolera, RA, Dec);
+    newRA.push_back(RA);
+    newDec.push_back(Dec);
+   }
+
+  // Calculate the crosstrack RMS
+  // Find the mean Dec of the transformed points, (should be zero)
+  offeq=0.0;
+  for(i=0;i<npoints;i++) offeq+=newDec[i];
+  offeq/=double(npoints);
+
+  tcross=0.0;
+  for(i=0;i<npoints;i++) {
+    tcross += DSQUARE(offeq-newDec[i]);
+  }
+  tcross = sqrt(tcross/double(npoints-1))*3600.0l;
+
+  // Calculate the mean angular velocity in degrees per day
+  unwrapping = 0.0l;
+  for(i=1;i<npoints;i++) {
+    // Check for wrapping of RA
+    if(newRA[i] > newRA[i-1]+180.0) {
+      // We were going downward and wrapped across zero
+      // into values just slightly less than 360 degrees
+      unwrapping = -360.0l;
+    }
+    else if(newRA[i] < newRA[i-1]-180.0) {
+      // We were going upward and wrapped across zero
+      // into values just slightly greater than zero
+      unwrapping = +360.0l;
+    }
+    newRA[i] += unwrapping;
+  }
+  linfituw01(timevec, newRA, tangvel, interceptx);
+  talong = 0.0;
+  for(i=0;i<npoints;i++) {
+    talong += DSQUARE(interceptx + tangvel*timevec[i] - newRA[i]);
+  }
+  talong = sqrt(talong/double(npoints-1))*3600.0l;
+
+  altGCR = sqrt(DSQUARE(tcross)+DSQUARE(talong));
+
+  // printf("GCR=%f, altac=%f, altal=%f, altGCR=%f\n",GCR,altcrosstrack,altalongtrack,altGCR);
+
+  if(altGCR<GCR) {
+    angvel = tangvel;
+    crosstrack = tcross;
+    alongtrack = talong;
+    poleRA = tpoleRA;
+    poleDec = tpoleDec;
+    cout << "Used case 2 fit\n";
+  }
+  return(0);
+}
+
+// greatcircfit: April 15, 2024:
+// Like overloaded function above, but takes independent MJD, RA, and Dec vectors,
+// instead of an hldet vector.
+int greatcircfit(const vector <double> &MJDvec, const vector <double> &RAvec, const vector <double> &Decvec, double &poleRA, double &poleDec,double &angvel,double &pa,double &crosstrack,double &alongtrack)
+{
+  long npoints = MJDvec.size();
+  point3d p3 = point3d(0l,0l,0l);
+  point3d p3avg = point3d(0l,0l,0l);
+  long i=0;
+  double RA,Dec,dist,theta,tpa,x,y,altra,altramean,altranorm;
+  RA = Dec = dist = theta = tpa = x = y = altra = altramean = altranorm = 0l;
+  vector <double> projx;
+  vector <double> projy;
+  vector <double> timevec;
+  vector <double> altravec;
+  vector <double> newRA;
+  vector <double> newDec;
+  double lastpa,avgtime,xsq,slopex,interceptx,slopey,intercepty;
+  lastpa = avgtime = xsq = slopex = interceptx = slopey = intercepty = 0l;
+  double tpoleRA,tpoleDec,oldpolera,meanRA,meanDec;
+  tpoleRA = tpoleDec = oldpolera = 0.0l;
+  double offeq,tcross,talong,tangvel,unwrapping;
+  offeq = tcross = talong = tangvel = unwrapping = 0.0l;
+  double altpa,GCR,altGCR;
+  altpa = altGCR = GCR = 0.0l;
+  
+  if(npoints<=1) {
+    cerr << "ERROR: too few points to fit a Great Circle!\n";
+    return(1);
+  } else if(npoints==2) {
+    distradec02(RAvec[0],Decvec[0],RAvec[1],Decvec[1],&dist,&tpa);
+    theta = tpa + 90.0l;
+    if(theta>=360.0l) theta-=360.0l;
+    arc2cel01(RAvec[0],Decvec[0],90.0l,theta,poleRA,poleDec);
+    angvel = dist/fabs(MJDvec[1]-MJDvec[0]);
+    crosstrack = alongtrack = -1.0l;
+    pa = tpa;
+    return(0);
+  }
+  // If we get here, it wasn't a trivial case with one or two points.
+  
+  // Find averaged Cartesian projection over input points,
+  // and average time
+  avgtime = 0.0l;
+  p3avg = point3d(0l,0l,0l);
+  for(i=0;i<npoints;i++) {
+    avgtime += MJDvec[i];
+    p3 =  celeproj01(RAvec[i],Decvec[i]);
+    p3avg.x += p3.x;
+    p3avg.y += p3.y;
+    p3avg.z += p3.z;
+  }
+  p3avg.x /= double(npoints);
+  p3avg.y /= double(npoints);
+  p3avg.z /= double(npoints);
+  avgtime /= double(npoints);
+  // Normalize the Cartesian vector
+  vecnorm3d(p3avg);
+  // Convert this back to RA and Dec
+  celedeproj01(p3avg, &meanRA, &meanDec);
+
+  // Project all points relative to this mean position, using arc projection,
+  // and load time vector
+  altramean=altranorm=0.0;
+  projx = projy = altravec = {};
+  timevec={};
+  for(i=0;i<npoints;i++) {
+    distradec02(meanRA,meanDec,RAvec[i],Decvec[i],&dist,&tpa);
+    x = dist/3600.0l * -sin(tpa/DEGPRAD);
+    y = dist/3600.0l * cos(tpa/DEGPRAD);
+    projx.push_back(x);
+    projy.push_back(y);
+    // Load RA for alternative PA determination*/
+    altra = atan(x/y)*DEGPRAD;
+    altravec.push_back(altra);
+    altramean += altra*dist;
+    altranorm += dist;
+    // Load time vector
+    timevec.push_back(MJDvec[i] - avgtime);
+  }
+  // Save celestial PA of last point relative to mean position
+  lastpa=tpa;
+  // Calculate alternative mean RA
+  altramean = altramean/altranorm;
+
+  // Perform linear fit on projected x and y
+  linfituw01(timevec, projx, slopex, interceptx);
+  linfituw01(timevec, projy, slopey, intercepty);
+  if(slopex==0.0l && slopey>=0.0l) tpa = 0.0l;
+  else if(slopex==0.0l && slopey<0.0l) tpa=180.0;
+  else if(slopex>0.0l) tpa = 270.0 +  DEGPRAD*atan(slopey/slopex);
+  else if(slopex<0.0l) tpa = 90.0 +  DEGPRAD*atan(slopey/slopex);
+  else {
+    // Illogical case
+    cerr << "Logically excluded position angle case. slopex = " << slopex << ", slopey = " << slopey << "\n";
+    return(1);
+  }
+  pa = tpa;
+  // Solve for pole position using calculated PA of tracklet.
+  tpa-=90.0;
+  if(tpa<0.0) tpa+=360.0;
+  arc2cel01(meanRA,meanDec,90.0l,tpa,tpoleRA,tpoleDec);
+
+  // Transform all points to a coordinate system whose
+  // pole is the Great Circle pole. Thus the tracklet should
+  // lie along the equator.*/
+  newRA = newDec = {};
+  for(i=0;i<npoints;i++) {
+    oldpolera=0.0;
+    poleswitch02(RAvec[i], Decvec[i], tpoleRA, tpoleDec, oldpolera, RA, Dec);
+    newRA.push_back(RA);
+    newDec.push_back(Dec);
+   }
+
+  // Calculate the crosstrack RMS
+  // Find the mean Dec of the transformed points, (should be zero)
+  offeq=0.0;
+  for(i=0;i<npoints;i++) offeq+=newDec[i];
+  offeq/=double(npoints);
+
+  tcross=0.0;
+  for(i=0;i<npoints;i++) {
+    tcross += DSQUARE(offeq-newDec[i]);
+  }
+  tcross = sqrt(tcross/double(npoints-1))*3600.0l;
+
+  // Calculate the mean angular velocity in degrees per day
+  unwrapping = 0.0l;
+  for(i=1;i<npoints;i++) {
+    // Check for wrapping of RA
+    if(newRA[i] > newRA[i-1]+180.0) {
+      // We were going downward and wrapped across zero
+      // into values just slightly less than 360 degrees
+      unwrapping = -360.0l;
+    }
+    else if(newRA[i] < newRA[i-1]-180.0) {
+      // We were going upward and wrapped across zero
+      // into values just slightly greater than zero
+      unwrapping = +360.0l;
+    }
+    newRA[i] += unwrapping;
+  }
+  linfituw01(timevec, newRA, tangvel, interceptx);
+  talong = 0.0;
+  for(i=0;i<npoints;i++) {
+    talong += DSQUARE(interceptx + tangvel*timevec[i] - newRA[i]);
+  }
+  talong = sqrt(talong/double(npoints-1))*3600.0l;
+
+  GCR = sqrt(DSQUARE(tcross)+DSQUARE(talong));
+  angvel = tangvel;
+  crosstrack = tcross;
+  alongtrack = talong;
+  poleRA = tpoleRA;
+  poleDec = tpoleDec;
+  
+  // Perform alternative calculation using old method for position angle
+  // Unwrap position angle and match to last point
+  while(altramean<0.0) altramean+=360.0;
+  while(altramean>=360.0) altramean-=360.0;
+  altpa = 360.0 - altramean;
+  if(altpa>lastpa)
+    {
+      if(fabs(altpa-180.0-lastpa) < fabs(altpa-lastpa)) altpa-=180.0;
+      if(altpa<0) altpa+=360.0;
+    }
+  else if(altpa<lastpa)
+    {
+      if(fabs(altpa+180.0-lastpa) < fabs(altpa-lastpa))altpa+=180.0;
+      if(altpa>=360.0) altpa-=360.0;
+    }
+  tpa=altpa;
+
+  // Solve for pole position using calculated PA of tracklet.*/
+  tpa-=90.0;
+  if(tpa<0.0) tpa+=360.0;
+  arc2cel01(meanRA,meanDec,90.0l,tpa,tpoleRA,tpoleDec);
+
+  // Transform all points to a coordinate system whose
+  // pole is the Great Circle pole. Thus the tracklet should
+  // lie along the equator.*/
+  newRA = newDec = {};
+  for(i=0;i<npoints;i++) {
+    oldpolera=0.0;
+    poleswitch02(RAvec[i], Decvec[i], tpoleRA, tpoleDec, oldpolera, RA, Dec);
     newRA.push_back(RA);
     newDec.push_back(Dec);
    }

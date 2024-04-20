@@ -44,8 +44,8 @@ int main(int argc, char *argv[])
   vector <hldet> detvec;
   LinkPurifyConfig config;
   string imfile, pairdetfile,stest;
-  string outsumfile = "LRHsumfile_test.csv";
-  string outclust2detfile = "LRHclust2detfile_test.csv";
+  string outsumfile = "LPLsumfile_test.csv";
+  string outclust2detfile = "LPLclust2detfile_test.csv";
   ifstream instream1;
   ofstream outstream1;
   long i=0;
@@ -66,7 +66,7 @@ int main(int argc, char *argv[])
   //  vector <double_index> dindvec;
   // vector <int> keepvec;
 
-  if(argc<9) {
+  if(argc<7) {
     show_usage();
     return(1);
   }
