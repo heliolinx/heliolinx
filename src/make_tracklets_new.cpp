@@ -400,8 +400,12 @@ int main(int argc, char *argv[])
   else cout << "No input image file specified: image catalog will be generated internally.\n";	
 
 
-  if(colformatfile_set == 1) cout << "column formatting file = " << colformatfile << "\n";
-  else {
+  if(colformatfile_set == 1) {
+    cout << "column formatting file = " << colformatfile << "\n";
+    // Wipe the default column specifiers so they will be read from
+    // the file if present.
+    idcol = mjdcol = racol = deccol = magcol = bandcol = obscodecol = -1;
+  } else {
     cout << "No column formatting file specified for input file " << indetfile << "\n";
     cout << "The following default format will be assumed:\n";
     cout << "String identifer in column " << idcol << "\n";
