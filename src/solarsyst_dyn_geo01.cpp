@@ -12026,7 +12026,7 @@ int Keplerint_multipoint_univar(const double MGsun, const double mjdstart, const
   //double rdot = u/r0;
   double a = r0*MGsun/(2.0l*MGsun-v0*v0*r0);
   if(!isnormal(a)) {
-    cerr << "ERROR: Kepler_univ_int finds a = " << a << ", unable to proceed\n";
+    cerr << "WARNING: Kepler_univ_int finds a = " << a << ", abandoning orbit fit\n";
     return(1);
   }
   double n = sqrt(MGsun/a/a/a);
@@ -12055,109 +12055,121 @@ int Keplerint_multipoint_univar(const double MGsun, const double mjdstart, const
   *eccen = e;
 
   for(obsct=0; obsct<obsnum; obsct++) {
-    double deltat = SOLARDAY*(obsMJD[obsct]-mjdstart);
-    double s=0.0l;
+    if(obsMJD[obsct] == mjdstart) {
+      // The problem is trivial
+      targpos = startpos;
+      targvel = startvel;
+      obspos.push_back(targpos);
+      obsvel.push_back(targvel);
+    } else {
+      // We have work to do
+      double deltat = SOLARDAY*(obsMJD[obsct]-mjdstart);
+      double s=0.0l;
 
-    // Select an initial guess for solving the universal-variable
-    // for of the Kepler Equation.
+      // Select an initial guess for solving the universal-variable
+      // for of the Kepler Equation.
 
-    if(alpha>0.0l) {
-      double sinM,x;
-      sinM=x=0.0l;
-      if(e<0.1l) x = n*deltat;
-      else {
-	sinM = (ES*cos(n*deltat - ES) + EC*sin(n*deltat - ES))/e;
-	x = n*deltat + (sinM/fabs(sinM))*DANBYK_689*e - ES;
+      if(alpha>0.0l) {
+	double sinM,x;
+	sinM=x=0.0l;
+	if(e<0.1l) x = n*deltat;
+	else {
+	  sinM = (ES*cos(n*deltat - ES) + EC*sin(n*deltat - ES))/e;
+	  x = n*deltat + (sinM/fabs(sinM))*DANBYK_689*e - ES;
+	}
+	s = x/sqrt(alpha);
+      } else if(alpha<0.0l) {
+	double deltaM = deltat*sqrt(-MGsun/a/a/a);
+	double deltaF = 0.0l;
+
+	if(deltaM>0) deltaF = log((2.0l*deltaM + DANBYK_6935*e)/(CH+SH));
+	else if(deltaM<0) deltaF = -log((-2.0l*deltaM + DANBYK_6935*e)/(CH-SH));
+	else {
+	  cerr << "WARNING: deltaM = " << deltaM << ": abandoning orbit fit\n";
+	  return(1);
+	}
+	s = deltaF/sqrt(-alpha);
       }
-      s = x/sqrt(alpha);
-    } else if(alpha<0.0l) {
-      double deltaM = deltat*sqrt(-MGsun/a/a/a);
-      double deltaF = 0.0l;
-
-      if(deltaM>0) deltaF = log((2.0l*deltaM + DANBYK_6935*e)/(CH+SH));
-      else if(deltaM<0) deltaF = -log((-2.0l*deltaM + DANBYK_6935*e)/(CH-SH));
-      else {
-	cerr << "ERROR: deltaM = " << deltaM << ": unable to proceed\n";
-	return(1);
-      }
-      s = deltaF/sqrt(-alpha);
-    }
-    if(!isnormal(s) && s!=0.0l) {
-      cerr << "WARNING: initial guess with alpha = " << alpha << " produced non-normal s = " << s << "\n";
-      s=deltat/r0;
-      cerr << "Re-assigning rescue value s = " << s << "\n";
-    }
-
-    double f,fp,ds,c0,c1,c2,c3,fold,fpold;
-    f = fp = ds = c0 = c1 = c2 = c3 = fold = fpold = 0.0l;
-    int itct=0;
-    int status=0;
-
-    // Newton's Method solution for s
-    if(!isnormal(alpha*s*s) && alpha*s*s != 0.0l) {
-      cerr << "input catch alpha = " << alpha << ", s = " << s << ", alpha*s^2 = " << alpha*s*s << "\n";
-    }
-    status = Stumpff_func(alpha*s*s, &c0, &c1, &c2, &c3);
-    if(status!=0) {
-      cerr << "ERROR: Stumpff_func() failed on initial run, with status " << status << ".\n";
-      cerr << "input was alpha = " << alpha << ", s = " << s << ", alpha*s^2 = " << alpha*s*s << "\n";
-      return(status);
-    } 
-    f = r0*s*c1 + u*s*s*c2 + MGsun*s*s*s*c3 - deltat;
-    fp = r0*c0 + u*s*c1 + MGsun*s*s*c2;
-    while(fabs(f/fp)>HYPTRANSTOL && itct<KEPTRANSITMAX) {
-      fpold=fp;
-      fp = r0*c0 + u*s*c1 + MGsun*s*s*c2;
-      if(!isnormal(f) || !isnormal(fp)) {
-	cerr << "ERROR: universal variable minimization function f, fp = " << f << "," << fp << "\n";
-	cerr << "c0,c1,c2,c3: " << c0 << "," << c1 << "," << c2 << "," << c3 << "\n";
-	cerr << "alpha = " << alpha << ", s = " << s << ", alpha*s^2 = " << alpha*s*s << ", fold,fpold = " << fold << "," << fpold << "\n";
+      if(!isnormal(s) && s!=0.0l) {
+	cerr << "WARNING: initial guess with alpha = " << alpha << " produced non-normal s = " << s << "\n";
 	s=deltat/r0;
 	cerr << "Re-assigning rescue value s = " << s << "\n";
+      }
+
+      double f,fp,ds,c0,c1,c2,c3,fold,fpold;
+      f = fp = ds = c0 = c1 = c2 = c3 = fold = fpold = 0.0l;
+      int itct=0;
+      int status=0;
+
+      // Newton's Method solution for s
+      if(!isnormal(alpha*s*s) && alpha*s*s != 0.0l) {
+	cerr << "input catch alpha = " << alpha << ", s = " << s << ", alpha*s^2 = " << alpha*s*s << "\n";
+      }
+      status = Stumpff_func(alpha*s*s, &c0, &c1, &c2, &c3);
+      if(status!=0) {
+	cerr << "WARNING: Stumpff_func() failed on initial run, with status " << status << ".\n";
+	cerr << "input was alpha = " << alpha << ", s = " << s << ", alpha*s^2 = " << alpha*s*s << "\n";
+	cerr << "Abandoning orbit fit.\n";
+	return(status);
+      }
+      f = r0*s*c1 + u*s*s*c2 + MGsun*s*s*s*c3 - deltat;
+      fp = r0*c0 + u*s*c1 + MGsun*s*s*c2;
+      while(fabs(f/fp)>HYPTRANSTOL && itct<KEPTRANSITMAX) {
+	fpold=fp;
+	fp = r0*c0 + u*s*c1 + MGsun*s*s*c2;
+	if(!isnormal(f) || !isnormal(fp)) {
+	  cerr << "WARNING: universal variable minimization function f, fp = " << f << "," << fp << "\n";
+	  cerr << "c0,c1,c2,c3: " << c0 << "," << c1 << "," << c2 << "," << c3 << "\n";
+	  cerr << "alpha = " << alpha << ", s = " << s << ", alpha*s^2 = " << alpha*s*s << ", fold,fpold = " << fold << "," << fpold << "\n";
+	  s=deltat/r0;
+	  cerr << "Re-assigning rescue value s = " << s << "\n";
+	  status = Stumpff_func(alpha*s*s, &c0, &c1, &c2, &c3);
+	  if(status!=0) {
+	    cerr << "WARNING: Stumpff_func() failed in rescue, with status " << status << ".\n";
+	    cerr << "input was alpha = " << alpha << ", s = " << s << ", alpha*s^2 = " << alpha*s*s << ", f,fp = " << f << "," << fp << "\n";
+	    cerr << "Abandoning orbit fit.\n";
+	    return(status);
+	  }
+	  fold=f;
+	  f = r0*s*c1 + u*s*s*c2 + MGsun*s*s*s*c3 - deltat;
+	  fpold=fp;
+	  fp = r0*c0 + u*s*c1 + MGsun*s*s*c2;
+	}
+	ds = -f/fp;
+	while(fabs(ds/s)>2.0l) ds/=2.0l; // Don't change s too much at one go.
+	s += ds;
 	status = Stumpff_func(alpha*s*s, &c0, &c1, &c2, &c3);
 	if(status!=0) {
-	  cerr << "ERROR: Stumpff_func() failed in rescue, with status " << status << ".\n";
+	  cerr << "WARNING: Stumpff_func() failed within loop, with status " << status << ".\n";
 	  cerr << "input was alpha = " << alpha << ", s = " << s << ", alpha*s^2 = " << alpha*s*s << ", f,fp = " << f << "," << fp << "\n";
+	  cerr << "Abandoning orbit fit.\n";
 	  return(status);
 	}
 	fold=f;
 	f = r0*s*c1 + u*s*s*c2 + MGsun*s*s*s*c3 - deltat;
-	fpold=fp;
-	fp = r0*c0 + u*s*c1 + MGsun*s*s*c2;
+	itct++;
       }
-      ds = -f/fp;
-      while(fabs(ds/s)>2.0l) ds/=2.0l; // Don't change s too much at one go.
-      s += ds;
-      status = Stumpff_func(alpha*s*s, &c0, &c1, &c2, &c3);
-      if(status!=0) {
-	cerr << "ERROR: Stumpff_func() failed within loop, with status " << status << ".\n";
-	cerr << "input was alpha = " << alpha << ", s = " << s << ", alpha*s^2 = " << alpha*s*s << ", f,fp = " << f << "," << fp << "\n";
-	return(status);
+      if(fabs(f/fp)>HYPTRANSTOL) {
+	cerr << "Warning: Kepler_univ_int() failed to converge by iteration " << itct << ", f/fp = " << f/fp << " vs tolerance of " << HYPTRANSTOL << "\n";
       }
-      fold=f;
-      f = r0*s*c1 + u*s*s*c2 + MGsun*s*s*s*c3 - deltat;
-      itct++;
-    }
-    if(fabs(f/fp)>HYPTRANSTOL) {
-      cerr << "WARNING: Kepler_univ_int() failed to converge by iteration " << itct << ", f/fp = " << f/fp << " vs tolerance of " << HYPTRANSTOL << "\n";
-    }
 
-    double kepf = 1.0l - (MGsun/r0)*s*s*c2;
-    double kepg = r0*s*c1 + u*s*s*c2;
+      double kepf = 1.0l - (MGsun/r0)*s*s*c2;
+      double kepg = r0*s*c1 + u*s*s*c2;
   
-    targpos.x = kepf*startpos.x + kepg*startvel.x;
-    targpos.y = kepf*startpos.y + kepg*startvel.y;
-    targpos.z = kepf*startpos.z + kepg*startvel.z;
-    double r = vecabs3d(targpos);
+      targpos.x = kepf*startpos.x + kepg*startvel.x;
+      targpos.y = kepf*startpos.y + kepg*startvel.y;
+      targpos.z = kepf*startpos.z + kepg*startvel.z;
+      double r = vecabs3d(targpos);
 
-    double fdot = -MGsun/r/r0*s*c1;
-    double gdot = 1.0l - (MGsun/r)*s*s*c2;
+      double fdot = -MGsun/r/r0*s*c1;
+      double gdot = 1.0l - (MGsun/r)*s*s*c2;
   
-    targvel.x = fdot*startpos.x + gdot*startvel.x;
-    targvel.y = fdot*startpos.y + gdot*startvel.y;
-    targvel.z = fdot*startpos.z + gdot*startvel.z;
-    obspos.push_back(targpos);
-    obsvel.push_back(targvel);
+      targvel.x = fdot*startpos.x + gdot*startvel.x;
+      targvel.y = fdot*startpos.y + gdot*startvel.y;
+      targvel.z = fdot*startpos.z + gdot*startvel.z;
+      obspos.push_back(targpos);
+      obsvel.push_back(targvel);
+    }
   }
     
   return(0);
@@ -12490,7 +12502,7 @@ double orbitchi_univar(const point3d &objectpos, const point3d &objectvel, const
   status = Keplerint_multipoint_univar(GMSUN_KM3_SEC2,mjdstart,obsMJD,objectpos,objectvel,obspos,obsvel,semimajor_axis,eccen);
   if(status!=0) {
     // Keplerint_multipoint_univar failed.
-    return(LARGERR);
+    return(LARGERR3);
   }
   if(DEBUG_2PTBVP>1) cout << "Recovered start pos: " << obspos[0].x << " "  << obspos[0].y << " "  << obspos[0].z << "\n";
 

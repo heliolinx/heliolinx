@@ -694,7 +694,7 @@ int main(int argc, char *argv[])
   }
   outstream1.close();
   if(automjd) {
-    cout << "Automatically calcuated reference MJD was " << config.MJDref << "\n";
+    cout << "Automatically calculated reference MJD was " << config.MJDref << "\n";
   }
   
   return(0);
