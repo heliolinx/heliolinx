@@ -6540,7 +6540,7 @@ int Kepler_fg_func_int(const double MGsun, const double mjdstart, const point3d 
 // Uses the Kepler f and g functions to integrate an orbit assuming we
 // have a Keplerian 2-body problem with all the mass in the Sun, and the
 // input position and velocity are relative to the Sun.
-int Kepler_fg_func_vec(const double MGsun, const double mjdstart, const point3d &startpos, const point3d &startvel, const vector <double> &mjdvec, vector <point3d> outpos, vector <point3d> &outvel)
+int Kepler_fg_func_vec(const double MGsun, const double mjdstart, const point3d &startpos, const point3d &startvel, const vector <double> &mjdvec, vector <point3d> &outpos, vector <point3d> &outvel)
 {
   double r0 = vecabs3d(startpos);
   double v0 = vecabs3d(startvel);
