@@ -130,6 +130,7 @@ using namespace std;
                               // reducing the chance of hyperbolic orbits.
 #define SIMPLEX_SCALE_LIMIT ((sqrt(5.0L)-1.0L)/2.0L) // Can get negative distances if simplex_scale
                                                      // exceeds this value.
+#define QUADSTEP_SCALEFAC 0.03l
 #define LOG10_e 0.434294481903252L
 #define LN10 2.30258509299405L
 #define IMAGETIMETOL 1.0 // Tolerance for matching image time, in seconds
@@ -152,6 +153,8 @@ using namespace std;
                            // to distance units is equal to the full temporal span
                            // divided by TIMECONVSCALE.
 #define FTOL_HERGET_SIMPLEX 1e-5l
+#define FTOL_QUAD 1e-5l
+#define QUADCONV_FACTOR 10.0l
 #define MAX_SHUTTER_CORR 10.0 // Implied shutter corrections larger than this value,
                               // in seconds, are implausible and will cause link_refine_Herget
                               // to exit with an error.
@@ -1646,6 +1649,8 @@ int Herget_simplex_int(long double geodist1, long double geodist2, long double s
 int Herget_simplex_int(double geodist1, double geodist2, double simpscale, double simplex[3][2], int simptype);
 long double Hergetfit01(long double geodist1, long double geodist2, long double simplex_scale, int simptype, long double ftol, int point1, int point2, const vector <point3LD> &observerpos, const vector <long double> &obsMJD, const vector <long double> &obsRA, const vector <long double> &obsDec, const vector <long double> &sigastrom, vector <long double> &fitRA, vector <long double> &fitDec, vector <long double> &resid, vector <long double> &orbit, int verbose);
 double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, int simptype, double ftol, int point1, int point2, const vector <point3d> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid, vector <double> &orbit, int verbose);
+double Hergetfit_graddec(double geodist1, double geodist2, int point1, int point2, const vector <point3d> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid, vector <double> &orbit, int verbose);
+double Hergetfit_quad1(double geodist1, double geodist2, double stepsize, double ftol, int point1, int point2, const vector <point3d> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid, vector <double> &orbit, int verbose);
 int wrap_Hergetfit01(double simplex_scale, int simptype, double ftol, int point1, int point2, const vector <point3d> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, double MJDref, int rmspow, int verbose, hlclust &onecluster);
 int wrap_Hergetfit02(double simplex_scale, int simptype, double ftol, const vector <vector <point3d>> &observerpos, const vector <vector <double>> &obsMJD, const vector <vector <double>> &obsRA, const vector <vector <double>> &obsDec, const vector <vector <double>> &sigastrom, double MJDref, int rmspow, int verbose, vector <hlclust> &outclust, int threadct);
 int wrap_Hergetfit_vstar(double simplex_scale, int simptype, double ftol, const vector <vector <point3d>> &observerpos, const vector <vector <double>> &obsMJD, const vector <vector <double>> &obsRA, const vector <vector <double>> &obsDec, const vector <vector <double>> &sigastrom, double MJDref, int rmspow, int verbose, vector <hlclust> &outclust, int threadct);
@@ -1725,6 +1730,8 @@ int link_dedup2(const vector <hlclust> &inclust, const vector  <longpair> &inclu
 int planepolefind(const vector <point3d> &invecs, point3d &polevec);
 int link_purify(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <hlclust> &inclust, const vector  <longpair> &inclust2det, LinkPurifyConfig config, vector <hlclust> &outclust, vector <longpair> &outclust2det);
 int link_purify2(const vector <hlimage> &image_log, const vector <hldet> &detvec, vector <hlclust> &inclust1, vector  <longpair> &inclust2det1, LinkPurifyConfig config, vector <hlclust> &outclust, vector <longpair> &outclust2det);
+int link_purify_graddec(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <hlclust> &inclust1, const vector  <longpair> &inclust2det1, LinkPurifyConfig config, vector <hlclust> &outclust, vector <longpair> &outclust2det);
+int link_purify_quad1(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <hlclust> &inclust1, const vector  <longpair> &inclust2det1, LinkPurifyConfig config, vector <hlclust> &outclust, vector <longpair> &outclust2det);
 int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <hlclust> &inclust1, const vector  <longpair> &inclust2det1, LinkPurifyConfig config, vector <hlclust> &outclust, vector <longpair> &outclust2det);
 int link_refine_Herget_omp(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <hlclust> &inclust, const vector  <longpair> &inclust2det, LinkRefineConfig config, vector <hlclust> &outclust, vector <longpair> &outclust2det);
 int link_refine_Herget_omp2(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <hlclust> &inclust, const vector  <longpair> &inclust2det, LinkRefineConfig config, vector <hlclust> &outclust, vector <longpair> &outclust2det);

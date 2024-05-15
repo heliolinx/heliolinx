@@ -8718,7 +8718,7 @@ int multilinfit01(const vector <double> &yvec, const vector <vector <double>> &x
   double fitpar=0l;
   vector <double> fitvec;
   vector <vector <double>> fitmat;
-  int pct,fitct,k;
+  int pct,fitct,k,status;
   
   // Load fitmat for input into solvematrix01
   for(fitct=0;fitct<fitnum;fitct++)
@@ -8738,8 +8738,8 @@ int multilinfit01(const vector <double> &yvec, const vector <vector <double>> &x
       }
       fitmat.push_back(fitvec);
     }
-  solvematrix01(fitmat,fitnum,avec,verbose);
-  return(0);
+  status=solvematrix01(fitmat,fitnum,avec,verbose);
+  return(status);
 }
 
 // multilinfit02: June 10, 2022, translated from C on Jan 03, 2023
@@ -14263,6 +14263,7 @@ double Hergetfit01(double geodist1, double geodist2, double simplex_scale, int s
   return(chisq);
 }
 
+#define TRACECONV 0
 // Hergetfit_vstar: April 11, 2023:
 // Like Hergetfit01, but uses Hergetchi_vstar() rather than
 // Hergetchi01(), and hence is able to handle unbound, hyperbolic
@@ -14343,6 +14344,7 @@ double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, i
       worstpoint=i;
     }
   }
+  if(TRACECONV>0) cout << "TRACECONV: " << simplex[bestpoint][0] << " " << simplex[bestpoint][1] << ": " << bestchi << "\n";
   simprange = (worstchi-bestchi)/bestchi;
   if(bestchi>=LARGERR3) {
     cerr << "ERROR: Hergetfit_vstar() launched with no valid simplex points\n";
@@ -14482,6 +14484,7 @@ double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, i
 	worstpoint=i;
       }
     }
+    if(TRACECONV>0) cout << "TRACECONV: " << simplex[bestpoint][0] << " " << simplex[bestpoint][1]  << ": " << bestchi << "\n";
     if(bestchi<global_bestchi) {
       global_bestchi = bestchi;
       global_bestd1 = simplex[bestpoint][0];
@@ -14526,6 +14529,7 @@ double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, i
 	    worstpoint=i;
 	  }
 	}
+	if(TRACECONV>0) cout << "TRACECONV: " << simplex[bestpoint][0] << " " << simplex[bestpoint][1]  << ": " << bestchi << "\n";
 	simprange = (worstchi-bestchi)/bestchi;
 	if(bestchi<global_bestchi) {
 	  global_bestchi = bestchi;
@@ -14541,6 +14545,7 @@ double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, i
   
   // Perform fit with final best parameters
   chisq = Hergetchi_vstar(global_bestd1, global_bestd2, Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, verbose);
+  if(TRACECONV>0) cout << "TRACECONV: " << global_bestd1 << " " << global_bestd2  << ": " << chisq << "\n";
   if(chisq>=LARGERR3) {
     cerr << "WARNING: Hergetchi_vstar() returned error code on final optimized input " << global_bestd1 << ", " << global_bestd2 << "\n";
   }
@@ -14550,6 +14555,724 @@ double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, i
   orbit.push_back(double(simp_total_ct));
   return(chisq);
 }
+
+#define MACHEPS01 2.22e-10l
+#define FIRSTEPFAC 10.0l
+#define MAX_FAILED_STEPS 15 // Max number of steps we can go without any improvement.
+#define MAX_TINY_STEPS 10 // Max number of steps smaller than the derivative step.
+#define CHI_MAXGROW 100000.0
+
+// Hergetfit_graddec: May 09, 2024:
+// Like Hergetfit_vstar(), but uses a gradient descent method,
+// rather than downwhill simplex. Much slower than Hergetfit_vstar(),
+// and therefore may be regarded as an unsuccessful experiment
+// As with Hergetfit_vstar(), uses Hergetchi_vstar() rather than
+// Hergetchi01(), and hence is able to handle unbound, hyperbolic
+// orbits. Performs orbit fitting using the Method of Herget,
+// and a downhill simplex method applied to the 2-dimensional space of
+// geodist1 and geodist2.
+// The vector orbit holds a [0], e [1], mjd [2], and the state vectors [3-8] on
+// return of Hergetchi_vstar(). Hergetfit_vstar pushes back one additional
+// datum: the number of orbit evaluations (~iterations) required
+// to reach convergence [9].
+double Hergetfit_graddec(double geodist1, double geodist2, int point1, int point2, const vector <point3d> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid, vector <double> &orbit, int verbose)
+{
+  int Hergetpoint1, Hergetpoint2;
+  double chisq,chisq1,chisq2,chisq_old;
+  double global_bestchi = LARGERR3;
+  double global_bestd1 = geodist1;
+  double global_bestd2 = geodist2;
+  long i;
+  double dchi_ddist1,dchi_ddist2,dchi_ddist1_old,dchi_ddist2_old;
+  double dist1,dist2,dist1_old,dist2_old;
+  double dd1,dd2;
+  int failedsteps = 0;
+  int tinysteps = 0;
+  double gamma,graddiff;
+  long orb_eval_ct = 0;
+  int badstep=1;
+    
+  // Input points are indexed from 1; apply offset
+  Hergetpoint1 = point1-1;
+  Hergetpoint2 = point2-1;
+
+  if(verbose>=2) {
+    cout << "Herget points: " << Hergetpoint1 << " " << Hergetpoint2 << "\n";
+    for(i=0;i<long(obsMJD.size());i++) {
+      cout << "Input observerpos " << i << ": " << obsMJD[i] << " " << observerpos[i].x << " " << observerpos[i].y << " " << observerpos[i].z << "\n";
+    }
+  }
+
+  // SETUP FOR GRADIENT DESCENT SEARCH
+  dist1 = dist1_old = geodist1;
+  dist2 = dist2_old = geodist2;
+  chisq = chisq_old = Hergetchi_vstar(dist1, dist2, Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, verbose);
+  if(TRACECONV>0) cout << "TRACECONV: " << dist1 << " " << dist2 << "\n";
+  orb_eval_ct++;
+  if(chisq<global_bestchi) {
+    global_bestchi = chisq;
+    global_bestd1 = dist1;
+    global_bestd2 = dist2;
+  }
+  if(chisq>=LARGERR3) {
+    cerr << "ERROR: Hergetchi_vstar failed inside Hergetfit_graddec on distance values " << dist1 << ", " << dist2 << "\n";
+    return(LARGERR3);
+  }
+  // derivative with respect to dist1
+  dd1 = dist1*sqrt(MACHEPS01);
+  chisq1 = Hergetchi_vstar(dist1+dd1, dist2, Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, verbose);
+  orb_eval_ct++;
+  dchi_ddist1 = dchi_ddist1_old = (chisq1-chisq)/dd1;
+  if(chisq1>=LARGERR3) {
+    cerr << "ERROR: Hergetchi_vstar failed inside Hergetfit_graddec on distance values " << dist1+dd1 << ", " << dist2 << "\n";
+    return(LARGERR3);
+  }
+
+  // derivative with respect to dist2
+  dd2 = dist2*sqrt(MACHEPS01);
+  chisq2 = Hergetchi_vstar(dist1, dist2+dd2, Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, verbose);
+  orb_eval_ct++;
+  dchi_ddist2 = dchi_ddist2_old = (chisq2-chisq)/dd2;
+  if(chisq2>=LARGERR3) {
+    cerr << "ERROR: Hergetchi_vstar failed inside Hergetfit_graddec on distance values " << dist1 << ", " << dist2+dd2 << "\n";
+    return(LARGERR3);
+  }
+
+  // Take a step that is larger than the derivative differential by the factor FIRSTEPFAC
+  dist1 += FIRSTEPFAC*dd1*(-dchi_ddist1)/sqrt(dchi_ddist1*dchi_ddist1 + dchi_ddist2*dchi_ddist2);
+  dist2 += FIRSTEPFAC*dd2*(-dchi_ddist2)/sqrt(dchi_ddist1*dchi_ddist1 + dchi_ddist2*dchi_ddist2);
+
+  // Calculate the new chi-squared value
+  chisq = Hergetchi_vstar(dist1, dist2, Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, verbose);
+  if(TRACECONV>0) cout << "TRACECONV: " << dist1 << " " << dist2 << "\n";
+  orb_eval_ct++;
+  if(chisq<global_bestchi) {
+    global_bestchi = chisq;
+    global_bestd1 = dist1;
+    global_bestd2 = dist2;
+  }
+  if(chisq>=LARGERR3) {
+    cerr << "ERROR: Hergetchi_vstar failed inside Hergetfit_graddec on distance values " << dist1 << ", " << dist2 << "\n";
+    return(LARGERR3);
+  }
+
+  // derivative with respect to dist1
+  dd1 = dist1*sqrt(MACHEPS01);
+  chisq1 = Hergetchi_vstar(dist1+dd1, dist2, Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, verbose);
+  orb_eval_ct++;
+  dchi_ddist1 = (chisq1-chisq)/dd1;
+
+  // derivative with respect to dist2
+  dd2 = dist2*sqrt(MACHEPS01);
+  chisq2 = Hergetchi_vstar(dist1, dist2+dd2, Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, verbose);
+  orb_eval_ct++;
+  dchi_ddist2 = (chisq2-chisq)/dd2;
+
+  // Now, with two steps in hand, begin regular iteration to converge on best fit.
+  failedsteps = 0;
+  tinysteps = 0;
+  while(failedsteps<=MAX_FAILED_STEPS && tinysteps<=MAX_TINY_STEPS && orb_eval_ct<= SIMP_MAXCT_TOTAL) {
+    graddiff = DSQUARE(dchi_ddist1 - dchi_ddist1_old) + DSQUARE(dchi_ddist2 - dchi_ddist2_old);
+    gamma = fabs((dist1-dist1_old)*(dchi_ddist1 - dchi_ddist1_old) + (dist2-dist2_old)*(dchi_ddist2 - dchi_ddist2_old));
+    dist1_old = dist1;
+    dist2_old = dist2;
+    dchi_ddist1_old = dchi_ddist1;
+    dchi_ddist2_old = dchi_ddist2;
+    chisq_old = chisq;
+    if(graddiff>0.0l && gamma!=0.0l) {
+      gamma/=graddiff;
+    } else {
+      // The attempted calculation of a Barzilai-Borwein step produced zero or NAN.
+      // Fall back on my initial prescription for the step size.
+      gamma = FIRSTEPFAC*(0.5*dist1+0.5*dist2)*sqrt(MACHEPS01)/sqrt(dchi_ddist1*dchi_ddist1 + dchi_ddist2*dchi_ddist2);
+    }
+    badstep=1;
+    failedsteps=0;
+    while(badstep==1 && failedsteps<=MAX_FAILED_STEPS) {
+      badstep=0; // Innocent until proven guilty.
+      dist1 += gamma*(-dchi_ddist1);
+      dist2 += gamma*(-dchi_ddist2);
+      chisq = Hergetchi_vstar(dist1, dist2, Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, verbose);
+      if(TRACECONV>0) cout << "TRACECONV: " << dist1 << " " << dist2 << "\n";
+      if(chisq<global_bestchi) {
+	global_bestchi = chisq;
+	global_bestd1 = dist1;
+	global_bestd2 = dist2;
+      }
+      orb_eval_ct++;
+      if(chisq>=LARGERR3) {
+	cerr << "ERROR: Hergetchi_vstar failed inside Hergetfit_graddec on distance values " << dist1 << ", " << dist2 << "\n";
+	return(LARGERR3);
+      }
+      if(chisq>chisq_old*CHI_MAXGROW) {
+	// The fit got worse. Make the step size smaller.
+	gamma/=2.0l;
+	failedsteps++;
+	badstep=1;
+      }
+    }
+    if(sqrt(DSQUARE(dist1-dist1_old)+DSQUARE(dist2-dist2_old)) < (0.5*dist1+0.5*dist2)*sqrt(MACHEPS01)) {
+      // The last step was so small it might be diddled by roundoff.
+      // Count how many times this has happened, because it's a failure condition
+      tinysteps++;
+    } else {
+      // The last step size was fine. Zero out tinysteps, so that it
+      // does not become cumulative.
+      tinysteps=0;
+    }
+    // We have apparently made a successful step of some sort. Calculate derivatives again.
+    // derivative with respect to dist1
+    dd1 = dist1*sqrt(MACHEPS01);
+    chisq1 = Hergetchi_vstar(dist1+dd1, dist2, Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, verbose);
+    orb_eval_ct++;
+    if(chisq1>=LARGERR3) {
+      cerr << "ERROR: Hergetchi_vstar failed inside Hergetfit_graddec on distance values " << dist1+dd1 << ", " << dist2 << "\n";
+      return(LARGERR3);
+    }
+    dchi_ddist1 = (chisq1-chisq)/dd1;
+    // derivative with respect to dist2
+    dd2 = dist2*sqrt(MACHEPS01);
+    chisq2 = Hergetchi_vstar(dist1, dist2+dd2, Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, verbose);
+    orb_eval_ct++;
+    if(chisq2>=LARGERR3) {
+      cerr << "ERROR: Hergetchi_vstar failed inside Hergetfit_graddec on distance values " << dist1 << ", " << dist2+dd2 << "\n";
+      return(LARGERR3);
+    }
+    dchi_ddist2 = (chisq2-chisq)/dd2;
+  }
+  
+  // Perform fit with final best parameters
+  chisq = Hergetchi_vstar(global_bestd1, global_bestd2, Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, verbose);
+  if(TRACECONV>0) cout << "TRACECONV: " << global_bestd1 << " " << global_bestd2 << "\n";
+  orb_eval_ct++;
+  if(chisq>=LARGERR3) {
+    cerr << "WARNING: Hergetchi_vstar() returned error code on final optimized input " << global_bestd1 << ", " << global_bestd2 << "\n";
+    return(LARGERR3);
+  }
+  
+  if(verbose>0) cout << fixed << setprecision(6) << "Best chi/N " << global_bestchi/obsMJD.size() << ", geodists " << global_bestd1 << " and " << global_bestd2 << " orbit a, e = " << orbit[0]/AU_KM << ", " << orbit[1];
+
+  orbit.push_back(double(orb_eval_ct));
+  return(chisq);
+}
+
+
+// Hergetfit_quad1: May 13, 2024:
+// Like Hergetfit_vstar(), but uses a quadratic fit
+// rather than downwhill simplex. Appears to be about 4 times
+// slower than Hergetfit_vstar(), on average, in preliminary tests,
+// and therefore may be regarded as an unsuccessful experiment
+// As with Hergetfit_vstar(), uses Hergetchi_vstar() rather than
+// Hergetchi01(), and hence is able to handle unbound, hyperbolic
+// orbits. Performs orbit fitting using the Method of Herget,
+// and a downhill simplex method applied to the 2-dimensional space of
+// geodist1 and geodist2.
+// The vector orbit holds a [0], e [1], mjd [2], and the state vectors [3-8] on
+// return of Hergetchi_vstar(). Hergetfit_vstar pushes back one additional
+// datum: the number of orbit evaluations (~iterations) required
+// to reach convergence [9].
+double Hergetfit_quad1(double geodist1, double geodist2, double stepsize, double ftol, int point1, int point2, const vector <point3d> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid, vector <double> &orbit, int verbose)
+{
+  int Hergetpoint1, Hergetpoint2;
+  double chisq_pred,bestchi;
+  double global_bestchi = LARGERR3;
+  double global_bestd1 = geodist1;
+  double global_bestd2 = geodist2;
+  long i;
+  int bestpoint=0;
+  vector <double> dist1vec6;
+  vector <double> dist2vec6;
+  vector <double> chivec6;
+  vector <double> tempchi;
+  vector <double> fitvec;
+  vector <vector <double>> xmat6;
+  make_dvec(6,dist1vec6);
+  make_dvec(6,dist2vec6);
+  make_dvec(6,chivec6);
+  make_dvec(6,fitvec);
+  make_dvec(3,tempchi);
+  tempchi[0] = LARGERR3;
+  tempchi[1] = tempchi[0]/10.0l;
+  tempchi[2] = tempchi[1]/10.0l;
+  double tempmin,tempmax;
+  make_dmat(6,6,xmat6);
+  double dist1;
+  double dist2;
+  int badfit=0;
+  int status=0;
+  double chirange = LARGERR3;
+  long total_evalct=0;
+  double dchi_dd1,dchi_dd2;
+  double dchi_dd1B,dchi_dd2B;
+  double d2chi_dd1,d2chi_dd2,d2chi_dd3,d2chi_dd4;
+  double gdstep,gdstep1,gdstep2,gradabs,abs2ndpartial;
+  double x,y;
+
+  
+  // Input points are indexed from 1; apply offset
+  Hergetpoint1 = point1-1;
+  Hergetpoint2 = point2-1;
+
+  if(verbose>=2) {
+    cout << "Herget points: " << Hergetpoint1 << " " << Hergetpoint2 << "\n";
+    for(i=0;i<long(obsMJD.size());i++) {
+      cout << "Input observerpos " << i << ": " << obsMJD[i] << " " << observerpos[i].x << " " << observerpos[i].y << " " << observerpos[i].z << "\n";
+    }
+  }
+
+  // SETUP FOR QUADRATIC FIT
+  dist1vec6[0] = geodist1;
+  dist2vec6[0] = geodist2;
+  dist1vec6[1] = dist1vec6[0] + stepsize;
+  dist2vec6[1] = dist2vec6[0];
+  dist1vec6[2] = dist1vec6[0];
+  dist2vec6[2] = dist2vec6[0] + stepsize;
+  dist1vec6[3] = dist1vec6[0] + 3.0l*stepsize;
+  dist2vec6[3] = dist2vec6[0];
+  dist1vec6[4] = dist1vec6[0];
+  dist2vec6[4] = dist2vec6[0] + 3.0l*stepsize;
+  dist1vec6[5] = dist1vec6[0] - 2.0l*stepsize;
+  dist2vec6[5] = dist2vec6[0] - 2.0l*stepsize;
+
+  badfit=0;
+  for(i=0;i<6;i++) {
+    chivec6[i] = Hergetchi_vstar(dist1vec6[i], dist2vec6[i], Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, verbose);
+    if(TRACECONV) cout << "TRACECONV PATTERN, LAUNCH: " << dist1vec6[i] << " " << dist2vec6[i] << ": " << chivec6[i] << "\n";
+    total_evalct++;
+    if(chivec6[i]>=LARGERR3) badfit+=1;
+  }
+  if(badfit==6) {
+    // All input points were bad. Give up.
+    return(LARGERR3);
+  } while(badfit>0) {
+    // Shrink around best point.
+    bestpoint=0;
+    bestchi = chivec6[0];
+    for(i=1;i<6;i++) {
+      if(chivec6[i]<bestchi) {
+	bestchi = chivec6[i];
+	bestpoint=i;
+      }
+    }
+    stepsize/=QUADCONV_FACTOR;
+    badfit=0;
+    dist1vec6[0] = dist1vec6[bestpoint];
+    dist2vec6[0] = dist2vec6[bestpoint];
+    dist1vec6[1] = dist1vec6[0] + stepsize;
+    dist2vec6[1] = dist2vec6[0];
+    dist1vec6[2] = dist1vec6[0];
+    dist2vec6[2] = dist2vec6[0] + stepsize;
+    dist1vec6[3] = dist1vec6[0] + 3.0l*stepsize;
+    dist2vec6[3] = dist2vec6[0];
+    dist1vec6[4] = dist1vec6[0];
+    dist2vec6[4] = dist2vec6[0] + 3.0l*stepsize;
+    dist1vec6[5] = dist1vec6[0] - 2.0l*stepsize;
+    dist2vec6[5] = dist2vec6[0] - 2.0l*stepsize;
+    for(i=0;i<6;i++) {
+      chivec6[i] = Hergetchi_vstar(dist1vec6[i], dist2vec6[i], Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, verbose);
+      if(TRACECONV) cout << "TRACECONV PATTERN, BADLAUNCH: " << dist1vec6[i] << " " << dist2vec6[i] << ": " << chivec6[i] << "\n";
+      total_evalct++;
+      if(chivec6[i]>=LARGERR3) badfit+=1;
+    }
+  }
+  // Identify best point
+  bestpoint=0;
+  bestchi = chivec6[0];
+  for(i=1;i<6;i++) {
+    if(chivec6[i]<bestchi) {
+      bestchi = chivec6[i];
+      bestpoint=i;
+    }
+  }
+  global_bestchi = bestchi;
+  global_bestd1 = dist1vec6[bestpoint];
+  global_bestd2 = dist2vec6[bestpoint];
+  tempchi[2] = tempchi[1];
+  tempchi[1] = tempchi[0];
+  tempchi[0] = bestchi;
+  
+  // BEGIN MAIN LOOP. THIS LOOP STARTS BY DOING A QUADRATIC FIT,
+  // SO, AT THE START OF EACH CYCLE, dist1vec6, dist2vec6, and chivec6,
+  // MUST ALL BE LOADED WITH NUMBERS CORRESPONDING TO VALID ORBITS
+  while(chirange>ftol && total_evalct <= SIMP_MAXCT_TOTAL) {
+    // Perform 2-D quadratic fit, x=dist1, y = dist2.
+    for(i=0;i<6;i++) {
+      x = dist1vec6[i]-dist1vec6[bestpoint];
+      y = dist2vec6[i]-dist2vec6[bestpoint];
+     // constant term
+      xmat6[0][i] = 1.0l;
+      // x and y
+      xmat6[1][i] = x;
+      xmat6[2][i] = y;
+      // x^2, xy, and y^2
+      xmat6[3][i] = x*x;
+      xmat6[4][i] = x*y;
+      xmat6[5][i] = y*y;
+      //cout << chivec6[i] << ": " << xmat6[0][i] << " " <<  xmat6[1][i] << " " <<  xmat6[2][i] << " " <<  xmat6[3][i] << " " <<  xmat6[4][i] << " " <<  xmat6[5][i] << "\n";
+    }
+    status=multilinfit01(chivec6, xmat6, 6, 6, fitvec, 0);
+    if(TRACECONV) cout << "TRACECONV FIT: " << fitvec[0] << " " << fitvec[1] << " " << fitvec[2] << " " << fitvec[3] << " " << fitvec[4] << " " << fitvec[5] << "\n";
+    if(status!=0) return(LARGERR3);
+    // Solve for the point where the partial derivatives drop to zero (hopefully a minimum)
+    x = (2.0l*fitvec[5]*fitvec[1] - fitvec[2]*fitvec[4])/(fitvec[4]*fitvec[4] - 4.0l*fitvec[5]*fitvec[3]);
+    y = (2.0l*fitvec[3]*fitvec[2] - fitvec[4]*fitvec[1])/(fitvec[4]*fitvec[4] - 4.0l*fitvec[5]*fitvec[3]);
+    dist1 = dist1vec6[bestpoint] + x;
+    dist2 = dist2vec6[bestpoint] + y;
+    // Use the fit to predict the actual chi-square value at this point.
+    chisq_pred = fitvec[0] + fitvec[1]*x + fitvec[2]*y + fitvec[3]*x*x + fitvec[4]*x*y + fitvec[5]*y*y;
+    if(TRACECONV) cout << "TRACECONV PRED: " << dist1 << " " << dist2 << ": " << chisq_pred << " vs. " << bestchi << "\n";
+    if(chisq_pred <= bestchi && dist1>0.0l && dist2>0.0l && isnormal(dist1) && isnormal(dist2)) {
+      // The point we have solved for is really a minimum of the quadratic approximation.
+      if(dist1 > dist1vec6[0]-2.0l*stepsize && dist1 < dist1vec6[0] + 3.0l*stepsize && dist2 > dist2vec6[0]-2.0l*stepsize && dist2 < dist2vec6[0] + 3.0l*stepsize) {
+	// The point we have solved for is inside the fitting pattern,
+	// so we should make the pattern smaller for the next iteration.
+	stepsize/=QUADCONV_FACTOR;
+      }
+      // Generate new fitting pattern, referenced from the minimum of the quadratic fit.
+      dist1vec6[0] = dist1;
+      dist2vec6[0] = dist2;
+      dist1vec6[1] = dist1vec6[0] + stepsize;
+      dist2vec6[1] = dist2vec6[0];
+      dist1vec6[2] = dist1vec6[0];
+      dist2vec6[2] = dist2vec6[0] + stepsize;
+      dist1vec6[3] = dist1vec6[0] + 3.0l*stepsize;
+      dist2vec6[3] = dist2vec6[0];
+      dist1vec6[4] = dist1vec6[0];
+      dist2vec6[4] = dist2vec6[0] + 3.0l*stepsize;
+      dist1vec6[5] = dist1vec6[0] - 2.0l*stepsize;
+      dist2vec6[5] = dist2vec6[0] - 2.0l*stepsize;
+
+      badfit=0;
+      for(i=0;i<6;i++) {
+	chivec6[i] = Hergetchi_vstar(dist1vec6[i], dist2vec6[i], Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, verbose);
+	if(TRACECONV) cout << "TRACECONV PATTERN, LOOP: " << dist1vec6[i] << " " << dist2vec6[i] << ": " << chivec6[i] << "\n";
+	total_evalct++;
+	if(i==0 || chivec6[i]<bestchi) {
+	  bestchi = chivec6[i];
+	  bestpoint=i;
+	}
+	if(chivec6[i]>=LARGERR3) badfit+=1;
+      }
+      if(badfit==0) {
+	// Test for convergence
+	tempchi[2] = tempchi[1];
+	tempchi[1] = tempchi[0];
+	tempchi[0] = bestchi;
+	tempmin = tempmax = global_bestchi;
+	for(i=0;i<3;i++) {
+	  if(tempchi[i]<tempmin) tempmin = tempchi[i];
+	  if(tempchi[i]>tempmax) tempmax = tempchi[i];
+	}
+	chirange = 2.0l*(tempmax-tempmin)/(tempmax+tempmin);
+      }
+      if(bestchi<global_bestchi) {
+	global_bestchi = bestchi;
+	global_bestd1 = dist1vec6[bestpoint];
+	global_bestd2 = dist2vec6[bestpoint];
+      }
+      if(badfit==6 && global_bestchi>=LARGERR3) {
+	// All input points were bad. Give up.
+	return(LARGERR3);
+      } while(badfit>0) {
+	// Shrink around best point.
+	stepsize/=QUADCONV_FACTOR;
+	badfit=0;
+	dist1vec6[0] = dist1vec6[bestpoint];
+	dist2vec6[0] = dist2vec6[bestpoint];
+	dist1vec6[1] = dist1vec6[0] + stepsize;
+	dist2vec6[1] = dist2vec6[0];
+	dist1vec6[2] = dist1vec6[0];
+	dist2vec6[2] = dist2vec6[0] + stepsize;
+	dist1vec6[3] = dist1vec6[0] + 3.0l*stepsize;
+	dist2vec6[3] = dist2vec6[0];
+	dist1vec6[4] = dist1vec6[0];
+	dist2vec6[4] = dist2vec6[0] + 3.0l*stepsize;
+	dist1vec6[5] = dist1vec6[0] - 2.0l*stepsize;
+	dist2vec6[5] = dist2vec6[0] - 2.0l*stepsize;
+	for(i=0;i<6;i++) {
+	  chivec6[i] = Hergetchi_vstar(dist1vec6[i], dist2vec6[i], Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, verbose);
+	  if(TRACECONV) cout << "TRACECONV PATTERN, BADLOOP: " << dist1vec6[i] << " " << dist2vec6[i] << ": " << chivec6[i] << "\n";
+	  total_evalct++;
+	  if(i==0 || chivec6[i]<bestchi) {
+	    bestchi = chivec6[i];
+	    bestpoint=i;
+	  }
+	  if(chivec6[i]>=LARGERR3) badfit+=1;
+	}
+	if(badfit==0) {
+	  // Test for convergence
+	  tempchi[2] = tempchi[1];
+	  tempchi[1] = tempchi[0];
+	  tempchi[0] = bestchi;
+	  tempmin = tempmax = global_bestchi;
+	  for(i=0;i<3;i++) {
+	    if(tempchi[i]<tempmin) tempmin = tempchi[i];
+	    if(tempchi[i]>tempmax) tempmax = tempchi[i];
+	  }
+	  chirange = 2.0l*(tempmax-tempmin)/(tempmax+tempmin);
+	}
+	if(bestchi<global_bestchi) {
+	  global_bestchi = bestchi;
+	  global_bestd1 = dist1vec6[bestpoint];
+	  global_bestd2 = dist2vec6[bestpoint];
+	}
+      }
+    } else {
+      // The quadratic fit did not produce sensible results.
+      // Perform a gradient descent step instead.
+      dchi_dd1 = (chivec6[1]-chivec6[0])/(dist1vec6[1] - dist1vec6[0]);
+      dchi_dd2 = (chivec6[2]-chivec6[0])/(dist2vec6[2] - dist2vec6[0]);
+      dchi_dd1B = (chivec6[3]-chivec6[1])/(dist1vec6[3] - dist1vec6[1]);
+      dchi_dd2B = (chivec6[4]-chivec6[2])/(dist2vec6[4] - dist2vec6[2]);
+      
+      d2chi_dd1 = 2.0l*(dchi_dd1B-dchi_dd1)/(dist1vec6[3] - dist1vec6[0]);
+      d2chi_dd2 = 2.0l*(dchi_dd2B - dchi_dd2)/(dist2vec6[4] - dist2vec6[0]);
+      d2chi_dd3 = 2.0l*(dchi_dd1B - dchi_dd1)/(dist2vec6[4] - dist2vec6[0]);
+      d2chi_dd4 = 2.0l*(dchi_dd2B-dchi_dd2)/(dist1vec6[3] - dist1vec6[0]);
+
+      // The step will be whichever is smaller of the characteristic range for
+      // change in the gradient, or the characteristic range in the chi-square value itself.
+      // Calculate characteristic range for the gradient: absolute value of
+      // the gradient divided by the quadrature-sum of all four partial derivatives
+      gradabs = sqrt(dchi_dd1*dchi_dd1 + dchi_dd2*dchi_dd2);
+      abs2ndpartial = sqrt(d2chi_dd1*d2chi_dd1 + d2chi_dd2*d2chi_dd2 + d2chi_dd3*d2chi_dd3 + d2chi_dd4*d2chi_dd4);
+      gdstep = gdstep1 = gdstep2 = 0.0l;
+      gdstep1 = gradabs/abs2ndpartial; // Characteristic range for the gradient
+      gdstep2 = chivec6[0]/gradabs; // Characteristic range for the chi-square value itself.
+      if(isnormal(gdstep1) || isnormal(gdstep2)) {
+	// At least one of the steps is viable.
+	if(!isnormal(gdstep1)) gdstep = gdstep2;
+	else if(!isnormal(gdstep2)) gdstep = gdstep1;
+	else { // They are both OK, choose the smaller one
+	  if(gdstep1<=gdstep2) gdstep=gdstep1;
+	  else gdstep = gdstep2;
+	}
+	// Move a distance gdstep in the counter-gradient direction
+	dist1 = dist1vec6[0] + gdstep*(-dchi_dd1)/gradabs;
+	dist2 = dist2vec6[0] + gdstep*(-dchi_dd2)/gradabs;
+	// Calculate the chi square value here.
+	chivec6[0] = Hergetchi_vstar(dist1,dist2, Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, verbose);
+	if(TRACECONV) cout << "TRACECONV GDRESCUE: " << dist1 << " " << dist2 << ": " << chivec6[0] << "\n";
+    
+	total_evalct++;
+	while(chivec6[0]>=LARGERR3 && total_evalct <= SIMP_MAXCT_TOTAL) {
+	  // The new location didn't yield a valid fit. Try a smaller step in the same direction.
+	  gdstep/=2.0l;
+	  dist1 = dist1vec6[0] + gdstep*(-dchi_dd1)/gradabs;
+	  dist2 = dist2vec6[0] + gdstep*(-dchi_dd2)/gradabs;
+	  chivec6[0] = Hergetchi_vstar(dist1,dist2, Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, verbose);
+	  if(TRACECONV) cout << "TRACECONV BAD GDRESCUE: " << dist1 << " " << dist2 << ": " << chivec6[0] << "\n";
+	  total_evalct++;
+	}
+	// If we get here, we should have a valid fit. Load the new fitting pattern.
+	dist1vec6[0] = dist1;
+	dist2vec6[0] = dist2;
+	dist1vec6[1] = dist1vec6[0] + stepsize;
+	dist2vec6[1] = dist2vec6[0];
+	dist1vec6[2] = dist1vec6[0];
+	dist2vec6[2] = dist2vec6[0] + stepsize;
+	dist1vec6[3] = dist1vec6[0] + 3.0l*stepsize;
+	dist2vec6[3] = dist2vec6[0];
+	dist1vec6[4] = dist1vec6[0];
+	dist2vec6[4] = dist2vec6[0] + 3.0l*stepsize;
+	dist1vec6[5] = dist1vec6[0] - 2.0l*stepsize;
+	dist2vec6[5] = dist2vec6[0] - 2.0l*stepsize;
+
+	bestchi = chivec6[0];
+	bestpoint=0;
+	badfit=0;
+	for(i=1;i<6;i++) {
+	  chivec6[i] = Hergetchi_vstar(dist1vec6[i], dist2vec6[i], Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, verbose);
+	  if(TRACECONV) cout << "TRACECONV PATTERN GD: " << dist1vec6[i] << " " << dist2vec6[i] << ": " << chivec6[i] << "\n";
+	  total_evalct++;
+	  if(chivec6[i]<bestchi) {
+	    bestchi = chivec6[i];
+	    bestpoint=i;
+	  }
+	  if(chivec6[i]>=LARGERR3) badfit+=1;
+	}
+	if(badfit==0) {
+	  // Test for convergence
+	  tempchi[2] = tempchi[1];
+	  tempchi[1] = tempchi[0];
+	  tempchi[0] = bestchi;
+	  tempmin = tempmax = global_bestchi;
+	  for(i=0;i<3;i++) {
+	    if(tempchi[i]<tempmin) tempmin = tempchi[i];
+	    if(tempchi[i]>tempmax) tempmax = tempchi[i];
+	  }
+	  chirange = 2.0l*(tempmax-tempmin)/(tempmax+tempmin);
+	}
+	if(bestchi<global_bestchi) {
+	  global_bestchi = bestchi;
+	  global_bestd1 = dist1vec6[bestpoint];
+	  global_bestd2 = dist2vec6[bestpoint];
+	}
+	if(badfit==6 && global_bestchi>=LARGERR3) {
+	  // All input points were bad. Give up.
+	  return(LARGERR3);
+	}
+	while(badfit>0) {
+	  // Shrink around best point.
+	  stepsize/=QUADCONV_FACTOR;
+	  badfit=0;
+	  dist1vec6[0] = dist1vec6[bestpoint];
+	  dist2vec6[0] = dist2vec6[bestpoint];
+	  dist1vec6[1] = dist1vec6[0] + stepsize;
+	  dist2vec6[1] = dist2vec6[0];
+	  dist1vec6[2] = dist1vec6[0];
+	  dist2vec6[2] = dist2vec6[0] + stepsize;
+	  dist1vec6[3] = dist1vec6[0] + 3.0l*stepsize;
+	  dist2vec6[3] = dist2vec6[0];
+	  dist1vec6[4] = dist1vec6[0];
+	  dist2vec6[4] = dist2vec6[0] + 3.0l*stepsize;
+	  dist1vec6[5] = dist1vec6[0] - 2.0l*stepsize;
+	  dist2vec6[5] = dist2vec6[0] - 2.0l*stepsize;
+	  for(i=0;i<6;i++) {
+	    chivec6[i] = Hergetchi_vstar(dist1vec6[i], dist2vec6[i], Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, verbose);
+	    if(TRACECONV) cout << "TRACECONV PATTERN GDBAD: " << dist1vec6[i] << " " << dist2vec6[i] << ": " << chivec6[i] << "\n";
+	    total_evalct++;
+	    if(i==0 || chivec6[i]<bestchi) {
+	      bestchi = chivec6[i];
+	      bestpoint=i;
+	    }
+	    if(chivec6[i]>=LARGERR3) badfit+=1;
+	  }
+	  if(badfit==0) {
+	    // Test for convergence
+	    tempchi[2] = tempchi[1];
+	    tempchi[1] = tempchi[0];
+	    tempchi[0] = bestchi;
+	    tempmin = tempmax = global_bestchi;
+	    for(i=0;i<3;i++) {
+	      if(tempchi[i]<tempmin) tempmin = tempchi[i];
+	      if(tempchi[i]>tempmax) tempmax = tempchi[i];
+	    }
+	    chirange = 2.0l*(tempmax-tempmin)/(tempmax+tempmin);
+	  }
+	  if(bestchi<global_bestchi) {
+	    global_bestchi = bestchi;
+	    global_bestd1 = dist1vec6[bestpoint];
+	    global_bestd2 = dist2vec6[bestpoint];
+	  }
+	}
+      }
+      if(!isnormal(gdstep1) && !isnormal(gdstep2)) {
+	// None of the numbers made sense. If there is any good value, revert to it.
+	if(global_bestchi<LARGERR3) {
+	  dist1vec6[0] = global_bestd1;
+	  dist2vec6[0] = global_bestd2;
+	  dist1vec6[1] = dist1vec6[0] + stepsize;
+	  dist2vec6[1] = dist2vec6[0];
+	  dist1vec6[2] = dist1vec6[0];
+	  dist2vec6[2] = dist2vec6[0] + stepsize;
+	  dist1vec6[3] = dist1vec6[0] + 3.0l*stepsize;
+	  dist2vec6[3] = dist2vec6[0];
+	  dist1vec6[4] = dist1vec6[0];
+	  dist2vec6[4] = dist2vec6[0] + 3.0l*stepsize;
+	  dist1vec6[5] = dist1vec6[0] - 2.0l*stepsize;
+	  dist2vec6[5] = dist2vec6[0] - 2.0l*stepsize;
+	  for(i=0;i<6;i++) {
+	    chivec6[i] = Hergetchi_vstar(dist1vec6[i], dist2vec6[i], Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, verbose);
+	    if(TRACECONV) cout << "TRACECONV PATTERN, LASTDITCH: " << dist1vec6[i] << " " << dist2vec6[i] << ": " << chivec6[i] << "\n";
+	    total_evalct++;
+	    if(i==0 || chivec6[i]<bestchi) {
+	      bestchi = chivec6[i];
+	      bestpoint=i;
+	    }
+	    if(chivec6[i]>=LARGERR3) badfit+=1;
+	  }
+	  if(badfit==0) {
+	    // Test for convergence
+	    tempchi[2] = tempchi[1];
+	    tempchi[1] = tempchi[0];
+	    tempchi[0] = bestchi;
+	    tempmin = tempmax = global_bestchi;
+	    for(i=0;i<3;i++) {
+	      if(tempchi[i]<tempmin) tempmin = tempchi[i];
+	      if(tempchi[i]>tempmax) tempmax = tempchi[i];
+	    }
+	    chirange = 2.0l*(tempmax-tempmin)/(tempmax+tempmin);
+	  }
+	  if(bestchi<global_bestchi) {
+	    global_bestchi = bestchi;
+	    global_bestd1 = dist1vec6[bestpoint];
+	    global_bestd2 = dist2vec6[bestpoint];
+	  }
+	  while(badfit>0) {
+	    // Shrink around best point.
+	    stepsize/=QUADCONV_FACTOR;
+	    badfit=0;
+	    dist1vec6[0] = dist1vec6[bestpoint];
+	    dist2vec6[0] = dist2vec6[bestpoint];
+	    dist1vec6[1] = dist1vec6[0] + stepsize;
+	    dist2vec6[1] = dist2vec6[0];
+	    dist1vec6[2] = dist1vec6[0];
+	    dist2vec6[2] = dist2vec6[0] + stepsize;
+	    dist1vec6[3] = dist1vec6[0] + 3.0l*stepsize;
+	    dist2vec6[3] = dist2vec6[0];
+	    dist1vec6[4] = dist1vec6[0];
+	    dist2vec6[4] = dist2vec6[0] + 3.0l*stepsize;
+	    dist1vec6[5] = dist1vec6[0] - 2.0l*stepsize;
+	    dist2vec6[5] = dist2vec6[0] - 2.0l*stepsize;
+	    for(i=0;i<6;i++) {
+	      chivec6[i] = Hergetchi_vstar(dist1vec6[i], dist2vec6[i], Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, verbose);
+	      if(TRACECONV) cout << "TRACECONV PATTERN, LAST DITCH BAD: " << dist1vec6[i] << " " << dist2vec6[i] << ": " << chivec6[i] << "\n";
+
+	      total_evalct++;
+	      if(i==0 || chivec6[i]<bestchi) {
+		bestchi = chivec6[i];
+		bestpoint=i;
+	      }
+	      if(chivec6[i]>=LARGERR3) badfit+=1;
+	    }
+	    if(badfit==0) {
+	      // Test for convergence
+	      tempchi[2] = tempchi[1];
+	      tempchi[1] = tempchi[0];
+	      tempchi[0] = bestchi;
+	      tempmin = tempmax = global_bestchi;
+	      for(i=0;i<3;i++) {
+		if(tempchi[i]<tempmin) tempmin = tempchi[i];
+		if(tempchi[i]>tempmax) tempmax = tempchi[i];
+	      }
+	      chirange = 2.0l*(tempmax-tempmin)/(tempmax+tempmin);
+	    }
+	    if(bestchi<global_bestchi) {
+	      global_bestchi = bestchi;
+	      global_bestd1 = dist1vec6[bestpoint];
+	      global_bestd2 = dist2vec6[bestpoint];
+	    }
+	  }
+	  // Close last viable attempt, in which we revert to global_bestchi
+	} else {
+	  // We couldn't find any reasonable fit anywhere
+	  cerr << "ERROR: Hergetfit_quad1 failed to find any reasonable orbits\n";
+	  return(LARGERR3);
+	}
+      }
+      // Close the case where we had to revert to gradient descent.
+    }
+    // Close main while loop.
+  }
+
+  // Perform fit with final best parameters
+  chivec6[0] = Hergetchi_vstar(global_bestd1, global_bestd2, Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, verbose);
+  if(TRACECONV) cout << "TRACECONV FINAL: " << global_bestd1 << " " << global_bestd2 << ": " << chivec6[0] << "\n";
+
+  total_evalct++;
+  if(chivec6[0]>=LARGERR3) {
+    cerr << "WARNING: Hergetchi_vstar() returned error code on final optimized input " << global_bestd1 << ", " << global_bestd2 << "\n";
+    return(LARGERR3);
+  }
+  
+  if(verbose>0) cout << fixed << setprecision(6) << "Best chi/N " << global_bestchi/obsMJD.size() << ", geodists " << global_bestd1 << " and " << global_bestd2 << " orbit a, e = " << orbit[0]/AU_KM << ", " << orbit[1];
+
+  orbit.push_back(double(total_evalct));
+  return(chivec6[0]);
+}
+
+
 
 #define ESCAPE_SCALE 0.99l // If the input velocity is above escape velocity, we
                            // scale it down by this amount.
@@ -23539,7 +24262,7 @@ int form_clusters_kd4(const vector <point6ix2> &allstatevecs, const vector <hlde
 	  newclusterct++;
 	}
       }
-      if(verbose>=0) cout << "Final deduplicated total is " << newclusterct << " distinguishable linkages\n";
+      if(verbose>=0) cout << "Deduplicated total for this hypothesis: " << newclusterct << " distinguishable linkages\n";
       return(0);
     } else {
       cerr << "ERROR: the lengths of the vectors outclust2 and lpvec are not the same!\n";
@@ -23877,7 +24600,7 @@ int form_clusters_RR(const vector <point6ix2> &allstatevecs, const vector <hldet
 	  newclusterct++;
 	}
       }
-      if(verbose>=0) cout << "Final deduplicated total is " << newclusterct << " distinguishable linkages\n";
+      if(verbose>=0) cout << "Deduplicated total for this hypothesis: " << newclusterct << " distinguishable linkages\n";
       return(0);
     } else {
       cerr << "ERROR: the lengths of the vectors outclust2 and lpvec are not the same!\n";
@@ -25526,7 +26249,7 @@ int heliolinc_alg_ompkd4(const vector <hlimage> &image_log, const vector <hldet>
     outclust[i].reference_MJD = config.MJDref;
   }
   clust2det = outclust2det2;
-  cout << "Final de-duplicating set contains " << outclust.size() << " linkages\n";
+  cout << "Final de-duplicated set contains " << outclust.size() << " linkages\n";
 
   return(0);    
 }
@@ -25649,7 +26372,7 @@ int heliolinc_alg_kd(const vector <hlimage> &image_log, const vector <hldet> &de
     outclust[i].reference_MJD = config.MJDref;
   }
   clust2det = outclust2det2;
-  cout << "Final de-duplicating set contains " << outclust.size() << " linkages\n";
+  cout << "Final de-duplicated set contains " << outclust.size() << " linkages\n";
 
   return(0);    
 }
@@ -25775,7 +26498,7 @@ int heliolinc_alg_RR(const vector <hlimage> &image_log, const vector <hldet> &de
     outclust[i].reference_MJD = config.MJDref;
   }
   clust2det = outclust2det2;
-  cout << "Final de-duplicating set contains " << outclust.size() << " linkages\n";
+  cout << "Final de-duplicated set contains " << outclust.size() << " linkages\n";
 
   return(0);    
 }
@@ -27939,7 +28662,1010 @@ int link_purify2(const vector <hlimage> &image_log, const vector <hldet> &detvec
   return(0);
 }
 
+// link_purify_graddec: May 10, 2024:
+// Uses the new Hergetfit_graddec function to perform Method of Herget
+// orbit fitting using a gradient descent method rather than downhill
+// simplex, as Hergetfit_vstar does.
+int link_purify_graddec(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <hlclust> &inclust1, const vector  <longpair> &inclust2det1, LinkPurifyConfig config, vector <hlclust> &outclust, vector <longpair> &outclust2det)
+{
+  vector <hlclust> inclust;
+  vector  <longpair> inclust2det;
+  long i=0;
+  long imnum = image_log.size();
+  long imct=0;
+  long detnum = detvec.size();
+  long inclustnum = inclust1.size();
+  long inclustct=0;
+  long clusternum=0;
+  double clustmetric = 0.0l;
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  vector <long> clustind;
+  vector <hldet> clusterdets;
+  vector <hlclust> holdclust;
+  int ptnum,ptct,istimedup,detsused;
+  long rejmax,rejnum;
+  ptnum=ptct=istimedup=detsused=0;
+  point3d onepoint = point3d(0.0L,0.0L,0.0L);
+  vector <point3d> observerpos;
+  vector <double> obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, mjdstep;
+  double geodist1,geodist2, astromrms, chisq;
+  double X, Y, Z, dt;
+  X = Y = Z = dt = 0l;
+  point3d startpos = point3d(0.0l,0.0l,0.0l);
+  point3d startvel = point3d(0.0l,0.0l,0.0l);
+  point3d endpos = point3d(0.0l,0.0l,0.0l);
+  point3d endvel = point3d(0.0l,0.0l,0.0l);
+  vector <int> detusedvec = {};
+  vector <vector <long>> clustindmat = {};
+  vector <double_index> metric_index;
+  long clusterct,clusterct2,goodclusternum,daysteps,obsnights;
+  clusterct = clusterct2 = goodclusternum = daysteps = obsnights = 0;
+  double_index dindex = double_index(0l,0);
+  vector <double_index> sortclust;
+  longpair c2d = longpair(0,0);
+  char rating[SHORTSTRINGLEN];
+  int status=1;
+  
+  make_ivec(detnum, detusedvec); // All the entries are guaranteed to be 0.
 
+  // Wipe output arrays
+  holdclust={};
+  clustindmat={};
+  outclust={};
+  outclust2det={};
+ 
+  cout << "Launching link_purify()\n";
+  if(config.useorbMJD>0) cout << "Epoch-of-orbit MJD will be used as MJDref, if available.\n";
+  else  cout << "Old reference MJD from heliolinc will be used as MJDref\n";
+  cout << "Maximum RMS in km: " << config.maxrms << "\n";
+  cout << "In calculating the cluster quality metric, the number of\nunique points will be raised to the power of " << config.ptpow << ";\n";
+  cout << "the number of unique nights will be raised to the power of " << config.nightpow << ";\n";
+  cout << "the total timespan will be raised to the power of " << config.timepow << ";\n";
+  cout << "and the astrometric RMS will be raised to the power of (negative) " << config.rmspow << "\n";
+  if(config.verbose>=1) cout << "verbose output has been selected\n";
+  
+  // Cull out exact duplicates using link_dedup().
+  status =  link_dedup(inclust1, inclust2det1, inclust, inclust2det);
+  if(status!=0) {
+    cerr << "ERROR: link_dedup returned status " << status << "\n";
+    cerr << "link_purify aborting\n";
+    return(status);
+  }
+  inclustnum = inclust.size();
+  
+  cout << "Duplicate-culled cluster summary vector has length " << inclustnum << ",\n";
+
+  // Launch master loop over all the input clusters.
+  for(inclustct=0; inclustct<inclustnum; inclustct++) {
+    onecluster = inclust[inclustct];
+    if(inclustct!=onecluster.clusternum) {
+      cerr << "ERROR: cluster index mismatch " << inclustct << " != " << onecluster.clusternum << " at input cluster " << inclustct << "\n";
+      return(5);
+    }
+    if(onecluster.totRMS<=config.maxrms) {
+      // This cluster passes the initial cut. Analyze it.
+      // Load a vector with the indices to detvec
+      clustind = {};
+      clustind = tracklet_lookup(inclust2det, onecluster.clusternum); //CHANGED from inclustct to onecluster.clusternum
+      ptnum = clustind.size();
+      if(ptnum!=onecluster.uniquepoints) {
+	cerr << "ERROR: point number mismatch " << ptnum << " != " << onecluster.uniquepoints << " at input cluster " << inclustct << "\n";
+	return(6);
+      }
+      // Load vector of detections for this cluster
+      clusterdets={};
+      for(i=0; i<ptnum; i++) {
+	clusterdets.push_back(detvec[clustind[i]]);
+	clusterdets[i].index=clustind[i]; // Saves indices, to track later sorting.
+      }
+      sort(clusterdets.begin(), clusterdets.end(), early_hldet());
+      istimedup=0;
+      for(ptct=1; ptct<ptnum; ptct++) {
+	if(clusterdets[ptct-1].MJD == clusterdets[ptct].MJD && stringnmatch01(clusterdets[ptct-1].obscode,clusterdets[ptct].obscode,3)==0) istimedup=1;
+      }
+	    
+      // Perform orbit fitting using the method of Herget, to get astrometric residuals
+      // Load observational vectors
+      observerpos = {};
+      obsMJD = obsRA = obsDec = sigastrom = fitRA = fitDec = resid = orbit = {};
+      for(ptct=0; ptct<ptnum; ptct++) {
+	obsMJD.push_back(clusterdets[ptct].MJD);
+	obsRA.push_back(clusterdets[ptct].RA);
+	obsDec.push_back(clusterdets[ptct].Dec);
+	sigastrom.push_back(1.0L); // WARNING, THIS IS CRUDE AND NEEDS FIXING
+	imct = clusterdets[ptct].image;
+	if(imct>=imnum) {
+	  cerr << "ERROR: attempting to access image " << imct << " of only " << imnum << " available\n";
+	  return(8);
+	}
+	X = image_log[imct].X;
+	Y = image_log[imct].Y;
+	Z = image_log[imct].Z;
+	if(image_log[imct].MJD!=clusterdets[ptct].MJD) {
+	  // A shutter-travel correction must have been applied to the
+	  // detection time relative to the image time. Use the stored
+	  // velocity info from the image log to apply a correction to
+	  // the observer position.
+	  dt = clusterdets[ptct].MJD - image_log[imct].MJD;
+	  if(dt*SOLARDAY > MAX_SHUTTER_CORR) {
+	    cerr << "ERROR: detection vs. image time mismatch of " << dt*SOLARDAY << " seconds.\n";
+	    cerr << "Something has gone wrong: no shutter is that slow\n";
+	    return(4);
+	  }
+	  X += image_log[imct].VX*dt;
+	  Y += image_log[imct].VY*dt;
+	  Z += image_log[imct].VZ*dt;
+	}
+	onepoint = point3d(X,Y,Z);
+	observerpos.push_back(onepoint);
+      }
+      // All points now loaded; set up for orbit-fitting
+      if(config.useorbMJD>0 && onecluster.orbit_MJD>0.0) {
+	// A previous execution of link_purify or link_planarity has fit
+	// an orbit and supplied us with a value for MJD at the epoch.
+	// Use state vectors from the orbit fit
+	startpos.x = onecluster.orbitX;
+	startpos.y = onecluster.orbitY;
+	startpos.z = onecluster.orbitZ;
+	startvel.x = onecluster.orbitVX;
+	startvel.y = onecluster.orbitVY;
+	startvel.z = onecluster.orbitVZ;
+	// Use the MJD at the orbit epoch as the reference MJD.
+	// Calculate position at first observation
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, obsMJD[0], endpos, endvel);
+      } else {
+	// Use mean state vectors to estimate positions
+	startpos.x = onecluster.posX;
+	startpos.y = onecluster.posY;
+	startpos.z = onecluster.posZ;
+	startvel.x = onecluster.velX;
+	startvel.y = onecluster.velY;
+	startvel.z = onecluster.velZ;
+	// There used to be a check against solar escape velocity here,
+	// but it isn't needed since we are using the universal variables
+	// formulation, able to handle unbound as well as bound orbits.
+	// Calculate position at first observation
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, obsMJD[0], endpos, endvel);
+      }
+      
+      // Find vector relative to the observer by subtracting off the observer's position.
+      endpos.x -= observerpos[0].x;
+      endpos.y -= observerpos[0].y;
+      endpos.z -= observerpos[0].z;
+      geodist1 = vecabs3d(endpos)/AU_KM;
+      if(config.useorbMJD>0 && onecluster.orbit_MJD>0.0) {
+	// Calculate position at last observation
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, obsMJD[ptnum-1], endpos, endvel);
+      } else {
+	// Calculate position at last observation
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, obsMJD[ptnum-1], endpos, endvel);
+      }
+      endpos.x -= observerpos[ptnum-1].x;
+      endpos.y -= observerpos[ptnum-1].y;
+      endpos.z -= observerpos[ptnum-1].z;
+      geodist2 = vecabs3d(endpos)/AU_KM;
+      if(config.verbose>=2) {
+	cout << "Calling Hergetfit_graddec with dists " << geodist1 << " and " << geodist2 << "\n";
+      }
+      if(config.verbose>=2) {
+	cout << "Launching Hergetfit_graddec for cluster " << inclustct << ":\n";
+	for(i=0;i<=ptnum;i++) {
+	  cout << "Point " << i << ": " << obsMJD[i] << " " << obsRA[i] << " "  << obsDec[i] << " " << sigastrom[i] << "\n";
+	}
+      }
+      if(config.verbose>=2) cout << "Cluster " << inclustct << " of " << inclustnum << " is good: ";
+      if(config.verbose>=2) cout << "\n";
+      if(config.verbose>=1 || inclustct%1000==0) cout << "Fitting cluster " << inclustct << " of " << inclustnum << ": ";
+      chisq =  Hergetfit_graddec(geodist1, geodist2, 1, ptnum, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, config.verbose);
+      if(chisq>=LARGERR3) {
+	cerr << "WARNING: Hergetfit_graddec() returned error code on input " << geodist1 << ", " << geodist2 << "\n";
+      }
+      // orbit vector contains: semimajor axis [0], eccentricity [1],
+      // mjd at epoch [2], the state vectors [3-8], and the number of
+      // orbit evaluations (~iterations) required to reach convergence [9].
+      
+      chisq /= double(ptnum); // Now it's the reduced chi square value
+      astromrms = sqrt(chisq); // This gives the actual astrometric RMS in arcseconds if all the
+      // entries in sigastrom are 1.0. Otherwise it's a measure of the
+      // RMS in units of the typical uncertainty.
+      if(config.verbose>=1 || inclustct%1000==0) cout << " astromrms = " << astromrms << " arcsec, dup=" << istimedup << "\n";
+
+      // If good, just write it out.
+      if(astromrms <= config.max_astrom_rms && istimedup==0) {
+	// CLUSTER IS GOOD
+	if(config.verbose>=1 || inclustct%1000==0) cout << "Writing out good cluster " << inclustct << "\n";
+	// Recalculate clustermetric
+	clustmetric = intpowD(double(onecluster.uniquepoints),config.ptpow)*intpowD(double(onecluster.obsnights),config.nightpow)*intpowD(onecluster.timespan,config.timepow);	  
+	// Include the astrometric RMS value in the cluster metric and the RMS vector
+	onecluster.astromRMS = astromrms; // rmsvec[3]: astrometric rms in arcsec.
+	onecluster.metric = clustmetric/intpowD(astromrms,config.rmspow); // Under the default value rmspow=2, this is equivalent
+	                                                                  // to dividing by the chi-square value rather than just
+	                                                                  // the astrometric RMS, which has the desireable effect of
+	                                                                  // prioritizing low astrometric error even more.
+	onecluster.orbit_a = orbit[0]/AU_KM;
+	onecluster.orbit_e = orbit[1];
+	onecluster.orbit_MJD = orbit[2];
+	onecluster.orbitX = orbit[3];
+	onecluster.orbitY = orbit[4];
+	onecluster.orbitZ = orbit[5];
+	onecluster.orbitVX = orbit[6];
+	onecluster.orbitVY = orbit[7];
+	onecluster.orbitVZ = orbit[8];
+	onecluster.orbit_eval_count = long(round(orbit[9]));
+	// Push new cluster on to holding vector holdclust
+	holdclust.push_back(onecluster);
+	clustindmat.push_back(clustind);
+      } else if((astromrms>config.max_astrom_rms || istimedup>0) && ptnum>config.minpointnum) {
+	// CLUSTER IS NOT GOOD, BUT MIGHT BE FIXABLE
+	if(config.verbose>=1 || inclustct%1000==0) cout << "Trying to purify cluster " << inclustct << " with " << ptnum << " points\n";
+	// Iteratively remove astrometric outliers, or remove time duplicates
+	// Setup for the main while loop:
+	rejnum = 0;
+	rejmax = config.rejfrac*ptnum;
+	if(rejmax > ptnum-config.minpointnum) rejmax = ptnum - config.minpointnum;
+	if(rejmax > config.maxrejnum) rejmax=config.maxrejnum; // Insurance policy against excessive runtimes in pathological cases.
+	// Main while loop, which iteratively removes outliers
+	while(rejnum<rejmax && ptnum>config.minpointnum) {
+	  if(astromrms>config.max_astrom_rms) {
+	    // The reason the cluster is not good is that the astrometric RMS is too high.
+	    // Identify the worst point.
+	    int wp=0;
+	    double wresid = resid[0];
+	    for(i=1;i<ptnum;i++) {
+	      if(resid[i]>wresid) {
+		wresid=resid[i];
+		wp = i;
+	      }
+	    }
+	    // Remove worst point from clusterdets and associated vectors
+	    clusterdets.erase(clusterdets.begin()+wp);
+	    obsMJD.erase(obsMJD.begin()+wp);
+	    obsRA.erase(obsRA.begin()+wp);
+	    obsDec.erase(obsDec.begin()+wp);
+	    sigastrom.erase(sigastrom.begin()+wp);
+	    observerpos.erase(observerpos.begin()+wp);
+	    ptnum--;
+	    rejnum++;
+	    if(long(obsMJD.size())!=ptnum) {
+	      cerr << "Vector trim count error: " << obsMJD.size() << "!=" << ptnum << "\n";
+	      return(9);
+	    }
+	    // Worst outlier rejected, ready for new round of orbit-fitting.
+	  } else if(astromrms <= config.max_astrom_rms && istimedup>0) {
+	    // The reason the cluster is not good is that it still contains
+	    // time-duplicates, even though the astrometric RMS is OK.
+	    vector <long> badpoints = {};
+	    for(ptct=1; ptct<ptnum; ptct++) {
+	      if(clusterdets[ptct-1].MJD == clusterdets[ptct].MJD && stringnmatch01(clusterdets[ptct-1].obscode,clusterdets[ptct].obscode,3)==0) {
+		// Points ptct-1 and ptct are time-duplicates.
+		// Mark for rejection whichever point has the larger RMS.
+		if(resid[ptct-1]>resid[ptct]) badpoints.push_back(ptct-1);
+		else badpoints.push_back(ptct);
+	      }
+	    }
+	    // sort the badpoints vector
+	    sort(badpoints.begin(), badpoints.end());
+	    // Erase the bad points, starting from the end of the vectors
+	    for(i=long(badpoints.size()-1); i>=0; i--) {
+	      clusterdets.erase(clusterdets.begin()+badpoints[i]);
+	      obsMJD.erase(obsMJD.begin()+badpoints[i]);
+	      obsRA.erase(obsRA.begin()+badpoints[i]);
+	      obsDec.erase(obsDec.begin()+badpoints[i]);
+	      sigastrom.erase(sigastrom.begin()+badpoints[i]);
+	      observerpos.erase(observerpos.begin()+badpoints[i]);
+	      ptnum--;
+	      rejnum++;
+	    }
+	    if(long(obsMJD.size())!=ptnum) {
+	      cerr << "Vector timedupe trim count error: " << obsMJD.size() << "!=" << ptnum << "\n";
+	      return(9);
+	    }
+	    // All time-duplicates rejected, ready for next round of orbit-fitting.
+	  } else {
+	    // This is a weird, illogical case, and probably the reason we got here
+	    // has to do with NANs. In any case, the cluster is very unlikely to be
+	    // salvageable.
+	    if(config.verbose>=1 || inclustct%1000==0) cout << "Weird cluster case, REJECTING\n";
+	    break; // Break out of the point-culling while loop, abandoning this cluster.
+	  }
+	  // Check if cluster is still valid
+	  // load vector of MJD steps
+	  mjdstep={};
+	  for(long i=1; i<ptnum; i++) mjdstep.push_back(obsMJD[i]-obsMJD[i-1]);
+	  // Count steps large enough to suggest a daytime period between nights.
+	  daysteps=0;	
+	  for(long i=0; i<long(mjdstep.size()); i++) {
+	    if(mjdstep[i]>NIGHTSTEP) daysteps++;
+	  }
+	  obsnights = daysteps+1;
+	  // Does cluster pass the criteria for a linked detection?
+	  if(obsnights < config.minobsnights || ptnum < config.minpointnum) {
+	    // This cluster became invalid when we rejected the outlier(s).
+	    if(config.verbose>=1 || inclustct%1000==0) cout << "Cluster became invalid, REJECTING\n";
+	    break; // Break out of point-culling while loop, since
+	           // this cluster is unredeemable.
+	  }
+	  // If we get here, rejection of the point didn't make the cluster invalid.
+	  // Begin analysis by loading new clustind vector.
+	  clustind = {};
+	  for(i=0;i<ptnum;i++) clustind.push_back(clusterdets[i].index);
+	  // Check for time-duplicates
+	  istimedup=0;
+	  for(ptct=1; ptct<ptnum; ptct++) {
+	    if(clusterdets[ptct-1].MJD == clusterdets[ptct].MJD && stringnmatch01(clusterdets[ptct-1].obscode,clusterdets[ptct].obscode,3)==0) istimedup=1;
+	  }
+	  // Use state vectors from previous fit to estimate beginning and ending geocentric distances.
+	  startpos.x = orbit[3];
+	  startpos.y = orbit[4];
+	  startpos.z = orbit[5];
+	  startvel.x = orbit[6];
+	  startvel.y = orbit[7];
+	  startvel.z = orbit[8];
+	  // Note that orbit[2] is MJD at the epoch.
+	  // Calculate position at first observation
+	  Kepler_univ_int(GMSUN_KM3_SEC2, orbit[2], startpos, startvel, obsMJD[0], endpos, endvel);
+	  // Find vector relative to the observer by subtracting off the observer's position.
+	  endpos.x -= observerpos[0].x;
+	  endpos.y -= observerpos[0].y;
+	  endpos.z -= observerpos[0].z;
+	  geodist1 = vecabs3d(endpos)/AU_KM;
+	  // Calculate position at last observation
+	  Kepler_univ_int(GMSUN_KM3_SEC2, orbit[2], startpos, startvel, obsMJD[ptnum-1], endpos, endvel);
+	  endpos.x -= observerpos[ptnum-1].x;
+	  endpos.y -= observerpos[ptnum-1].y;
+	  endpos.z -= observerpos[ptnum-1].z;
+	  geodist2 = vecabs3d(endpos)/AU_KM;
+	    
+	  if(config.verbose>=2) {
+	    cout << "Calling Hergetfit_graddec with dists " << geodist1 << " and " << geodist2 << "\n";
+	  }
+	  if(config.verbose>=2) {
+	    cout << "Launching Hergetfit_graddec for cluster " << inclustct << ":\n";
+	    for(i=0;i<=ptnum;i++) {
+	      cout << "Point " << i << ": " << obsMJD[i] << " " << obsRA[i] << " "  << obsDec[i] << " " << sigastrom[i] << "\n";
+	    }
+	  }
+	  if(config.verbose>=1 || inclustct%1000==0) cout << "Fitting cluster " << inclustct << " of " << inclustnum << " minus " << rejnum << " outliers: ";
+	  chisq =  Hergetfit_graddec(geodist1, geodist2, 1, ptnum, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, config.verbose);
+	  if(chisq>=LARGERR3) {
+	    cerr << "WARNING: Hergetfit_graddec() returned error code on input " << geodist1 << ", " << geodist2 << "\n";
+	  }
+	  // orbit vector contains: semimajor axis [0], eccentricity [1],
+	  // mjd at epoch [2], the state vectors [3-8], and the number of
+	  // orbit evaluations (~iterations) required to reach convergence [9].
+      
+	  chisq /= double(ptnum); // Now it's the reduced chi square value
+	  astromrms = sqrt(chisq); // This gives the actual astrometric RMS in arcseconds if all the
+	  if(config.verbose>=1 || inclustct%1000==0) cout << " astromrms = " << astromrms << " arcsec, dup=" << istimedup << "\n";
+	  // entries in sigastrom are 1.0. Otherwise it's a measure of the
+	  // RMS in units of the typical uncertainty.
+	  
+	  // Check if the astrometric RMS has dropped to the acceptable range,
+	  // and no time-duplicates remain.
+	  if(astromrms <= config.max_astrom_rms && istimedup==0) {
+	    if(config.verbose>=1 || inclustct%1000==0) cout << "astromrms success: " << astromrms << " <= " << config.max_astrom_rms << ", dup=" << istimedup << ": writing out purified cluster " << inclustct << "\n";
+	    // CLUSTER HAS BEEN SUCCESSFULLY PURIFIED.
+	    // The cluster is good and should be written out.
+	    // Revise onecluster to reflect the deleted points
+	    onecluster.timespan = obsMJD[ptnum-1]-obsMJD[0];
+	    onecluster.uniquepoints = ptnum;
+	    onecluster.obsnights = obsnights;
+	    // Recalculate clustermetric
+	    clustmetric = intpowD(double(onecluster.uniquepoints),config.ptpow)*intpowD(double(onecluster.obsnights),config.nightpow)*intpowD(onecluster.timespan,config.timepow);	  
+	    // Include the astrometric RMS value in the cluster metric and the RMS vector
+	    onecluster.astromRMS = astromrms; // rmsvec[3]: astrometric rms in arcsec.
+	    onecluster.metric = clustmetric/intpowD(astromrms,config.rmspow); // Under the default value rmspow=2, this is equivalent
+	                                                                      // to dividing by the chi-square value rather than just
+	                                                                      // the astrometric RMS, which has the desireable effect of
+	                                                                      // prioritizing low astrometric error even more.
+	    onecluster.orbit_a = orbit[0]/AU_KM;
+	    onecluster.orbit_e = orbit[1];
+	    onecluster.orbit_MJD = orbit[2];
+	    onecluster.orbitX = orbit[3];
+	    onecluster.orbitY = orbit[4];
+	    onecluster.orbitZ = orbit[5];
+	    onecluster.orbitVX = orbit[6];
+	    onecluster.orbitVY = orbit[7];
+	    onecluster.orbitVZ = orbit[8];
+	    onecluster.orbit_eval_count = long(round(orbit[9]));
+	    // Push new cluster on to holding vector holdclust
+	    holdclust.push_back(onecluster);
+	    clustindmat.push_back(clustind);
+	    break; // Break out of point-culling while loop, since we have
+	           // successfully purified the cluster.
+	  } // Closes successful purification case.
+	  if((config.verbose>0 || inclustct%1000==0) && (rejnum>=rejmax || ptnum<=config.minpointnum)) cout << "Cluster became too small: REJECTED.\n";
+	} // Closes point-culling while loop.
+	// Close else if case that astrometric RMS was too high, the cluster needed purifying.
+      } else if (ptnum<=config.minpointnum) {
+	if(config.verbose>0 || inclustct%1000==0) cout << "Cluster is too small: REJECTED.\n";
+      }
+    } // Closes initial if case that physical RMS is too high, cluster is rejected immediately.
+  } // Closes loop on input cluster arrays.
+
+  clusternum = holdclust.size();
+  cout << "Finished loading input clusters: " << clusternum << " out of " << inclustnum << " passed initial screening.\n";
+  
+  // Load just clustermetric values and indices from
+  // clustanvec into metric_index
+  metric_index = {};
+  // Record indices so information won't be lost on sort
+  for(clusterct=0; clusterct<clusternum; clusterct++) {
+    dindex = double_index(holdclust[clusterct].metric,clusterct);
+    metric_index.push_back(dindex);
+  }
+  // Sort metric_index
+  sort(metric_index.begin(), metric_index.end(), lower_double_index());
+  
+  // Loop on clusters, starting with the best (highest metric),
+  // and eliminating duplicates
+  goodclusternum=0;
+  for(clusterct2=clusternum-1; clusterct2>=0; clusterct2--) {
+    // Look up the correct cluster from metric_index
+    clusterct = metric_index[clusterct2].index;
+    inclustct = holdclust[clusterct].clusternum;
+    onecluster = holdclust[clusterct];
+    // Pull out the vector of detection indices from clustindmat
+    clustind = clustindmat[clusterct];
+    ptnum = clustind.size();
+    // Sanity-check the count of unique detections in this cluster
+    if(onecluster.uniquepoints>0 && ptnum!=onecluster.uniquepoints) {
+      cerr << "ERROR: 2nd-stage point number mismatch " << ptnum << " != " << onecluster.uniquepoints << " at input cluster " << inclustct << " (" << clusterct << ")\n";
+      return(7);
+    }
+    // See if all of them are still unused
+    detsused = 0;
+    for(ptct=1; ptct<ptnum; ptct++) {
+      if(detusedvec[clustind[ptct]]!=0) detsused+=1;
+    }
+    if(onecluster.uniquepoints>0 && onecluster.totRMS<=config.maxrms && detsused==0) {
+      // This is a good cluster not already marked as used.
+      goodclusternum++;
+      cout << "Accepted good cluster " << goodclusternum << " with metric " << onecluster.metric << "\n";
+      // See whether cluster is pure or mixed.
+      stringncopy01(rating,"PURE",SHORTSTRINGLEN);
+      for(ptct=1; ptct<ptnum; ptct++) {
+	if(stringnmatch01(detvec[clustind[ptct]].idstring,detvec[clustind[ptct-1]].idstring,SHORTSTRINGLEN) != 0) {
+	  stringncopy01(rating,"MIXED",SHORTSTRINGLEN);
+	}
+      }
+      for(i=0;i<SHORTSTRINGLEN;i++) onecluster.rating[i] = rating[i];
+      //      assert(rating.size() < sizeof(onecluster.rating));
+      //strncpy(onecluster.rating, rating.c_str(), sizeof(onecluster.rating));
+      //onecluster.rating[sizeof(onecluster.rating)-1] = 0;
+
+      // Figure out the time order of cluster points, so we can write them out in order.
+      sortclust = {};
+      for(ptct=0; ptct<ptnum; ptct++) {
+	dindex = double_index(detvec[clustind[ptct]].MJD,clustind[ptct]);
+	sortclust.push_back(dindex);
+	// Also mark each detection as used
+	detusedvec[clustind[ptct]]=1;
+      }
+      sort(sortclust.begin(), sortclust.end(), lower_double_index());
+      // Load new clusternumber for onecluster
+      onecluster.clusternum = outclust.size();
+      // Push back the new, vetted cluster on to outclust
+      outclust.push_back(onecluster);
+      // Push back the detection indices 
+      for(ptct=0; ptct<ptnum; ptct++) {
+	c2d = longpair(onecluster.clusternum,sortclust[ptct].index);
+	outclust2det.push_back(c2d);
+      }
+      // Close if-statement checking if this is a good, non-duplicated cluster
+    }
+    // Close loop on all clusters passing the initial cuts
+  }
+  return(0);
+}
+// link_purify_quad1: May 14, 2024
+// Like link_purify, but uses Hergetfit_quad1() rather than Hergetfit_vstar()
+// Based on link_refine_Herget_univar, this function is the first
+// one in my link_refine suite than actually attempts to purify
+// the input linkages by rejecting astrometric outliers.
+// New quantities in LinkPurifyConfig that are not in LinkRefineConfig:
+//  double config.rejfrac = 0.5;         Maximum fraction of points that can be rejected.
+//  double config.max_astrom_rms = 1.0;  Maximum RMS astrometric residual, in arcsec.
+//  int config.minobsnights = 3;         Minimum number of distinct observing nights for a valid linkage
+//  int config.minpointnum = 6;          Minimum number of individual detections for a valid linkage
+
+int link_purify_quad1(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <hlclust> &inclust1, const vector  <longpair> &inclust2det1, LinkPurifyConfig config, vector <hlclust> &outclust, vector <longpair> &outclust2det)
+{
+  vector <hlclust> inclust;
+  vector  <longpair> inclust2det;
+  long i=0;
+  long imnum = image_log.size();
+  long imct=0;
+  long detnum = detvec.size();
+  long inclustnum = inclust1.size();
+  long inclustct=0;
+  long clusternum=0;
+  double clustmetric = 0.0l;
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  vector <long> clustind;
+  vector <hldet> clusterdets;
+  vector <hlclust> holdclust;
+  int ptnum,ptct,istimedup,detsused;
+  long rejmax,rejnum;
+  ptnum=ptct=istimedup=detsused=0;
+  point3d onepoint = point3d(0.0L,0.0L,0.0L);
+  vector <point3d> observerpos;
+  vector <double> obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, mjdstep;
+  double geodist1,geodist2, astromrms, chisq;
+  double ftol = FTOL_QUAD;
+  double stepsize = QUADSTEP_SCALEFAC;
+  double X, Y, Z, dt;
+  X = Y = Z = dt = 0l;
+  point3d startpos = point3d(0.0l,0.0l,0.0l);
+  point3d startvel = point3d(0.0l,0.0l,0.0l);
+  point3d endpos = point3d(0.0l,0.0l,0.0l);
+  point3d endvel = point3d(0.0l,0.0l,0.0l);
+  vector <int> detusedvec = {};
+  vector <vector <long>> clustindmat = {};
+  vector <double_index> metric_index;
+  long clusterct,clusterct2,goodclusternum,daysteps,obsnights;
+  clusterct = clusterct2 = goodclusternum = daysteps = obsnights = 0;
+  double_index dindex = double_index(0l,0);
+  vector <double_index> sortclust;
+  longpair c2d = longpair(0,0);
+  char rating[SHORTSTRINGLEN];
+  int status=1;
+  
+  make_ivec(detnum, detusedvec); // All the entries are guaranteed to be 0.
+
+  // Wipe output arrays
+  holdclust={};
+  clustindmat={};
+  outclust={};
+  outclust2det={};
+ 
+  cout << "Launching link_purify()\n";
+  if(config.useorbMJD>0) cout << "Epoch-of-orbit MJD will be used as MJDref, if available.\n";
+  else  cout << "Old reference MJD from heliolinc will be used as MJDref\n";
+  cout << "Maximum RMS in km: " << config.maxrms << "\n";
+  cout << "In calculating the cluster quality metric, the number of\nunique points will be raised to the power of " << config.ptpow << ";\n";
+  cout << "the number of unique nights will be raised to the power of " << config.nightpow << ";\n";
+  cout << "the total timespan will be raised to the power of " << config.timepow << ";\n";
+  cout << "and the astrometric RMS will be raised to the power of (negative) " << config.rmspow << "\n";
+  if(config.verbose>=1) cout << "verbose output has been selected\n";
+  
+  // Cull out exact duplicates using link_dedup().
+  status =  link_dedup(inclust1, inclust2det1, inclust, inclust2det);
+  if(status!=0) {
+    cerr << "ERROR: link_dedup returned status " << status << "\n";
+    cerr << "link_purify aborting\n";
+    return(status);
+  }
+  inclustnum = inclust.size();
+  
+  cout << "Duplicate-culled cluster summary vector has length " << inclustnum << ",\n";
+
+  // Launch master loop over all the input clusters.
+  for(inclustct=0; inclustct<inclustnum; inclustct++) {
+    onecluster = inclust[inclustct];
+    if(inclustct!=onecluster.clusternum) {
+      cerr << "ERROR: cluster index mismatch " << inclustct << " != " << onecluster.clusternum << " at input cluster " << inclustct << "\n";
+      return(5);
+    }
+    if(onecluster.totRMS<=config.maxrms) {
+      // This cluster passes the initial cut. Analyze it.
+      // Load a vector with the indices to detvec
+      clustind = {};
+      clustind = tracklet_lookup(inclust2det, onecluster.clusternum); //CHANGED from inclustct to onecluster.clusternum
+      ptnum = clustind.size();
+      if(ptnum!=onecluster.uniquepoints) {
+	cerr << "ERROR: point number mismatch " << ptnum << " != " << onecluster.uniquepoints << " at input cluster " << inclustct << "\n";
+	return(6);
+      }
+      // Load vector of detections for this cluster
+      clusterdets={};
+      for(i=0; i<ptnum; i++) {
+	clusterdets.push_back(detvec[clustind[i]]);
+	clusterdets[i].index=clustind[i]; // Saves indices, to track later sorting.
+      }
+      sort(clusterdets.begin(), clusterdets.end(), early_hldet());
+      istimedup=0;
+      for(ptct=1; ptct<ptnum; ptct++) {
+	if(clusterdets[ptct-1].MJD == clusterdets[ptct].MJD && stringnmatch01(clusterdets[ptct-1].obscode,clusterdets[ptct].obscode,3)==0) istimedup=1;
+      }
+	    
+      // Perform orbit fitting using the method of Herget, to get astrometric residuals
+      // Load observational vectors
+      observerpos = {};
+      obsMJD = obsRA = obsDec = sigastrom = fitRA = fitDec = resid = orbit = {};
+      for(ptct=0; ptct<ptnum; ptct++) {
+	obsMJD.push_back(clusterdets[ptct].MJD);
+	obsRA.push_back(clusterdets[ptct].RA);
+	obsDec.push_back(clusterdets[ptct].Dec);
+	sigastrom.push_back(1.0L); // WARNING, THIS IS CRUDE AND NEEDS FIXING
+	imct = clusterdets[ptct].image;
+	if(imct>=imnum) {
+	  cerr << "ERROR: attempting to access image " << imct << " of only " << imnum << " available\n";
+	  return(8);
+	}
+	X = image_log[imct].X;
+	Y = image_log[imct].Y;
+	Z = image_log[imct].Z;
+	if(image_log[imct].MJD!=clusterdets[ptct].MJD) {
+	  // A shutter-travel correction must have been applied to the
+	  // detection time relative to the image time. Use the stored
+	  // velocity info from the image log to apply a correction to
+	  // the observer position.
+	  dt = clusterdets[ptct].MJD - image_log[imct].MJD;
+	  if(dt*SOLARDAY > MAX_SHUTTER_CORR) {
+	    cerr << "ERROR: detection vs. image time mismatch of " << dt*SOLARDAY << " seconds.\n";
+	    cerr << "Something has gone wrong: no shutter is that slow\n";
+	    return(4);
+	  }
+	  X += image_log[imct].VX*dt;
+	  Y += image_log[imct].VY*dt;
+	  Z += image_log[imct].VZ*dt;
+	}
+	onepoint = point3d(X,Y,Z);
+	observerpos.push_back(onepoint);
+      }
+      // All points now loaded; set up for orbit-fitting
+      if(config.useorbMJD>0 && onecluster.orbit_MJD>0.0) {
+	// A previous execution of link_purify or link_planarity has fit
+	// an orbit and supplied us with a value for MJD at the epoch.
+	// Use state vectors from the orbit fit
+	startpos.x = onecluster.orbitX;
+	startpos.y = onecluster.orbitY;
+	startpos.z = onecluster.orbitZ;
+	startvel.x = onecluster.orbitVX;
+	startvel.y = onecluster.orbitVY;
+	startvel.z = onecluster.orbitVZ;
+	// Use the MJD at the orbit epoch as the reference MJD.
+	// Calculate position at first observation
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, obsMJD[0], endpos, endvel);
+      } else {
+	// Use mean state vectors to estimate positions
+	startpos.x = onecluster.posX;
+	startpos.y = onecluster.posY;
+	startpos.z = onecluster.posZ;
+	startvel.x = onecluster.velX;
+	startvel.y = onecluster.velY;
+	startvel.z = onecluster.velZ;
+	// There used to be a check against solar escape velocity here,
+	// but it isn't needed since we are using the universal variables
+	// formulation, able to handle unbound as well as bound orbits.
+	// Calculate position at first observation
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, obsMJD[0], endpos, endvel);
+      }
+      
+      // Find vector relative to the observer by subtracting off the observer's position.
+      endpos.x -= observerpos[0].x;
+      endpos.y -= observerpos[0].y;
+      endpos.z -= observerpos[0].z;
+      geodist1 = vecabs3d(endpos)/AU_KM;
+      if(config.useorbMJD>0 && onecluster.orbit_MJD>0.0) {
+	// Calculate position at last observation
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, obsMJD[ptnum-1], endpos, endvel);
+      } else {
+	// Calculate position at last observation
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, obsMJD[ptnum-1], endpos, endvel);
+      }
+      endpos.x -= observerpos[ptnum-1].x;
+      endpos.y -= observerpos[ptnum-1].y;
+      endpos.z -= observerpos[ptnum-1].z;
+      geodist2 = vecabs3d(endpos)/AU_KM;
+      if(config.verbose>=2) {
+	cout << "Calling Hergetfit_quad1 with dists " << geodist1 << " and " << geodist2 << "\n";
+      }
+      if(config.verbose>=2) {
+	cout << "Launching Hergetfit_quad1 for cluster " << inclustct << ":\n";
+	for(i=0;i<=ptnum;i++) {
+	  cout << "Point " << i << ": " << obsMJD[i] << " " << obsRA[i] << " "  << obsDec[i] << " " << sigastrom[i] << "\n";
+	}
+      }
+      if(config.verbose>=2) cout << "Cluster " << inclustct << " of " << inclustnum << " is good: ";
+      if(config.verbose>=2) cout << "\n";
+      if(config.verbose>=1 || inclustct%1000==0) cout << "Fitting cluster " << inclustct << " of " << inclustnum << ": ";
+      stepsize = 0.5l*QUADSTEP_SCALEFAC*(geodist1+geodist2);
+      chisq = Hergetfit_quad1(geodist1, geodist2, stepsize, ftol, 1, ptnum, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, config.verbose);
+      if(chisq>=LARGERR3) {
+	cerr << "WARNING: Hergetfit_quad1() returned error code on input " << geodist1 << ", " << geodist2 << "\n";
+	return(-1);
+      }
+      // orbit vector contains: semimajor axis [0], eccentricity [1],
+      // mjd at epoch [2], the state vectors [3-8], and the number of
+      // orbit evaluations (~iterations) required to reach convergence [9].
+      
+      chisq /= double(ptnum); // Now it's the reduced chi square value
+      astromrms = sqrt(chisq); // This gives the actual astrometric RMS in arcseconds if all the
+      // entries in sigastrom are 1.0. Otherwise it's a measure of the
+      // RMS in units of the typical uncertainty.
+      if(config.verbose>=1 || inclustct%1000==0) cout << " astromrms = " << astromrms << " arcsec, dup=" << istimedup << "\n";
+
+      // If good, just write it out.
+      if(astromrms <= config.max_astrom_rms && istimedup==0) {
+	// CLUSTER IS GOOD
+	if(config.verbose>=1 || inclustct%1000==0) cout << "Writing out good cluster " << inclustct << "\n";
+	// Recalculate clustermetric
+	clustmetric = intpowD(double(onecluster.uniquepoints),config.ptpow)*intpowD(double(onecluster.obsnights),config.nightpow)*intpowD(onecluster.timespan,config.timepow);	  
+	// Include the astrometric RMS value in the cluster metric and the RMS vector
+	onecluster.astromRMS = astromrms; // rmsvec[3]: astrometric rms in arcsec.
+	onecluster.metric = clustmetric/intpowD(astromrms,config.rmspow); // Under the default value rmspow=2, this is equivalent
+	                                                                  // to dividing by the chi-square value rather than just
+	                                                                  // the astrometric RMS, which has the desireable effect of
+	                                                                  // prioritizing low astrometric error even more.
+	onecluster.orbit_a = orbit[0]/AU_KM;
+	onecluster.orbit_e = orbit[1];
+	onecluster.orbit_MJD = orbit[2];
+	onecluster.orbitX = orbit[3];
+	onecluster.orbitY = orbit[4];
+	onecluster.orbitZ = orbit[5];
+	onecluster.orbitVX = orbit[6];
+	onecluster.orbitVY = orbit[7];
+	onecluster.orbitVZ = orbit[8];
+	onecluster.orbit_eval_count = long(round(orbit[9]));
+	// Push new cluster on to holding vector holdclust
+	holdclust.push_back(onecluster);
+	clustindmat.push_back(clustind);
+      } else if((astromrms>config.max_astrom_rms || istimedup>0) && ptnum>config.minpointnum) {
+	// CLUSTER IS NOT GOOD, BUT MIGHT BE FIXABLE
+	if(config.verbose>=1 || inclustct%1000==0) cout << "Trying to purify cluster " << inclustct << " with " << ptnum << " points\n";
+	// Iteratively remove astrometric outliers, or remove time duplicates
+	// Setup for the main while loop:
+	rejnum = 0;
+	rejmax = config.rejfrac*ptnum;
+	if(rejmax > ptnum-config.minpointnum) rejmax = ptnum - config.minpointnum;
+	if(rejmax > config.maxrejnum) rejmax=config.maxrejnum; // Insurance policy against excessive runtimes in pathological cases.
+	// Main while loop, which iteratively removes outliers
+	while(rejnum<rejmax && ptnum>config.minpointnum) {
+	  if(astromrms>config.max_astrom_rms) {
+	    // The reason the cluster is not good is that the astrometric RMS is too high.
+	    // Identify the worst point.
+	    int wp=0;
+	    double wresid = resid[0];
+	    for(i=1;i<ptnum;i++) {
+	      if(resid[i]>wresid) {
+		wresid=resid[i];
+		wp = i;
+	      }
+	    }
+	    // Remove worst point from clusterdets and associated vectors
+	    clusterdets.erase(clusterdets.begin()+wp);
+	    obsMJD.erase(obsMJD.begin()+wp);
+	    obsRA.erase(obsRA.begin()+wp);
+	    obsDec.erase(obsDec.begin()+wp);
+	    sigastrom.erase(sigastrom.begin()+wp);
+	    observerpos.erase(observerpos.begin()+wp);
+	    ptnum--;
+	    rejnum++;
+	    if(long(obsMJD.size())!=ptnum) {
+	      cerr << "Vector trim count error: " << obsMJD.size() << "!=" << ptnum << "\n";
+	      return(9);
+	    }
+	    // Worst outlier rejected, ready for new round of orbit-fitting.
+	  } else if(astromrms <= config.max_astrom_rms && istimedup>0) {
+	    // The reason the cluster is not good is that it still contains
+	    // time-duplicates, even though the astrometric RMS is OK.
+	    vector <long> badpoints = {};
+	    for(ptct=1; ptct<ptnum; ptct++) {
+	      if(clusterdets[ptct-1].MJD == clusterdets[ptct].MJD && stringnmatch01(clusterdets[ptct-1].obscode,clusterdets[ptct].obscode,3)==0) {
+		// Points ptct-1 and ptct are time-duplicates.
+		// Mark for rejection whichever point has the larger RMS.
+		if(resid[ptct-1]>resid[ptct]) badpoints.push_back(ptct-1);
+		else badpoints.push_back(ptct);
+	      }
+	    }
+	    // sort the badpoints vector
+	    sort(badpoints.begin(), badpoints.end());
+	    // Erase the bad points, starting from the end of the vectors
+	    for(i=long(badpoints.size()-1); i>=0; i--) {
+	      clusterdets.erase(clusterdets.begin()+badpoints[i]);
+	      obsMJD.erase(obsMJD.begin()+badpoints[i]);
+	      obsRA.erase(obsRA.begin()+badpoints[i]);
+	      obsDec.erase(obsDec.begin()+badpoints[i]);
+	      sigastrom.erase(sigastrom.begin()+badpoints[i]);
+	      observerpos.erase(observerpos.begin()+badpoints[i]);
+	      ptnum--;
+	      rejnum++;
+	    }
+	    if(long(obsMJD.size())!=ptnum) {
+	      cerr << "Vector timedupe trim count error: " << obsMJD.size() << "!=" << ptnum << "\n";
+	      return(9);
+	    }
+	    // All time-duplicates rejected, ready for next round of orbit-fitting.
+	  } else {
+	    // This is a weird, illogical case, and probably the reason we got here
+	    // has to do with NANs. In any case, the cluster is very unlikely to be
+	    // salvageable.
+	    if(config.verbose>=1 || inclustct%1000==0) cout << "Weird cluster case, REJECTING\n";
+	    break; // Break out of the point-culling while loop, abandoning this cluster.
+	  }
+	  // Check if cluster is still valid
+	  // load vector of MJD steps
+	  mjdstep={};
+	  for(long i=1; i<ptnum; i++) mjdstep.push_back(obsMJD[i]-obsMJD[i-1]);
+	  // Count steps large enough to suggest a daytime period between nights.
+	  daysteps=0;	
+	  for(long i=0; i<long(mjdstep.size()); i++) {
+	    if(mjdstep[i]>NIGHTSTEP) daysteps++;
+	  }
+	  obsnights = daysteps+1;
+	  // Does cluster pass the criteria for a linked detection?
+	  if(obsnights < config.minobsnights || ptnum < config.minpointnum) {
+	    // This cluster became invalid when we rejected the outlier(s).
+	    if(config.verbose>=1 || inclustct%1000==0) cout << "Cluster became invalid, REJECTING\n";
+	    break; // Break out of point-culling while loop, since
+	           // this cluster is unredeemable.
+	  }
+	  // If we get here, rejection of the point didn't make the cluster invalid.
+	  // Begin analysis by loading new clustind vector.
+	  clustind = {};
+	  for(i=0;i<ptnum;i++) clustind.push_back(clusterdets[i].index);
+	  // Check for time-duplicates
+	  istimedup=0;
+	  for(ptct=1; ptct<ptnum; ptct++) {
+	    if(clusterdets[ptct-1].MJD == clusterdets[ptct].MJD && stringnmatch01(clusterdets[ptct-1].obscode,clusterdets[ptct].obscode,3)==0) istimedup=1;
+	  }
+	  // Use state vectors from previous fit to estimate beginning and ending geocentric distances.
+	  startpos.x = orbit[3];
+	  startpos.y = orbit[4];
+	  startpos.z = orbit[5];
+	  startvel.x = orbit[6];
+	  startvel.y = orbit[7];
+	  startvel.z = orbit[8];
+	  // Note that orbit[2] is MJD at the epoch.
+	  // Calculate position at first observation
+	  Kepler_univ_int(GMSUN_KM3_SEC2, orbit[2], startpos, startvel, obsMJD[0], endpos, endvel);
+	  // Find vector relative to the observer by subtracting off the observer's position.
+	  endpos.x -= observerpos[0].x;
+	  endpos.y -= observerpos[0].y;
+	  endpos.z -= observerpos[0].z;
+	  geodist1 = vecabs3d(endpos)/AU_KM;
+	  // Calculate position at last observation
+	  Kepler_univ_int(GMSUN_KM3_SEC2, orbit[2], startpos, startvel, obsMJD[ptnum-1], endpos, endvel);
+	  endpos.x -= observerpos[ptnum-1].x;
+	  endpos.y -= observerpos[ptnum-1].y;
+	  endpos.z -= observerpos[ptnum-1].z;
+	  geodist2 = vecabs3d(endpos)/AU_KM;
+	    
+	  if(config.verbose>=2) {
+	    cout << "Calling Hergetfit_quad1 with dists " << geodist1 << " and " << geodist2 << "\n";
+	  }
+	  if(config.verbose>=2) {
+	    cout << "Launching Hergetfit_quad1 for cluster " << inclustct << ":\n";
+	    for(i=0;i<=ptnum;i++) {
+	      cout << "Point " << i << ": " << obsMJD[i] << " " << obsRA[i] << " "  << obsDec[i] << " " << sigastrom[i] << "\n";
+	    }
+	  }
+	  if(config.verbose>=1 || inclustct%1000==0) cout << "Fitting cluster " << inclustct << " of " << inclustnum << " minus " << rejnum << " outliers: ";
+	  chisq = Hergetfit_quad1(geodist1, geodist2, stepsize, ftol, 1, ptnum, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, config.verbose);
+	  if(chisq>=LARGERR3) {
+	    cerr << "WARNING: Hergetfit_quad1() returned error code on input " << geodist1 << ", " << geodist2 << "\n";
+	    return(-1);
+	  }
+	  // orbit vector contains: semimajor axis [0], eccentricity [1],
+	  // mjd at epoch [2], the state vectors [3-8], and the number of
+	  // orbit evaluations (~iterations) required to reach convergence [9].
+      
+	  chisq /= double(ptnum); // Now it's the reduced chi square value
+	  astromrms = sqrt(chisq); // This gives the actual astrometric RMS in arcseconds if all the
+	  if(config.verbose>=1 || inclustct%1000==0) cout << " astromrms = " << astromrms << " arcsec, dup=" << istimedup << "\n";
+	  // entries in sigastrom are 1.0. Otherwise it's a measure of the
+	  // RMS in units of the typical uncertainty.
+	  
+	  // Check if the astrometric RMS has dropped to the acceptable range,
+	  // and no time-duplicates remain.
+	  if(astromrms <= config.max_astrom_rms && istimedup==0) {
+	    if(config.verbose>=1 || inclustct%1000==0) cout << "astromrms success: " << astromrms << " <= " << config.max_astrom_rms << ", dup=" << istimedup << ": writing out purified cluster " << inclustct << "\n";
+	    // CLUSTER HAS BEEN SUCCESSFULLY PURIFIED.
+	    // The cluster is good and should be written out.
+	    // Revise onecluster to reflect the deleted points
+	    onecluster.timespan = obsMJD[ptnum-1]-obsMJD[0];
+	    onecluster.uniquepoints = ptnum;
+	    onecluster.obsnights = obsnights;
+	    // Recalculate clustermetric
+	    clustmetric = intpowD(double(onecluster.uniquepoints),config.ptpow)*intpowD(double(onecluster.obsnights),config.nightpow)*intpowD(onecluster.timespan,config.timepow);	  
+	    // Include the astrometric RMS value in the cluster metric and the RMS vector
+	    onecluster.astromRMS = astromrms; // rmsvec[3]: astrometric rms in arcsec.
+	    onecluster.metric = clustmetric/intpowD(astromrms,config.rmspow); // Under the default value rmspow=2, this is equivalent
+	                                                                      // to dividing by the chi-square value rather than just
+	                                                                      // the astrometric RMS, which has the desireable effect of
+	                                                                      // prioritizing low astrometric error even more.
+	    onecluster.orbit_a = orbit[0]/AU_KM;
+	    onecluster.orbit_e = orbit[1];
+	    onecluster.orbit_MJD = orbit[2];
+	    onecluster.orbitX = orbit[3];
+	    onecluster.orbitY = orbit[4];
+	    onecluster.orbitZ = orbit[5];
+	    onecluster.orbitVX = orbit[6];
+	    onecluster.orbitVY = orbit[7];
+	    onecluster.orbitVZ = orbit[8];
+	    onecluster.orbit_eval_count = long(round(orbit[9]));
+	    // Push new cluster on to holding vector holdclust
+	    holdclust.push_back(onecluster);
+	    clustindmat.push_back(clustind);
+	    break; // Break out of point-culling while loop, since we have
+	           // successfully purified the cluster.
+	  } // Closes successful purification case.
+	  if((config.verbose>0 || inclustct%1000==0) && (rejnum>=rejmax || ptnum<=config.minpointnum)) cout << "Cluster became too small: REJECTED.\n";
+	} // Closes point-culling while loop.
+	// Close else if case that astrometric RMS was too high, the cluster needed purifying.
+      } else if (ptnum<=config.minpointnum) {
+	if(config.verbose>0 || inclustct%1000==0) cout << "Cluster is too small: REJECTED.\n";
+      }
+    } // Closes initial if case that physical RMS is too high, cluster is rejected immediately.
+  } // Closes loop on input cluster arrays.
+
+  clusternum = holdclust.size();
+  cout << "Finished loading input clusters: " << clusternum << " out of " << inclustnum << " passed initial screening.\n";
+  
+  // Load just clustermetric values and indices from
+  // clustanvec into metric_index
+  metric_index = {};
+  // Record indices so information won't be lost on sort
+  for(clusterct=0; clusterct<clusternum; clusterct++) {
+    dindex = double_index(holdclust[clusterct].metric,clusterct);
+    metric_index.push_back(dindex);
+  }
+  // Sort metric_index
+  sort(metric_index.begin(), metric_index.end(), lower_double_index());
+  
+  // Loop on clusters, starting with the best (highest metric),
+  // and eliminating duplicates
+  goodclusternum=0;
+  for(clusterct2=clusternum-1; clusterct2>=0; clusterct2--) {
+    // Look up the correct cluster from metric_index
+    clusterct = metric_index[clusterct2].index;
+    inclustct = holdclust[clusterct].clusternum;
+    onecluster = holdclust[clusterct];
+    // Pull out the vector of detection indices from clustindmat
+    clustind = clustindmat[clusterct];
+    ptnum = clustind.size();
+    // Sanity-check the count of unique detections in this cluster
+    if(onecluster.uniquepoints>0 && ptnum!=onecluster.uniquepoints) {
+      cerr << "ERROR: 2nd-stage point number mismatch " << ptnum << " != " << onecluster.uniquepoints << " at input cluster " << inclustct << " (" << clusterct << ")\n";
+      return(7);
+    }
+    // See if all of them are still unused
+    detsused = 0;
+    for(ptct=1; ptct<ptnum; ptct++) {
+      if(detusedvec[clustind[ptct]]!=0) detsused+=1;
+    }
+    if(onecluster.uniquepoints>0 && onecluster.totRMS<=config.maxrms && detsused==0) {
+      // This is a good cluster not already marked as used.
+      goodclusternum++;
+      cout << "Accepted good cluster " << goodclusternum << " with metric " << onecluster.metric << "\n";
+      // See whether cluster is pure or mixed.
+      stringncopy01(rating,"PURE",SHORTSTRINGLEN);
+      for(ptct=1; ptct<ptnum; ptct++) {
+	if(stringnmatch01(detvec[clustind[ptct]].idstring,detvec[clustind[ptct-1]].idstring,SHORTSTRINGLEN) != 0) {
+	  stringncopy01(rating,"MIXED",SHORTSTRINGLEN);
+	}
+      }
+      for(i=0;i<SHORTSTRINGLEN;i++) onecluster.rating[i] = rating[i];
+      //      assert(rating.size() < sizeof(onecluster.rating));
+      //strncpy(onecluster.rating, rating.c_str(), sizeof(onecluster.rating));
+      //onecluster.rating[sizeof(onecluster.rating)-1] = 0;
+
+      // Figure out the time order of cluster points, so we can write them out in order.
+      sortclust = {};
+      for(ptct=0; ptct<ptnum; ptct++) {
+	dindex = double_index(detvec[clustind[ptct]].MJD,clustind[ptct]);
+	sortclust.push_back(dindex);
+	// Also mark each detection as used
+	detusedvec[clustind[ptct]]=1;
+      }
+      sort(sortclust.begin(), sortclust.end(), lower_double_index());
+      // Load new clusternumber for onecluster
+      onecluster.clusternum = outclust.size();
+      // Push back the new, vetted cluster on to outclust
+      outclust.push_back(onecluster);
+      // Push back the detection indices 
+      for(ptct=0; ptct<ptnum; ptct++) {
+	c2d = longpair(onecluster.clusternum,sortclust[ptct].index);
+	outclust2det.push_back(c2d);
+      }
+      // Close if-statement checking if this is a good, non-duplicated cluster
+    }
+    // Close loop on all clusters passing the initial cuts
+  }
+  return(0);
+}
 
 // link_planarity: December 14, 2023:
 // Exactly like link_purify, but implements a planarity check before
