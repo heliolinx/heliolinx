@@ -434,9 +434,9 @@ struct LinkRefineConfig {
   int simptype = 0;            // Defines how Herget_simplex_int constructs the starting simplex
                                //   in the 2-D parameter space of geocentric distance at first detection
                                //   (geodist1) and geocentric distance at last detection (geodist2)
-                               //   simptype=0 uses multiplicative scaling to create an approximately equilateral triangle:
+                               //   simptype=0 uses multiplicative scaling to create an approximately isoceles right triangle:
                                //   simptype=1 creates a simplex elongated along the direction defined by geodist1=geodist2
-                               //   simptype=2 uses subtraction to create a precisely equilateral triangle
+                               //   simptype=2 uses subtraction to create a precise isoceles right triangle
   int ptpow = 1;               // Power to which we raise the number of unique detections, when calculating the cluster quality metric.
   int nightpow = 1;            // Power to which we raise the number of distinct observing nights, when calculating the cluster quality metric.
   int timepow = 0;             // Power to which we raise the total temporal span of the linkage, when calculating the cluster quality metric.
@@ -453,9 +453,9 @@ struct LinkPurifyConfig {
   int simptype = 0;            // Defines how Herget_simplex_int constructs the starting simplex
                                //   in the 2-D parameter space of geocentric distance at first detection
                                //   (geodist1) and geocentric distance at last detection (geodist2)
-                               //   simptype=0 uses multiplicative scaling to create an approximately equilateral triangle:
+                               //   simptype=0 uses multiplicative scaling to create an approximately isoceles right triangle:
                                //   simptype=1 creates a simplex elongated along the direction defined by geodist1=geodist2
-                               //   simptype=2 uses subtraction to create a precisely equilateral triangle
+                               //   simptype=2 uses subtraction to create a precise isoceles right triangle
   int ptpow = 1;               // Power to which we raise the number of unique detections, when calculating the cluster quality metric.
   int nightpow = 1;            // Power to which we raise the number of distinct observing nights, when calculating the cluster quality metric.
   int timepow = 0;             // Power to which we raise the total temporal span of the linkage, when calculating the cluster quality metric.
@@ -1011,6 +1011,59 @@ public:
   KD_point6ix2(point6ix2 point, long left, long right, int dim, int flag) :point(point), left(left), right(right), dim(dim), flag(flag) {}
 };
 
+
+class point3ix2{  // integer 3-D point plus 2 long integer indices
+                  // The integer 3-D point is supposed to hold integerized
+                  // versions of dynamical position state vectors (X, Y, Z).
+                  // The purpose of the indices is to specify the pair of detections
+                  // from which the state vector originated.
+public:
+  int x;
+  int y;
+  int z;
+  long i1;
+  long i2;
+  point3ix2(int x, int y, int z, long i1, long i2) :x(x), y(y), z(z), i1(i1), i2(i2) {}
+};
+
+class lower_point3ix2_x{ // Sort point3ix2's by x
+public:
+  inline bool operator() (const point3ix2& p1, const point3ix2& p2) {
+    return(p1.x < p2.x);
+  }
+};
+
+class lower_point3ix2_y{ // Sort point3ix2's by y
+public:
+  inline bool operator() (const point3ix2& p1, const point3ix2& p2) {
+    return(p1.y < p2.y);
+  }
+};
+
+class lower_point3ix2_z{ // Sort point3ix2's by z
+public:
+  inline bool operator() (const point3ix2& p1, const point3ix2& p2) {
+    return(p1.z < p2.z);
+  }
+};
+
+class KD_point3ix2{  // 3-dimensional KD tree based on points of type point3ix2.
+                     // These points carry two long integer indices not used by
+                     // the KD tree, which itself uses two additional long integer
+                     // indices to specify the left and right branches, and one
+                     // regular integer to specify the dimension of the current
+                     // branching. We also provide a final integer, flag, to mark
+                     // points as already-checked for DBSCAN or other algorithms.
+public:
+  point3ix2 point;
+  long left;
+  long right;
+  int dim;
+  int flag;
+  KD_point3ix2(point3ix2 point, long left, long right, int dim, int flag) :point(point), left(left), right(right), dim(dim), flag(flag) {}
+};
+
+
 class dumbdet { // Dumb representation of a detection, needed only
                 // for ancluster01a.cpp to fix idiocy of projectpairs04c.cpp
                 // not writing out detection indices -- to be superseded as
@@ -1521,8 +1574,15 @@ int kdtree_6i01(const vector <point6ix2> &invec, int dim, long unsigned int spli
 long point6ix2_dist2(const point6ix2 &p1, const point6ix2 &p2);
 int kdrange_6i01(const vector <KD_point6ix2> &kdvec, const point6ix2 &querypoint, long range, vector <long> &indexvec);
 double cluster_stats6i01(const vector <KD_point6ix2> &cluster, double intconvscale, vector <double> &meanvals, vector <double> &rmsvals);
+double cluster_stats6i02(const vector <point6ix2> &cluster, double intconvscale, vector <double> &meanvals, vector <double> &rmsvals);
 int DBSCAN_6i01(vector <KD_point6ix2> &kdtree, double clustrad, int npt, double intconvscale, vector <KD6i_clust> &outclusters, int verbose);
 int KDRclust_6i01(vector <KD_point6ix2> &kdtree, double clustrad, int npt, double intconvscale, vector <KD6i_clust> &outclusters, int verbose);
+long medind_3ix2(const vector <point3ix2> &pointvec, int dim);
+int split3ix2(const vector <point3ix2> &pointvec, int dim, long unsigned int splitpoint, vector <point3ix2> &left, vector <point3ix2> &right);
+int kdtree_3i01(const vector <point3ix2> &invec, int dim, long unsigned int splitpoint, long unsigned int kdroot, vector <KD_point3ix2> &kdvec);
+long point3ix2_dist2(const point3ix2 &p1, const point3ix2 &p2);
+int kdrange_3i01(const vector <KD_point3ix2> &kdvec, const point3ix2 &querypoint, long range, vector <long> &indexvec);
+int KDRclust_3i01(vector <KD_point3ix2> &kdtree, const vector <point6ix2> &allstatevecs, double clustrad, int npt, double intconvscale, vector <KD6i_clust> &outclusters, int verbose);
 int celestial_to_statevec(double RA, double Dec,double delta,point3d &baryvec);
 int celestial_to_statevecLD(long double RA, long double Dec,long double delta,point3LD &baryvec);
 int celestial_to_stateunit(double RA, double Dec,point3d &baryvec);
@@ -1570,6 +1630,7 @@ int Keplerint(const double MGsun, const double mjdstart, const point3d &startpos
 int Kepler_fg_func_int(const double MGsun, const double mjdstart, const point3d &startpos, const point3d &startvel, const double mjdend, point3d &endpos, point3d &endvel);
 int Kepler_fg_func_vec(const double MGsun, const double mjdstart, const point3d &startpos, const point3d &startvel, const vector <double> &mjdvec, vector <point3d> &outpos, vector <point3d> &outvel);
 int Kepler_univ_int(const double MGsun, const double mjdstart, const point3d &startpos, const point3d &startvel, const double mjdend, point3d &endpos, point3d &endvel);
+int Kepler_univ_vec(const double MGsun, const double mjdstart, const point3d &startpos, const point3d &startvel, const vector <double> &mjdvec, vector <point3d> &outpos, vector <point3d> &outvel);
 int Kepler2dyn(const long double mjdnow, const keplerian_orbit &keporb, point3LD &outpos,  point3LD &outvel);
 int Kepler2dyn(const double mjdnow, const asteroid_orbit &oneorb, point3d &outpos,  point3d &outvel);
 int Kepler2dyn(const long double mjdnow, const asteroid_orbitLD &keporb, point3LD &outpos,  point3LD &outvel);
@@ -1693,6 +1754,7 @@ int trk2statevec_fgfuncRR(const vector <hlimage> &image_log, const vector <track
 int trk2statevec_clusterprobe(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6dx2> &allstatevecs, double mjdref);
 int trk2statevec_clusterprobe_innea(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6dx2> &allstatevecs, double mjdref);
 int trk2statevec_univar(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double max_v_inf);
+int trk2statevec_univarRR(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double max_v_inf);
 int trk2statevane_fgfunc(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double lambda0, double lambda_dot, double lambda_ddot, double chartimescale, double minsunelong, double maxsunelong, double min_proj_sine, double max_heliodist, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double max_v_inf);
 int trk2statevane_univar(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double lambda0, double lambda_dot, double lambda_ddot, double chartimescale, double minsunelong, double maxsunelong, double min_proj_sine, double maxheliodist, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double max_v_inf);
 void lastroot(const vector <double> &intvec, vector <double> &rootvec, long N);
@@ -1708,6 +1770,8 @@ long blend_vector(vector<long> vec);
 int form_clusters_kd2(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, int verbose);
 int form_clusters_kd3(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, int verbose);
 int form_clusters_kd4(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, int verbose);
+int form_clusters_RR(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, int verbose);
+int form_clusters_kdR(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, int verbose);
 int heliolinc_alg(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, vector <hlclust> &outclust, vector <longpair> &clust2det);
 int heliolinc_alg_fgfunc(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, vector <hlclust> &outclust, vector <longpair> &clust2det);
 int heliolinc_alg_univar(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, vector <hlclust> &outclust, vector <longpair> &clust2det);
@@ -1722,6 +1786,7 @@ int heliolinc_alg_ompkd3(const vector <hlimage> &image_log, const vector <hldet>
 int heliolinc_alg_ompkd4(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, vector <hlclust> &outclust, vector <longpair> &clust2det);
 int heliolinc_alg_kd(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, vector <hlclust> &outclust, vector <longpair> &clust2det);
 int heliolinc_alg_RR(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, vector <hlclust> &outclust, vector <longpair> &clust2det);
+int heliolinc_alg_R(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, vector <hlclust> &outclust, vector <longpair> &clust2det);
 int heliovane_alg_ompdanby(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const vector <hlradhyp> &lambdahyp, const vector <EarthState> &earthpos, HeliovaneConfig config, vector <hlclust> &outclust, vector <longpair> &clust2det);
 int link_refine_Herget(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <hlclust> &inclust, const vector  <longpair> &inclust2det, LinkRefineConfig config, vector <hlclust> &outclust, vector <longpair> &outclust2det);
 int link_refine_Herget_univar(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <hlclust> &inclust, const vector  <longpair> &inclust2det, LinkRefineConfig config, vector <hlclust> &outclust, vector <longpair> &outclust2det);
