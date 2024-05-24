@@ -12,7 +12,7 @@ CXXFLAGS ?= -O3
 ###
 
 PROGRAMS_PATH = $(PREFIX)/bin
-PROGRAMS = heliolinc_kd heliolinc_ompkd make_tracklets_new link_purify link_planarity parse_clust2det_MPC80 parse_clust2det_new split_hlfile heliolinc_RR heliolinc_R
+PROGRAMS = heliolinc_kd heliolinc_ompkd make_tracklets_new link_purify link_planarity parse_clust2det_MPC80 parse_clust2det_new split_hlfile heliolinc_RR heliolinc_R heliolinc
 
 LIB = libheliolinx.a
 LIB_SOURCES = solarsyst_dyn_geo01.cpp

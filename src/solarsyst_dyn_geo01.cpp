@@ -13993,7 +13993,8 @@ double Hergetchi_vstar(double geodist1, double geodist2, int Hergetpoint1, int H
 // scaling to create an approximate isoceles right triangle:
 // (geodist1,geodist2), (geodist1*(1-simpscale),geodist2), (geodist1,geodist2*(1-simpscale)).
 // simptype=1 creates a simplex elongated along the direction defined
-// by geodist1=geodist2:
+// by keeping the ratio of geodist2 to geodist1 near its initial value
+// (not precisely the same, or the simplex would have zero area and not work).
 // (geodist1,geodist2),
 // (geodist1*(1 + simpscale - simpscale^2),geodist2*(1 + simpscale + simpscale^2)),
 // (geodist1*(1 - simpscale - simpscale^2),geodist2*(1 - simpscale + simpscale^2)).
@@ -23616,7 +23617,7 @@ point3d earthpos01(const vector <EarthState> &earthpos, double mjd)
 }
 
 
-int form_clusters(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, int verbose)
+int form_clusters(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, int verbose)
 {
   int geobinct = 0;
   long detnum = detvec.size();
@@ -23660,7 +23661,8 @@ int form_clusters(const vector <point6ix2> &allstatevecs, const vector <hldet> &
   int j=0;
   double dgnum;
   int georadct,georadnum;
-
+  double clustrad = 0.0l;
+  
   // Loop over geocentric bins, selecting the subset of state-vectors
   // in each bin, and running DBSCAN only on those, with clustering radius
   // adjusted accordingly.
@@ -23710,7 +23712,18 @@ int form_clusters(const vector <point6ix2> &allstatevecs, const vector <hldet> &
       if(verbose>=1) cout << "Created a KD tree with " << kdvec.size() << " branches\n";
 
       kdclust={};
-      long clusternum = DBSCAN_6i01(kdvec, cluster_radius*(georadcen/REF_GEODIST)/INTEGERIZING_SCALEFAC, dbscan_npt, INTEGERIZING_SCALEFAC, kdclust, verbose);
+      if(georadcen >= clustchangerad) {
+	// cluster radius scales linearly with geocentric distance.
+	clustrad = cluster_radius*(georadcen/REF_GEODIST);
+      }
+      else {
+	// cluster radius remains fixed at the minimum value,
+	// in order to make sure it does not get excessively small
+	// for very small geocentric radii.
+	clustrad = cluster_radius*(clustchangerad/REF_GEODIST);
+      }
+ 
+      long clusternum = DBSCAN_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, dbscan_npt, INTEGERIZING_SCALEFAC, kdclust, verbose);
       if(verbose>=1) cout << "DBSCAN_6i01 finished, with " << clusternum << " = " << kdclust.size() << " clusters found\n";
       if(clusternum<0) return(8);
       for(clusterct=0; clusterct<long(kdclust.size()); clusterct++) {
@@ -25807,7 +25820,7 @@ int heliolinc_alg(const vector <hlimage> &image_log, const vector <hldet> &detve
     if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
     if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
     if(status!=0) {
       cerr << "ERROR: form_clusters exited with error code " << status << "\n";
       return(status);
@@ -25913,7 +25926,7 @@ int heliolinc_alg_fgfunc(const vector <hlimage> &image_log, const vector <hldet>
     if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
     if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
     if(status!=0) {
       cerr << "ERROR: form_clusters exited with error code " << status << "\n";
       return(status);
@@ -26019,7 +26032,7 @@ int heliolinc_alg_univar(const vector <hlimage> &image_log, const vector <hldet>
     if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
     if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
     if(status!=0) {
       cerr << "ERROR: form_clusters exited with error code " << status << "\n";
       return(status);
@@ -26131,7 +26144,7 @@ int heliolinc_alg_danby(const vector <hlimage> &image_log, const vector <hldet> 
     if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
     if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
     if(status!=0) {
       cerr << "ERROR: form_clusters exited with error code " << status << "\n";
       return(status);
@@ -26265,7 +26278,7 @@ int heliovane_alg_danby(const vector <hlimage> &image_log, const vector <hldet> 
     if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
     if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, lambdahyp[lambdact].HelioRad, lambdahyp[lambdact].R_dot, lambdahyp[lambdact].R_dubdot, chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, lambdahyp[lambdact].HelioRad, lambdahyp[lambdact].R_dot, lambdahyp[lambdact].R_dubdot, chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
     if(status!=0) {
       cerr << "ERROR: form_clusters exited with error code " << status << "\n";
       return(status);
@@ -26382,7 +26395,7 @@ int heliolinc_alg_omp(const vector <hlimage> &image_log, const vector <hldet> &d
     if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
     if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
     if(status!=0) {
       cerr << "ERROR: form_clusters exited with error code " << status << "\n";
       return(status);
@@ -26488,7 +26501,7 @@ int heliolinc_alg_omp2(const vector <hlimage> &image_log, const vector <hldet> &
     if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
     if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
     if(status!=0) {
       cerr << "ERROR: form_clusters exited with error code " << status << "\n";
       return(status);
@@ -26627,7 +26640,7 @@ int heliolinc_alg_omp3(const vector <hlimage> &image_log, const vector <hldet> &
 	// trk2statevec probably ran OK, and some clusters possible.
 	if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-	status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+	status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
 	if(status!=0) {
 	  cerr << "ERROR: form_clusters exited with error code " << status << "\n";
 	}
@@ -26795,7 +26808,7 @@ int heliolinc_alg_ompdanby(const vector <hlimage> &image_log, const vector <hlde
 	// trk2statevec probably ran OK, and some clusters possible.
 	if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-	status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+	status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
 	if(status!=0) {
 	  cerr << "ERROR: form_clusters exited with error code " << status << "\n";
 	}
@@ -27164,6 +27177,148 @@ int heliolinc_alg_ompkd3(const vector <hlimage> &image_log, const vector <hldet>
   }
   return(0);    
 }
+
+// link_dedup: December 13, 2023:
+// Cull out clusters that are exact duplicates -- that is, that
+// include exactly the same list of detections, as determined by
+// the lists of indices to the detection table.
+int link_dedup(const vector <hlclust> &inclust, const vector  <longpair> &inclust2det, vector <hlclust> &outclust, vector  <longpair> &outclust2det)
+{
+  long clusternum = long(inclust.size());
+  // Wipe output vectors
+  outclust={};
+  outclust2det={};
+  if(clusternum<=0) return(0); // Nothing to analyze, just return with empty vectors.
+  
+  long_index lindex = long_index(0,0);
+  vector <long_index> lindvec;
+  vector <int> keepvec;
+  vector <long> pointind;
+  vector <long> deletelist;
+  vector <vector <long>> pointind_mat;
+  double_index dindex = double_index(0l,0l);
+  vector <double_index> dindvec;
+  longpair onepair = longpair(0,0);
+  long i=0;
+  long j=0;
+  long clustct=0;
+  hlclust oneclust=inclust[0];
+  long currentclust=0;
+  int isdup=1;
+  long hashval=0;
+
+  
+  // First step: hash all the cluster index vectors
+  for(clustct=0 ; clustct<clusternum; clustct++) {
+    if(clustct!=inclust[clustct].clusternum) {
+      cerr << "ERROR: cluster index mismatch " << clustct << " != " << inclust[clustct].clusternum << " at input cluster " << clustct << "\n";
+      return(5);
+    }
+    // Load a vector with the indices to detvec
+    pointind = {};
+    pointind = tracklet_lookup(inclust2det, clustct);
+    // Sort vector of detection indices
+    sort(pointind.begin(), pointind.end());
+    // Hash this vector
+    hashval = blend_vector(pointind);
+    // Load hash for index-sorting
+    lindex = long_index(hashval,clustct);
+    lindvec.push_back(lindex);
+    // Load vector of detection indices into matrix
+    pointind_mat.push_back(pointind);
+    // Initialize keepvec to keep all clusters; later, some will be marked for removal
+    keepvec.push_back(1);
+  }
+  // Sort lindvec by hash values
+  sort(lindvec.begin(), lindvec.end(), lower_long_index());
+  // Identify duplicate clusters.
+  clustct=0;
+  while(clustct<long(lindvec.size())) {
+    dindvec={};
+    hashval=lindvec[clustct].lelem;
+    currentclust=lindvec[clustct].index;
+    dindex = double_index(inclust[currentclust].metric,currentclust);
+    dindvec.push_back(dindex);
+    clustct++;
+    // Loop to identify any clusters with the same hash as currentclust
+    while(lindvec[clustct].lelem==hashval && clustct<long(lindvec.size())) {
+      currentclust=lindvec[clustct].index;
+      dindex = double_index(inclust[currentclust].metric,currentclust);
+      dindvec.push_back(dindex);
+      clustct++;
+    }
+    // Now dindvec lists all the clusters with the identical hash (hashval)
+    // If there's only one, it should not be deleted, so there's nothing to be done.
+    if(dindvec.size()>1) {
+      // Some duplicate clusters were found. All but the best one must be deleted.
+      // Sort by quality metric
+      sort(dindvec.begin(), dindvec.end(), lower_double_index());
+      // The best cluster (highest metric) will be at the end,
+      // that is, it will be element dindvec.size()-1
+      for(i=0;i<long(dindvec.size()-1);i++) { // Loop over all clusters except the best one
+	// Make sure this cluster really is a duplicate of the best one
+	isdup=1;
+	if(pointind_mat[dindvec[i].index].size() != pointind_mat[dindvec[dindvec.size()-1].index].size()) {
+	  isdup=0; // The clusters don't have the same length, and hence cannot possibly be duplicates.
+	} else {
+	  // They might be duplicates: check point by point
+	  for(j=0; j<long(pointind_mat[dindvec[dindvec.size()-1].index].size()); j++) {
+	    if(pointind_mat[dindvec[i].index][j] != pointind_mat[dindvec[dindvec.size()-1].index][j]) {
+	      isdup=0;
+	    }
+	  }
+	}
+	if(isdup==0) {
+	  // Serious problem: there's been a hash collision.
+	  // Program will run and return correctly, but we definitely need to
+	  // notify the user that the hashing failed.
+	  cerr << "WARNING: HASHING COLLISION!\n";
+	  cerr << "Found equal hashes for clusters " << dindvec[i].index << " and " << dindvec[dindvec.size()-1].index << ", although the vectors were not actually equal\n";
+	  cerr << "hashes: " << blend_vector(pointind_mat[dindvec[i].index]) << " and " << blend_vector(pointind_mat[dindvec[dindvec.size()-1].index]) << "\n";
+	  if(pointind_mat[dindvec[i].index].size() != pointind_mat[dindvec[dindvec.size()-1].index].size()) {
+	    cerr << "Unequal sizes: " << pointind_mat[dindvec[i].index].size() << " and " << pointind_mat[dindvec[dindvec.size()-1].index].size() << "\n";
+	  } else {
+	    // Clusters were of equal size, print out all the elements.
+	    cerr << "Cluster  " << dindvec[i].index << ":\n";
+	    for(j=0; j<long(pointind_mat[dindvec[dindvec.size()-1].index].size()); j++) {
+	      cerr << pointind_mat[dindvec[i].index][j] << " ";
+	    }
+	    cerr << "\n";
+	    cerr << "Cluster  " << dindvec[dindvec.size()-1].index << ":\n";
+	    for(j=0; j<long(pointind_mat[dindvec[dindvec.size()-1].index].size()); j++) {
+	      cerr << pointind_mat[dindvec[dindvec.size()-1].index][j] << " ";
+	    }
+	    cerr << "\n";
+	  }
+	}
+	if(isdup==1) {
+	  // Expected result since the hashes were identical:
+	  // cluster dindvec[i].index has identical points to
+	  // cluster dindvec[dindvec.size()-1].index, but a less good
+	  // quality metric.
+	  keepvec[dindvec[i].index]=0; // Mark the duplicate cluster for deletion
+	}
+      } // Close loop on a subset of clusters with identical hashes
+    } // Close case where more than one cluster has the same hash
+  } // Close loop over all clusters
+
+  // Now all duplicate clusters are marked for deletion using keepvec=0.
+  // Construct new vectors that don't have these clusters.
+  
+  for(clustct=0 ; clustct<long(inclust.size()); clustct++) {
+    if(keepvec[clustct]==1) {
+      oneclust=inclust[clustct];
+      oneclust.clusternum = outclust.size();
+      outclust.push_back(oneclust);
+      for(i=0; i<long(pointind_mat[clustct].size()); i++) {
+	onepair = longpair(oneclust.clusternum,pointind_mat[clustct][i]);
+	outclust2det.push_back(onepair);
+      }
+    }
+  }
+  return(0);
+}
+
 
 // heliolinc_alg_ompkd4: January 31, 2024:
 // Testing new code form_clusters_kd4, supposed to be
@@ -27717,6 +27872,176 @@ int heliolinc_alg_R(const vector <hlimage> &image_log, const vector <hldet> &det
   return(0);    
 }
 
+
+// heliolinc_alg_all: May 23, 2024
+// Attempt to aggregate all extant single-threaded versions of heliolinc into
+// a single code whose behavior is determined by config.use_univar.
+int heliolinc_alg_all(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, vector <hlclust> &outclust, vector <longpair> &clust2det)
+{
+  outclust = {};
+  clust2det = {};
+   
+  point3d Earthrefpos = point3d(0l,0l,0l);
+  long imnum = image_log.size();
+  long pairnum = tracklets.size();
+  long trk2detnum = trk2det.size();
+  long accelnum = radhyp.size();
+  long accelct=0;
+
+  vector <double> heliodist;
+  vector <double> heliovel;
+  vector <double> helioacc;
+  long realclusternum, gridpoint_clusternum, status;
+  realclusternum = gridpoint_clusternum = status = 0;
+  vector <point6ix2> allstatevecs;
+  
+  // Echo config struct
+  cout << "Configuration parameters:\n";
+  cout << "MJD of reference time: " << config.MJDref << "\n";
+  cout << "DBSCAN clustering radius: " << config.clustrad << " km\n";
+  cout << "DBSCAN npt: " << config.dbscan_npt << "\n";
+  cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
+  cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
+  cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
+  cout << "Max geocentric distance (will be exceeded by center only of the outermost bin): " << config.maxgeodist << " AU\n";
+  cout << "Logarthmic step size (and bin width) for geocentric distance bins: " << config.geologstep << "\n";
+  cout << "Minimum inferred geocentric distance for a valid tracklet: " << config.mingeoobs << " AU\n";
+  cout << "Minimum inferred impact parameter (w.r.t. Earth) for a valid tracklet: " << config.minimpactpar << " km\n";
+  if(config.verbose) cout << "Verbose output selected\n";
+  
+  if(imnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty image catalog\n";
+    return(1);
+  } else if(pairnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty tracklet array\n";
+    return(1);
+  } else if(trk2detnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty trk2det array\n";
+    return(1);
+  } else if(accelnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty heliocentric hypothesis array\n";
+    return(1);
+  }
+  
+  double MJDmin = image_log[0].MJD;
+  double MJDmax = image_log[imnum-1].MJD;
+  if(config.MJDref<MJDmin || config.MJDref>MJDmax) {
+    // Input reference MJD is invalid. Suggest a better value before exiting.
+    cerr << "\nERROR: reference MJD, supplied as " << config.MJDref << ",\n";
+    cerr << "must fall in the time interval spanned by the data (" << MJDmin << " to " << MJDmax << "\n";
+    cerr << fixed << setprecision(2) << "Suggested value is " << MJDmin*0.5l + MJDmax*0.5l << "\n";
+    cout << "based on your input image catalog\n";
+    return(2);
+  }
+
+  double chartimescale = (MJDmax - MJDmin)*SOLARDAY/TIMECONVSCALE; // Note that the units are seconds.
+  Earthrefpos = earthpos01(earthpos, config.MJDref);
+
+  // Convert heliocentric radial motion hypothesis matrix
+  // from units of AU, AU/day, and GMSun/R^2
+  // to units of km, km/day, and km/day^2.
+  heliodist = heliovel = helioacc = {};
+  for(accelct=0;accelct<accelnum;accelct++) {
+    heliodist.push_back(radhyp[accelct].HelioRad * AU_KM);
+    heliovel.push_back(radhyp[accelct].R_dot * AU_KM);
+    helioacc.push_back(radhyp[accelct].R_dubdot * (-GMSUN_KM3_SEC2*SOLARDAY*SOLARDAY/heliodist[accelct]/heliodist[accelct]));
+  }
+
+  // Begin master loop over heliocentric hypotheses
+  outclust={};
+  clust2det={};
+  realclusternum=0;
+  for(accelct=0;accelct<accelnum;accelct++) {
+    cout << "Working on hypothesis " << accelct << ": " << radhyp[accelct].HelioRad << " AU, " << radhyp[accelct].R_dot*AU_KM/SOLARDAY << " km/sec " << radhyp[accelct].R_dubdot << " GMsun/r^2\n";
+
+    gridpoint_clusternum=0;
+    // Covert all tracklets into state vectors at the reference time, under
+    // the assumption that the heliocentric distance hypothesis is correct.
+    if(config.use_univar == 1 || config.use_univar == 5 || config.use_univar == 7) {
+      // Integrate to perform clustering in the standard heliolinc3d parameter space
+      // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
+      // Use the universal variable formulation of the Kepler problem for orbit propagation.
+      // This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
+      status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
+    } else if(config.use_univar == 2) {
+      // Integrate to perform clustering in the parameter space of Ben Engebreth's 
+      // heliolinc_RR algorithm, which uses position vectors at two different
+      // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
+      // Use the Kepler f and g functions for orbit propagation
+      // This is faster than the universal variable formulation, but cannot handle hyperbolic
+      status = trk2statevec_fgfuncRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
+    } else if(config.use_univar == 3) {
+      // Integrate to perform clustering in the parameter space of Ben Engebreth's 
+      // heliolinc_RR algorithm, which uses position vectors at two different
+      // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
+      // Use the universal variable formulation of the Kepler problem for orbit propagation.
+      // This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
+      status = trk2statevec_univarRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
+    } else {
+      // Integrate to perform clustering in the standard heliolinc3d parameter space
+      // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
+      // Use the Kepler f and g functions for orbit propagation
+      // This is faster than the universal variable formulation, but cannot handle hyperbolic
+      // (i.e., unbound, interstellar) orbits. Being fastest for normal orbits, it is the default,
+      // and also corresponds to config.use_univar == 0, 4, or 6
+      status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
+    }
+
+    if(status==1) {
+      cerr << "WARNING: hypothesis " << accelct << ": " << radhyp[accelct].HelioRad << " " << radhyp[accelct].R_dot << " " << radhyp[accelct].R_dubdot << " led to\nnegative heliocentric distance or other invalid result: SKIPPING\n";
+      continue;
+    } else if(status==2) {
+      // This is a weirder error case and is fatal.
+      cerr << "Fatal error case from trk2statevec.\n";
+      return(3);
+    }
+    // If we get here, trk2statevec probably ran OK.
+    if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
+    if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
+
+    if(config.use_univar==6 || config.use_univar==7) {
+      // Use old DBSCAN algorithm in six dimensions for clustering the standard heliolinc parameter space
+      status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+      if(status!=0) {
+	cerr << "ERROR: form_clusters exited with error code " << status << "\n";
+      }
+    } else if(config.use_univar==2 || config.use_univar==3) {
+      // Use a KDtree range-query in six dimensions for clustering the heliolinc_RR parameter space
+      status = form_clusters_RR(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+      if(status!=0) {
+	cerr << "ERROR: form_clusters_RR exited with error code " << status << "\n";
+      }
+    } else if (config.use_univar==4 || config.use_univar==5) {
+      // Use a KDtree range-query in only three dimensions for clustering the position-only heliolinc parameter space
+      status = form_clusters_kdR(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+      if(status!=0) {
+	cerr << "ERROR: form_clusters_kd4 exited with error code " << status << "\n";
+      }
+    } else {
+      // Use a KDtree range-query in six dimensions for clustering the standard heliolinc parameter space
+      status = form_clusters_kd4(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+      if(status!=0) {
+	cerr << "ERROR: form_clusters_kd4 exited with error code " << status << "\n";
+      }
+    }
+  }
+  
+  // De-duplicate the final output set
+  cout << "De-duplicating output set of " << outclust.size() << " candidate linkages\n";
+  vector <hlclust> outclust2;
+  vector  <longpair> outclust2det2;
+  link_dedup(outclust, clust2det, outclust2, outclust2det2);
+  outclust = outclust2;
+  for(long i=0; i<long(outclust.size()); i++) {
+    outclust[i].reference_MJD = config.MJDref;
+  }
+  clust2det = outclust2det2;
+  cout << "Final de-duplicated set contains " << outclust.size() << " linkages\n";
+
+  return(0);    
+}
+
+
       
 // heliovane_alg_ompdanby: October 23, 2023:
 // Attempt to parallelize over heliocentric hypotheses.
@@ -27880,7 +28205,7 @@ int heliovane_alg_ompdanby(const vector <hlimage> &image_log, const vector <hlde
 	// trk2statevane probably ran OK, and some clusters possible.
 	if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-	status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, lambdahyp[lambdact].HelioRad, lambdahyp[lambdact].R_dot, lambdahyp[lambdact].R_dubdot, chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+	status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, lambdahyp[lambdact].HelioRad, lambdahyp[lambdact].R_dot, lambdahyp[lambdact].R_dubdot, chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
 	if(status!=0) {
 	  cerr << "ERROR: form_clusters exited with error code " << status << "\n";
 	}
@@ -27921,6 +28246,7 @@ int heliovane_alg_ompdanby(const vector <hlimage> &image_log, const vector <hlde
   }
   return(0);    
 }
+
 
 // link_refine_Herget: April 11, 2023:
 // Algorithmic portion to be called by wrappers.
@@ -28472,144 +28798,6 @@ int link_refine_Herget_univar(const vector <hlimage> &image_log, const vector <h
   return(0);
 }
 
-// link_dedup: December 13, 2023:
-// Cull out clusters that are exact duplicates -- that is, that
-// include exactly the same list of detections, as determined by
-// the lists of indices to the detection table.
-int link_dedup(const vector <hlclust> &inclust, const vector  <longpair> &inclust2det, vector <hlclust> &outclust, vector  <longpair> &outclust2det)
-{
-  long_index lindex = long_index(0,0);
-  vector <long_index> lindvec;
-  vector <int> keepvec;
-  vector <long> pointind;
-  vector <long> deletelist;
-  vector <vector <long>> pointind_mat;
-  double_index dindex = double_index(0l,0l);
-  vector <double_index> dindvec;
-  longpair onepair = longpair(0,0);
-  long i=0;
-  long j=0;
-  long clustct=0;
-  long clusternum = long(inclust.size());
-  hlclust oneclust=inclust[0];
-  long currentclust=0;
-  int isdup=1;
-  long hashval=0;
-
-  // Wipe output vectors
-  outclust={};
-  outclust2det={};
-  
-  // First step: hash all the cluster index vectors
-  for(clustct=0 ; clustct<clusternum; clustct++) {
-    if(clustct!=inclust[clustct].clusternum) {
-      cerr << "ERROR: cluster index mismatch " << clustct << " != " << inclust[clustct].clusternum << " at input cluster " << clustct << "\n";
-      return(5);
-    }
-    // Load a vector with the indices to detvec
-    pointind = {};
-    pointind = tracklet_lookup(inclust2det, clustct);
-    // Sort vector of detection indices
-    sort(pointind.begin(), pointind.end());
-    // Hash this vector
-    hashval = blend_vector(pointind);
-    // Load hash for index-sorting
-    lindex = long_index(hashval,clustct);
-    lindvec.push_back(lindex);
-    // Load vector of detection indices into matrix
-    pointind_mat.push_back(pointind);
-    // Initialize keepvec to keep all clusters; later, some will be marked for removal
-    keepvec.push_back(1);
-  }
-  // Sort lindvec by hash values
-  sort(lindvec.begin(), lindvec.end(), lower_long_index());
-  // Identify duplicate clusters.
-  clustct=0;
-  while(clustct<long(lindvec.size())) {
-    dindvec={};
-    hashval=lindvec[clustct].lelem;
-    currentclust=lindvec[clustct].index;
-    dindex = double_index(inclust[currentclust].metric,currentclust);
-    dindvec.push_back(dindex);
-    clustct++;
-    // Loop to identify any clusters with the same hash as currentclust
-    while(lindvec[clustct].lelem==hashval && clustct<long(lindvec.size())) {
-      currentclust=lindvec[clustct].index;
-      dindex = double_index(inclust[currentclust].metric,currentclust);
-      dindvec.push_back(dindex);
-      clustct++;
-    }
-    // Now dindvec lists all the clusters with the identical hash (hashval)
-    // If there's only one, it should not be deleted, so there's nothing to be done.
-    if(dindvec.size()>1) {
-      // Some duplicate clusters were found. All but the best one must be deleted.
-      // Sort by quality metric
-      sort(dindvec.begin(), dindvec.end(), lower_double_index());
-      // The best cluster (highest metric) will be at the end,
-      // that is, it will be element dindvec.size()-1
-      for(i=0;i<long(dindvec.size()-1);i++) { // Loop over all clusters except the best one
-	// Make sure this cluster really is a duplicate of the best one
-	isdup=1;
-	if(pointind_mat[dindvec[i].index].size() != pointind_mat[dindvec[dindvec.size()-1].index].size()) {
-	  isdup=0; // The clusters don't have the same length, and hence cannot possibly be duplicates.
-	} else {
-	  // They might be duplicates: check point by point
-	  for(j=0; j<long(pointind_mat[dindvec[dindvec.size()-1].index].size()); j++) {
-	    if(pointind_mat[dindvec[i].index][j] != pointind_mat[dindvec[dindvec.size()-1].index][j]) {
-	      isdup=0;
-	    }
-	  }
-	}
-	if(isdup==0) {
-	  // Serious problem: there's been a hash collision.
-	  // Program will run and return correctly, but we definitely need to
-	  // notify the user that the hashing failed.
-	  cerr << "WARNING: HASHING COLLISION!\n";
-	  cerr << "Found equal hashes for clusters " << dindvec[i].index << " and " << dindvec[dindvec.size()-1].index << ", although the vectors were not actually equal\n";
-	  cerr << "hashes: " << blend_vector(pointind_mat[dindvec[i].index]) << " and " << blend_vector(pointind_mat[dindvec[dindvec.size()-1].index]) << "\n";
-	  if(pointind_mat[dindvec[i].index].size() != pointind_mat[dindvec[dindvec.size()-1].index].size()) {
-	    cerr << "Unequal sizes: " << pointind_mat[dindvec[i].index].size() << " and " << pointind_mat[dindvec[dindvec.size()-1].index].size() << "\n";
-	  } else {
-	    // Clusters were of equal size, print out all the elements.
-	    cerr << "Cluster  " << dindvec[i].index << ":\n";
-	    for(j=0; j<long(pointind_mat[dindvec[dindvec.size()-1].index].size()); j++) {
-	      cerr << pointind_mat[dindvec[i].index][j] << " ";
-	    }
-	    cerr << "\n";
-	    cerr << "Cluster  " << dindvec[dindvec.size()-1].index << ":\n";
-	    for(j=0; j<long(pointind_mat[dindvec[dindvec.size()-1].index].size()); j++) {
-	      cerr << pointind_mat[dindvec[dindvec.size()-1].index][j] << " ";
-	    }
-	    cerr << "\n";
-	  }
-	}
-	if(isdup==1) {
-	  // Expected result since the hashes were identical:
-	  // cluster dindvec[i].index has identical points to
-	  // cluster dindvec[dindvec.size()-1].index, but a less good
-	  // quality metric.
-	  keepvec[dindvec[i].index]=0; // Mark the duplicate cluster for deletion
-	}
-      } // Close loop on a subset of clusters with identical hashes
-    } // Close case where more than one cluster has the same hash
-  } // Close loop over all clusters
-
-  // Now all duplicate clusters are marked for deletion using keepvec=0.
-  // Construct new vectors that don't have these clusters.
-  
-  for(clustct=0 ; clustct<long(inclust.size()); clustct++) {
-    if(keepvec[clustct]==1) {
-      oneclust=inclust[clustct];
-      oneclust.clusternum = outclust.size();
-      outclust.push_back(oneclust);
-      for(i=0; i<long(pointind_mat[clustct].size()); i++) {
-	onepair = longpair(oneclust.clusternum,pointind_mat[clustct][i]);
-	outclust2det.push_back(onepair);
-      }
-    }
-  }
-  return(0);
-}
 
 // link_dedup2: March 11, 2024:
 // Cull out clusters that are subsets of other clusters. In other words,
