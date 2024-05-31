@@ -31295,6 +31295,7 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
   longpair c2d = longpair(0,0);
   char rating[SHORTSTRINGLEN];
   int status=1;
+  int status1=1;
   vector <double> heliodistvec;
   vector <double> lambdavec;
   double delta1 = 0.0l;
@@ -31332,7 +31333,27 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
   cout << "the total timespan will be raised to the power of " << config.timepow << ";\n";
   cout << "and the astrometric RMS will be raised to the power of (negative) " << config.rmspow << "\n";
   if(config.verbose>=1) cout << "verbose output has been selected\n";
-  
+  if(config.use_heliovane==1) cout << "Using heliovane parameterization\n";
+  if(config.use_heliovane!=1) {
+     // NOT using heliovane
+    if(config.useorbMJD==1 && onecluster.orbit_MJD>0.0) {
+      cout << "Using Taylor Series hypothesis parameterizations (r, r-dot, r-double-dot) for r(t).\n";
+      cout << "Using epoch-of-orbit MJD from a previous round of orbit fitting as the reference time,\n";
+      cout << "which may be a bad idea with link_planarity\n";
+    } else if(config.useorbMJD==-1) {
+      cout << "Using Taylor Series hypothesis parameterizations (r, r-dot, r-double-dot) for r(t).\n";
+      cout << "Using old reference MJD from heliolinc as the reference time,\n";
+      cout << "which is probably the right way to go with link_planarity\n";
+    } else if(config.useorbMJD==2 && onecluster.orbit_MJD>0.0) {
+      cout << "Using Matt Holman's idea of a Keplerian solution for r(t).\n";
+      cout << "Using epoch-of-orbit MJD from a previous round of orbit fitting as the reference time,\n";
+      cout << "which may be a bad idea with link_planarity\n";
+    } else {
+      cout << "Using Matt Holman's idea of a Keplerian solution for r(t).\n";
+      cout << "Using old reference MJD from heliolinc as the reference time,\n";
+      cout << "which is probably the right way to go with link_planarity\n";
+    }
+  }
   // Cull out exact duplicates using link_dedup().
   status =  link_dedup(inclust1, inclust2det1, inclust, inclust2det);
   if(status!=0) {
@@ -31390,20 +31411,104 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
       heliodist = onecluster.heliohyp0;
       heliovel = onecluster.heliohyp1;
       helioacc = onecluster.heliohyp2;
-      for(ptct=0; ptct<ptnum; ptct++) {
-	// Calculate approximate heliocentric distance from the input quadratic approximation.
-	if(config.useorbMJD>0 && onecluster.orbit_MJD>0.0) {
-	  // A previous execution of link_purify or link_planarity has fit
-	  // an orbit and supplied us with a value for MJD at the epoch.
-	  // Use this as the reference MJD.
+      if(config.useorbMJD==1 && onecluster.orbit_MJD>0.0) {
+	// A previous execution of link_purify or link_planarity has fit
+	// an orbit and supplied us with a value for MJD at the epoch.
+	// Use this as the reference MJD. (PROBABLY A BAD IDEA)
+	// Also use the Taylor Series rather than Matt Holman's Keplerian r(t)
+	for(ptct=0; ptct<ptnum; ptct++) {
+	  // Calculate approximate heliocentric distance using the Taylor Series approximation.
 	  delta1 = (clusterdets[ptct].MJD - onecluster.orbit_MJD)*SOLARDAY;
-	} else {
-	  // Either not requested to use an MJD at the epoch, or none exists:
-	  // default to using the old reference MJD from heliolinc.
-	  delta1 = (clusterdets[ptct].MJD - onecluster.reference_MJD)*SOLARDAY;
+	  heliodistvec.push_back(heliodist*AU_KM + heliovel*delta1 + 0.5*helioacc*delta1*delta1/1000.0l);
 	}
-	heliodistvec.push_back(heliodist*AU_KM + heliovel*delta1 + 0.5*helioacc*delta1*delta1/1000.0l);
+      } else if(config.useorbMJD==-1) {
+	// Use the old reference MJD from heliolinc, and the
+	// Taylor Series rather than Matt Holman's Keplerian r(t)
+	for(ptct=0; ptct<ptnum; ptct++) {
+	  // Calculate approximate heliocentric distance using the Taylor Series approximation.
+	  delta1 = (clusterdets[ptct].MJD - onecluster.reference_MJD)*SOLARDAY;
+	  heliodistvec.push_back(heliodist*AU_KM + heliovel*delta1 + 0.5*helioacc*delta1*delta1/1000.0l);
+	}
+      } else if(config.useorbMJD==2 && onecluster.orbit_MJD>0.0) {
+	// A previous execution of link_purify or link_planarity has fit
+	// an orbit and supplied us with a value for MJD at the epoch.
+	// Use this as the reference MJD. (PROBABLY A BAD IDEA)
+	// Also use Matt Holman's Keplerian r(t), rather than the Taylor Series
+	// SOLVE FOR THE SQUARE OF THE TANGENTIAL VELOCITY
+	double localg = GMSUN_KM3_SEC2/DSQUARE(heliodist*AU_KM); // Units are km/sec^2
+	double physacc = helioacc/1000.0l; // Units are km/sec^2
+	double vesc = 2.0*GMSUN_KM3_SEC2/heliodist/AU_KM; // this is the square of the escape velocity in km/sec
+	double tanvel = heliodist*AU_KM*(physacc+localg); // this is the square of the tangential velocity in km/sec
+	cout << fixed << setprecision(6) << "NOTE: hypothesis point is " << heliodist << ", " << heliovel*SOLARDAY/AU_KM << ", " << -helioacc/1000.0l/localg << "\n";
+	cout << fixed << setprecision(6) << "vesc = " << sqrt(vesc) << ", tanvel = " << sqrt(tanvel) << ", heliovel = " << heliovel << ", totvel = " << sqrt(tanvel + LDSQUARE(heliovel)) << "\n";
+
+	// CHECK FOR UNPHYSICAL AND UNBOUND CASES
+	if(tanvel<0.0l) {
+	  cerr << fixed << setprecision(6) << "ERROR: hypothesis point " << heliodist << ", " << heliovel*SOLARDAY/AU_KM << ", " << -helioacc/1000.0l/localg << " is not possible for any trajectory\n";
+	  return(1);
+	}
+	if(vesc < tanvel + LDSQUARE(heliovel/SOLARDAY)) {
+	  cout << fixed << setprecision(6) << "NOTE: hypothesis point " << heliodist << ", " << heliovel*SOLARDAY/AU_KM << ", " << -helioacc/1000.0l/localg << " implies an unbound orbit.\n";
+	  cout << fixed << setprecision(6) << "vesc = " << sqrt(vesc) << ", tanvel = " << sqrt(tanvel) << ", heliovel = " << heliovel << ", totvel = " << sqrt(tanvel + LDSQUARE(heliovel)) << "\n";
+	  // The fact that the orbit is unbound is not a problem, because this function uses
+	  // universal variables and can handle unbound orbits.
+	}
+	// If we get here, a sensible solution (bound or unbound) exists. Solve for the true tangential velocity
+	tanvel = sqrt(tanvel);
+	// Construct state vectors producing the required orbit (in the x-y plane, for simplicity).
+	startpos = point3d(heliodist*AU_KM,0l,0l);
+	startvel = point3d(heliovel,tanvel,0l);
+	endpos = point3d(0l,0l,0l);
+	endvel = point3d(0l,0l,0l);
+	for(ptct=0; ptct<ptnum; ptct++) {
+	  // Integrate the orbit to find the heliocentric distance as a function of time.
+	  status1 = Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, clusterdets[ptct].MJD, endpos, endvel);
+	  if(status1!=0) {
+	    cerr << "ERROR: Keplerian integration failed for r(t) hypothesis point " <<  heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << ", at MJD = " << clusterdets[ptct].MJD << "\n";
+	    return(status1);
+	  }
+	  heliodistvec.push_back(vecabs3d(endpos));
+	}
+      } else {
+	// Default case: use the old reference MJD, and Matt Holman's new Keplerian r(t)
+	// SOLVE FOR THE SQUARE OF THE TANGENTIAL VELOCITY
+	double localg = GMSUN_KM3_SEC2/DSQUARE(heliodist*AU_KM); // Units are km/sec^2
+	double physacc = helioacc/1000.0l; // Units are km/sec^2
+	double vesc = 2.0*GMSUN_KM3_SEC2/heliodist/AU_KM; // this is the square of the escape velocity in km/sec
+	double tanvel = heliodist*AU_KM*(physacc+localg); // this is the square of the tangential velocity in km/sec
+	if(config.verbose>=1) cout << fixed << setprecision(6) << "NOTE: hypothesis point is " << heliodist << ", " << heliovel*SOLARDAY/AU_KM << ", " << -helioacc/1000.0l/localg << "\n";
+	if(config.verbose>=1) cout << fixed << setprecision(6) << "vesc = " << sqrt(vesc) << ", tanvel = " << sqrt(tanvel) << ", heliovel = " << heliovel << ", totvel = " << sqrt(tanvel + LDSQUARE(heliovel)) << "\n";
+	// CHECK FOR UNPHYSICAL AND UNBOUND CASES
+	if(tanvel<0.0l) {
+	  cerr << fixed << setprecision(6) << "ERROR: hypothesis point " << heliodist << ", " << heliovel*SOLARDAY/AU_KM << ", " << -helioacc/1000.0l/localg << " is not possible for any trajectory\n";
+	  return(1);
+	}
+	if(vesc < tanvel + LDSQUARE(heliovel/SOLARDAY)) {
+	  cout << fixed << setprecision(6) << "NOTE: hypothesis point " << heliodist << ", " << heliovel*SOLARDAY/AU_KM << ", " << -helioacc/1000.0l/localg << " implies an unbound orbit.\n";
+	  cout << fixed << setprecision(6) << "vesc = " << sqrt(vesc) << ", tanvel = " << sqrt(tanvel) << ", heliovel = " << heliovel << ", totvel = " << sqrt(tanvel + LDSQUARE(heliovel)) << "\n";
+	  // The fact that the orbit is unbound is not a problem, because this function uses
+	  // universal variables and can handle unbound orbits.
+	}
+	// If we get here, a sensible solution (bound or unbound) exists. Solve for the true tangential velocity
+	tanvel = sqrt(tanvel);
+	// Construct state vectors producing the required orbit (in the x-y plane, for simplicity).
+	startpos = point3d(heliodist*AU_KM,0l,0l);
+	startvel = point3d(heliovel,tanvel,0l);
+	endpos = point3d(0l,0l,0l);
+	endvel = point3d(0l,0l,0l);
+	for(ptct=0; ptct<ptnum; ptct++) {
+	  // Integrate the orbit to find the heliocentric distance as a function of time.
+	  status1 = Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, clusterdets[ptct].MJD, endpos, endvel);
+	  if(status1!=0) {
+	    cerr << "ERROR: Keplerian integration failed for r(t) hypothesis point " <<  heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << ", at MJD = " << clusterdets[ptct].MJD << "\n";
+	    return(status1);
+	  }
+	  //delta1 = (clusterdets[ptct].MJD - onecluster.reference_MJD)*SOLARDAY;
+	  //cout << "Dist Comp, MJD = " << clusterdets[ptct].MJD << " and dists: " << heliodist*AU_KM + heliovel*delta1 + 0.5*helioacc*delta1*delta1/1000.0l << " vs. " << vecabs3d(endpos) << "\n";
+	  heliodistvec.push_back(vecabs3d(endpos));
+	}
       }
+	
       // Now infer the 3-D positions, and heliocentric polar coordinates, of each point
       // based on these hypothetical distances.
       heliopos1 = {};
