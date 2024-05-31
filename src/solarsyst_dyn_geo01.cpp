@@ -21749,7 +21749,7 @@ int trk2statevec(const vector <hlimage> &image_log, const vector <tracklet> &tra
 }
 
 // trk2statevec_fgfunc: September 05, 2023
-int trk2statevec_fgfunc(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double max_v_inf)
+int trk2statevec_fgfunc(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double max_v_inf, int NotKepler)
 {
   allstatevecs={};
   long imnum = image_log.size();
@@ -21789,14 +21789,57 @@ int trk2statevec_fgfunc(const vector <hlimage> &image_log, const vector <trackle
  
   // Calculate approximate heliocentric distances from the
   // input quadratic approximation.
+  // Note: heliodist is in km, heliovel is in km/day, and helioacc is in km/day^2
   heliodistvec={};
-  for(imct=0;imct<imnum;imct++) {
-    delta1 = image_log[imct].MJD - mjdref;
+  if(NotKepler) {
+    // Use the old-style, three-term Taylor Series approximation of heliocentric distance
+    // as a function of time.
+    for(imct=0;imct<imnum;imct++) {
+      delta1 = image_log[imct].MJD - mjdref; // Units are days
       heliodistvec.push_back(heliodist + heliovel*delta1 + 0.5*helioacc*delta1*delta1);
       if(heliodistvec[imct]<=0.0l) {
 	badpoint=1;
 	return(1);
       }
+    }
+  } else {
+    // Use Matt Holman's idea of getting heliocentric distance r(t) from an
+    // actual Keplerian orbit. It turns out that the same parameters (r, r-dot, and r-double-dot)
+    // that specify the old three-term Taylor Series also uniquely determine the Keplerian
+    // r(t) -- that is, they specify enough of the orbit that only one Keplerian solution
+    // for r(t) exists, even though other aspects of the orbit (i.e., orientation) are not
+    // specified.
+    // SOLVE FOR THE SQUARE OF THE TANGENTIAL VELOCITY
+    double localg = GMSUN_KM3_SEC2/DSQUARE(heliodist); // Units are km/sec^2
+    double physacc = helioacc/DSQUARE(SOLARDAY); // Units are km/sec^2
+    double vesc = 2.0*GMSUN_KM3_SEC2/heliodist; // this is the square of the escape velocity in km/sec
+    double tanvel = heliodist*(physacc+localg); // this is the square of the tangential velocity in km/sec
+    // CHECK FOR UNPHYSICAL AND UNBOUND CASES
+    if(tanvel<0.0l) {
+      cerr << fixed << setprecision(6) << "ERROR: hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << " is not possible for any trajectory\n";
+      return(1);
+    }
+    if(vesc < tanvel + LDSQUARE(heliovel/SOLARDAY)) {
+      cerr << fixed << setprecision(6) << "ERROR: hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << " is not possible for a bound orbit\n";
+      cerr << fixed << setprecision(6) << "vesc = " << sqrt(vesc) << ", tanvel = " << sqrt(tanvel) << ", heliovel = " << heliovel/SOLARDAY << ", totvel = " << sqrt(tanvel + LDSQUARE(heliovel/SOLARDAY)) << "\n";
+      return(1);
+    }
+    // If we get here, a sensible bound solution exists. Solve for the true tangential velocity
+    tanvel = sqrt(tanvel);
+    // Construct state vectors producing the required orbit (in the x-y plane, for simplicity).
+    point3d startpos = point3d(heliodist,0l,0l);
+    point3d startvel = point3d(heliovel/SOLARDAY,tanvel,0l);
+    point3d endpos = point3d(0l,0l,0l);
+    point3d endvel = point3d(0l,0l,0l);
+    for(imct=0;imct<imnum;imct++) {
+      // Integrate the orbit to find the heliocentric distance as a function of time.
+      status1 = Kepler_fg_func_int(GMSUN_KM3_SEC2, mjdref, startpos, startvel, image_log[imct].MJD, endpos, endvel);
+      if(status1!=0) {
+	cerr << "ERROR: Keplerian integration failed for r(t) hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << ", at MJD = " << image_log[imct].MJD << "\n";
+	return(status1);
+      }
+      heliodistvec.push_back(vecabs3d(endpos));
+    }
   }
   if(badpoint==0 && long(heliodistvec.size())!=imnum) {
     cerr << "ERROR: number of heliocentric distance values does\n";
@@ -21937,7 +21980,7 @@ int trk2statevec_fgfunc(const vector <hlimage> &image_log, const vector <trackle
 
 // trk2statevec_fgfuncRR: April 26, 2024:
 // Uses Ben Engebreth's heliolincRR algorithm
-int trk2statevec_fgfuncRR(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double max_v_inf)
+int trk2statevec_fgfuncRR(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double max_v_inf, int NotKepler)
 {
   allstatevecs={};
   long imnum = image_log.size();
@@ -21983,13 +22026,55 @@ int trk2statevec_fgfuncRR(const vector <hlimage> &image_log, const vector <track
   // Calculate approximate heliocentric distances from the
   // input quadratic approximation.
   heliodistvec={};
-  for(imct=0;imct<imnum;imct++) {
-    delta1 = image_log[imct].MJD - mjdref;
+  if(NotKepler) {
+    // Use the old-style, three-term Taylor Series approximation of heliocentric distance
+    // as a function of time.
+    for(imct=0;imct<imnum;imct++) {
+      delta1 = image_log[imct].MJD - mjdref;
       heliodistvec.push_back(heliodist + heliovel*delta1 + 0.5*helioacc*delta1*delta1);
       if(heliodistvec[imct]<=0.0l) {
 	badpoint=1;
 	return(1);
       }
+    }
+  } else {
+    // Use Matt Holman's idea of getting heliocentric distance r(t) from an
+    // actual Keplerian orbit. It turns out that the same parameters (r, r-dot, and r-double-dot)
+    // that specify the old three-term Taylor Series also uniquely determine the Keplerian
+    // r(t) -- that is, they specify enough of the orbit that only one Keplerian solution
+    // for r(t) exists, even though other aspects of the orbit (i.e., orientation) are not
+    // specified.
+    // SOLVE FOR THE SQUARE OF THE TANGENTIAL VELOCITY
+    double localg = GMSUN_KM3_SEC2/DSQUARE(heliodist); // Units are km/sec^2
+    double physacc = helioacc/DSQUARE(SOLARDAY); // Units are km/sec^2
+    double vesc = 2.0*GMSUN_KM3_SEC2/heliodist; // this is the square of the escape velocity in km/sec
+    double tanvel = heliodist*(physacc+localg); // this is the square of the tangential velocity in km/sec
+    // CHECK FOR UNPHYSICAL AND UNBOUND CASES
+    if(tanvel<0.0l) {
+      cerr << fixed << setprecision(6) << "ERROR: hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << " is not possible for any trajectory\n";
+      return(1);
+    }
+    if(vesc < tanvel + LDSQUARE(heliovel/SOLARDAY)) {
+      cerr << fixed << setprecision(6) << "ERROR: hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << " is not possible for a bound orbit\n";
+      cerr << fixed << setprecision(6) << "vesc = " << sqrt(vesc) << ", tanvel = " << sqrt(tanvel) << ", heliovel = " << heliovel/SOLARDAY << ", totvel = " << sqrt(tanvel + LDSQUARE(heliovel/SOLARDAY)) << "\n";
+      return(1);
+    }
+    // If we get here, a sensible bound solution exists. Solve for the true tangential velocity
+    tanvel = sqrt(tanvel);
+    // Construct state vectors producing the required orbit (in the x-y plane, for simplicity).
+    point3d startpos = point3d(heliodist,0l,0l);
+    point3d startvel = point3d(heliovel/SOLARDAY,tanvel,0l);
+    point3d endpos = point3d(0l,0l,0l);
+    point3d endvel = point3d(0l,0l,0l);
+    for(imct=0;imct<imnum;imct++) {
+      // Integrate the orbit to find the heliocentric distance as a function of time.
+      status1 = Kepler_fg_func_int(GMSUN_KM3_SEC2, mjdref, startpos, startvel, image_log[imct].MJD, endpos, endvel);
+      if(status1!=0) {
+	cerr << "ERROR: Keplerian integration failed for r(t) hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << ", at MJD = " << image_log[imct].MJD << "\n";
+	return(status1);
+      }
+      heliodistvec.push_back(vecabs3d(endpos));
+    }
   }
   if(badpoint==0 && long(heliodistvec.size())!=imnum) {
     cerr << "ERROR: number of heliocentric distance values does\n";
@@ -22382,7 +22467,7 @@ int trk2statevec_clusterprobe_innea(const vector <hlimage> &image_log, const vec
 
 
 // trk2statevec_univar: September 05, 2023
-int trk2statevec_univar(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double max_v_inf)
+int trk2statevec_univar(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double max_v_inf, int NotKepler)
 {
   allstatevecs={};
   long imnum = image_log.size();
@@ -22423,14 +22508,55 @@ int trk2statevec_univar(const vector <hlimage> &image_log, const vector <trackle
   // Calculate approximate heliocentric distances from the
   // input quadratic approximation.
   heliodistvec={};
-  for(imct=0;imct<imnum;imct++) {
-    delta1 = image_log[imct].MJD - mjdref;
+  if(NotKepler) {
+    for(imct=0;imct<imnum;imct++) {
+      delta1 = image_log[imct].MJD - mjdref;
       heliodistvec.push_back(heliodist + heliovel*delta1 + 0.5*helioacc*delta1*delta1);
       if(heliodistvec[imct]<=0.0l) {
 	badpoint=1;
 	return(1);
       }
-  }
+    }
+  } else {
+    // Use Matt Holman's idea of getting heliocentric distance r(t) from an
+    // actual Keplerian orbit. It turns out that the same parameters (r, r-dot, and r-double-dot)
+    // that specify the old three-term Taylor Series also uniquely determine the Keplerian
+    // r(t) -- that is, they specify enough of the orbit that only one Keplerian solution
+    // for r(t) exists, even though other aspects of the orbit (i.e., orientation) are not
+    // specified.
+    // SOLVE FOR THE SQUARE OF THE TANGENTIAL VELOCITY
+    double localg = GMSUN_KM3_SEC2/DSQUARE(heliodist); // Units are km/sec^2
+    double physacc = helioacc/DSQUARE(SOLARDAY); // Units are km/sec^2
+    double vesc = 2.0*GMSUN_KM3_SEC2/heliodist; // this is the square of the escape velocity in km/sec
+    double tanvel = heliodist*(physacc+localg); // this is the square of the tangential velocity in km/sec
+    // CHECK FOR UNPHYSICAL AND UNBOUND CASES
+    if(tanvel<0.0l) {
+      cerr << fixed << setprecision(6) << "ERROR: hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << " is not possible for any trajectory\n";
+      return(1);
+    }
+    if(vesc < tanvel + LDSQUARE(heliovel/SOLARDAY)) {
+      cout << fixed << setprecision(6) << "NOTE: hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << " implies an unbound orbit.\n";
+      cout << fixed << setprecision(6) << "vesc = " << sqrt(vesc) << ", tanvel = " << sqrt(tanvel) << ", heliovel = " << heliovel/SOLARDAY << ", totvel = " << sqrt(tanvel + LDSQUARE(heliovel/SOLARDAY)) << "\n";
+      // The fact that the orbit is unbound is not a problem, because this function uses
+      // universal variables and can handle unbound orbits.
+    }
+    // If we get here, a sensible solution (bound or unbound) exists. Solve for the true tangential velocity
+    tanvel = sqrt(tanvel);
+    // Construct state vectors producing the required orbit (in the x-y plane, for simplicity).
+    point3d startpos = point3d(heliodist,0l,0l);
+    point3d startvel = point3d(heliovel/SOLARDAY,tanvel,0l);
+    point3d endpos = point3d(0l,0l,0l);
+    point3d endvel = point3d(0l,0l,0l);
+    for(imct=0;imct<imnum;imct++) {
+      // Integrate the orbit to find the heliocentric distance as a function of time.
+      status1 = Kepler_univ_int(GMSUN_KM3_SEC2, mjdref, startpos, startvel, image_log[imct].MJD, endpos, endvel);
+      if(status1!=0) {
+	cerr << "ERROR: Keplerian integration failed for r(t) hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << ", at MJD = " << image_log[imct].MJD << "\n";
+	return(status1);
+      }
+      heliodistvec.push_back(vecabs3d(endpos));
+    }
+  }    
   if(badpoint==0 && long(heliodistvec.size())!=imnum) {
     cerr << "ERROR: number of heliocentric distance values does\n";
     cerr << "not match the number of input images!\n";
@@ -22575,7 +22701,7 @@ int trk2statevec_univar(const vector <hlimage> &image_log, const vector <trackle
 // except that it uses the univeral variable formulation of the Kepler problem,
 // which enables it to handle unbound (aka hyperbolic, aka interstellar) orbits,
 // something trk2statevec_fgfuncRR is not able to do.
-int trk2statevec_univarRR(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double max_v_inf)
+int trk2statevec_univarRR(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double max_v_inf, int NotKepler)
 {
   allstatevecs={};
   long imnum = image_log.size();
@@ -22621,13 +22747,54 @@ int trk2statevec_univarRR(const vector <hlimage> &image_log, const vector <track
   // Calculate approximate heliocentric distances from the
   // input quadratic approximation.
   heliodistvec={};
-  for(imct=0;imct<imnum;imct++) {
-    delta1 = image_log[imct].MJD - mjdref;
+  if(NotKepler) {
+    for(imct=0;imct<imnum;imct++) {
+      delta1 = image_log[imct].MJD - mjdref;
       heliodistvec.push_back(heliodist + heliovel*delta1 + 0.5*helioacc*delta1*delta1);
       if(heliodistvec[imct]<=0.0l) {
 	badpoint=1;
 	return(1);
       }
+    }
+  } else {
+    // Use Matt Holman's idea of getting heliocentric distance r(t) from an
+    // actual Keplerian orbit. It turns out that the same parameters (r, r-dot, and r-double-dot)
+    // that specify the old three-term Taylor Series also uniquely determine the Keplerian
+    // r(t) -- that is, they specify enough of the orbit that only one Keplerian solution
+    // for r(t) exists, even though other aspects of the orbit (i.e., orientation) are not
+    // specified.
+    // SOLVE FOR THE SQUARE OF THE TANGENTIAL VELOCITY
+    double localg = GMSUN_KM3_SEC2/DSQUARE(heliodist); // Units are km/sec^2
+    double physacc = helioacc/DSQUARE(SOLARDAY); // Units are km/sec^2
+    double vesc = 2.0*GMSUN_KM3_SEC2/heliodist; // this is the square of the escape velocity in km/sec
+    double tanvel = heliodist*(physacc+localg); // this is the square of the tangential velocity in km/sec
+    // CHECK FOR UNPHYSICAL AND UNBOUND CASES
+    if(tanvel<0.0l) {
+      cerr << fixed << setprecision(6) << "ERROR: hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << " is not possible for any trajectory\n";
+      return(1);
+    }
+    if(vesc < tanvel + LDSQUARE(heliovel/SOLARDAY)) {
+      cout << fixed << setprecision(6) << "NOTE: hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << " implies an unbound orbit.\n";
+      cout << fixed << setprecision(6) << "vesc = " << sqrt(vesc) << ", tanvel = " << sqrt(tanvel) << ", heliovel = " << heliovel/SOLARDAY << ", totvel = " << sqrt(tanvel + LDSQUARE(heliovel/SOLARDAY)) << "\n";
+      // The fact that the orbit is unbound is not a problem, because this function uses
+      // universal variables and can handle unbound orbits.
+    }
+    // If we get here, a sensible solution (bound or unbound) exists. Solve for the true tangential velocity
+    tanvel = sqrt(tanvel);
+    // Construct state vectors producing the required orbit (in the x-y plane, for simplicity).
+    point3d startpos = point3d(heliodist,0l,0l);
+    point3d startvel = point3d(heliovel/SOLARDAY,tanvel,0l);
+    point3d endpos = point3d(0l,0l,0l);
+    point3d endvel = point3d(0l,0l,0l);
+    for(imct=0;imct<imnum;imct++) {
+      // Integrate the orbit to find the heliocentric distance as a function of time.
+      status1 = Kepler_univ_int(GMSUN_KM3_SEC2, mjdref, startpos, startvel, image_log[imct].MJD, endpos, endvel);
+      if(status1!=0) {
+	cerr << "ERROR: Keplerian integration failed for r(t) hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << ", at MJD = " << image_log[imct].MJD << "\n";
+	return(status1);
+      }
+      heliodistvec.push_back(vecabs3d(endpos));
+    }
   }
   if(badpoint==0 && long(heliodistvec.size())!=imnum) {
     cerr << "ERROR: number of heliocentric distance values does\n";
@@ -25912,7 +26079,7 @@ int heliolinc_alg_fgfunc(const vector <hlimage> &image_log, const vector <hldet>
     
     // Covert all tracklets into state vectors at the reference time, under
     // the assumption that the heliocentric distance hypothesis is correct.
-    status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
+    status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf,0);
     
     if(status==1) {
       cerr << "WARNING: hypothesis " << accelct << ": " << radhyp[accelct].HelioRad << " " << radhyp[accelct].R_dot << " " << radhyp[accelct].R_dubdot << " led to\nnegative heliocentric distance or other invalid result: SKIPPING\n";
@@ -26018,7 +26185,7 @@ int heliolinc_alg_univar(const vector <hlimage> &image_log, const vector <hldet>
     
     // Covert all tracklets into state vectors at the reference time, under
     // the assumption that the heliocentric distance hypothesis is correct.
-    status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
+    status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0);
     
     if(status==1) {
       cerr << "WARNING: hypothesis " << accelct << ": " << radhyp[accelct].HelioRad << " " << radhyp[accelct].R_dot << " " << radhyp[accelct].R_dubdot << " led to\nnegative heliocentric distance or other invalid result: SKIPPING\n";
@@ -26127,9 +26294,9 @@ int heliolinc_alg_danby(const vector <hlimage> &image_log, const vector <hldet> 
     // Covert all tracklets into state vectors at the reference time, under
     // the assumption that the heliocentric distance hypothesis is correct.
     if(config.use_univar >= 1) {
-      status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
+      status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0);
     } else {
-      status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
+      status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf,0);
     }
     
     if(status==1) {
@@ -26794,9 +26961,9 @@ int heliolinc_alg_ompdanby(const vector <hlimage> &image_log, const vector <hlde
       // Covert all tracklets into state vectors at the reference time, under
       // the assumption that the heliocentric distance hypothesis is correct.
       if(config.use_univar >= 1) {
-	status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
+	status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0);
       } else {
-	status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
+	status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf,0);
       }
       if(status==1) {
 	cerr << "FAILURE IN THREAD " << ithread << "\n";
@@ -26962,9 +27129,9 @@ int heliolinc_alg_ompkd(const vector <hlimage> &image_log, const vector <hldet> 
       // Covert all tracklets into state vectors at the reference time, under
       // the assumption that the heliocentric distance hypothesis is correct.
       if(config.use_univar >= 1) {
-	status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
+	status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0);
       } else {
-	status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
+	status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf,0);
       }
       if(status==1) {
 	cerr << "FAILURE IN THREAD " << ithread << "\n";
@@ -27132,9 +27299,9 @@ int heliolinc_alg_ompkd3(const vector <hlimage> &image_log, const vector <hldet>
       // Covert all tracklets into state vectors at the reference time, under
       // the assumption that the heliocentric distance hypothesis is correct.
       if(config.use_univar >= 1) {
-	status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
+	status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0);
       } else {
-	status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
+	status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf,0);
       }
       if(status==1) {
 	cerr << "FAILURE IN THREAD " << ithread << "\n";
@@ -27442,9 +27609,9 @@ int heliolinc_alg_ompkd4(const vector <hlimage> &image_log, const vector <hldet>
       // Covert all tracklets into state vectors at the reference time, under
       // the assumption that the heliocentric distance hypothesis is correct.
       if(config.use_univar >= 1) {
-	status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
+	status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0);
       } else {
-	status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
+	status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf,0);
       }
       if(status==1) {
 	cerr << "FAILURE IN THREAD " << ithread << "\n";
@@ -27586,9 +27753,9 @@ int heliolinc_alg_kd(const vector <hlimage> &image_log, const vector <hldet> &de
     // Covert all tracklets into state vectors at the reference time, under
     // the assumption that the heliocentric distance hypothesis is correct.
     if(config.use_univar >= 1) {
-      status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
+      status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0);
     } else {
-      status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
+      status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf,0);
     }
 
     if(status==1) {
@@ -27710,9 +27877,9 @@ int heliolinc_alg_RR(const vector <hlimage> &image_log, const vector <hldet> &de
     // Covert all tracklets into state vectors at the reference time, under
     // the assumption that the heliocentric distance hypothesis is correct.
     if(config.use_univar >= 1) {
-      status = trk2statevec_univarRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
+      status = trk2statevec_univarRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0);
     } else {
-      status = trk2statevec_fgfuncRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
+      status = trk2statevec_fgfuncRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0);
     }
 
     if(status==1) {
@@ -27834,9 +28001,9 @@ int heliolinc_alg_R(const vector <hlimage> &image_log, const vector <hldet> &det
     // Covert all tracklets into state vectors at the reference time, under
     // the assumption that the heliocentric distance hypothesis is correct.
     if(config.use_univar >= 1) {
-      status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
+      status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0);
     } else {
-      status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
+      status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf,0);
     }
 
     if(status==1) {
@@ -27894,6 +28061,16 @@ int heliolinc_alg_all(const vector <hlimage> &image_log, const vector <hldet> &d
   long realclusternum, gridpoint_clusternum, status;
   realclusternum = gridpoint_clusternum = status = 0;
   vector <point6ix2> allstatevecs;
+  int use_univar=0;
+  int NotKepler=0;
+  
+  if(config.use_univar>7 && config.use_univar<=15) {
+    use_univar = config.use_univar-8;
+    NotKepler=1;
+  } else {
+    use_univar = config.use_univar;
+    NotKepler=0;
+  }
   
   // Echo config struct
   cout << "Configuration parameters:\n";
@@ -27957,34 +28134,34 @@ int heliolinc_alg_all(const vector <hlimage> &image_log, const vector <hldet> &d
     gridpoint_clusternum=0;
     // Covert all tracklets into state vectors at the reference time, under
     // the assumption that the heliocentric distance hypothesis is correct.
-    if(config.use_univar == 1 || config.use_univar == 5 || config.use_univar == 7) {
+    if(use_univar == 1 || use_univar == 5 || use_univar == 7) {
       // Integrate to perform clustering in the standard heliolinc3d parameter space
       // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
       // Use the universal variable formulation of the Kepler problem for orbit propagation.
       // This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
-      status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
-    } else if(config.use_univar == 2) {
+      status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler);
+    } else if(use_univar == 2) {
       // Integrate to perform clustering in the parameter space of Ben Engebreth's 
       // heliolinc_RR algorithm, which uses position vectors at two different
       // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
       // Use the Kepler f and g functions for orbit propagation
       // This is faster than the universal variable formulation, but cannot handle hyperbolic
-      status = trk2statevec_fgfuncRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
-    } else if(config.use_univar == 3) {
+      status = trk2statevec_fgfuncRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler);
+    } else if(use_univar == 3) {
       // Integrate to perform clustering in the parameter space of Ben Engebreth's 
       // heliolinc_RR algorithm, which uses position vectors at two different
       // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
       // Use the universal variable formulation of the Kepler problem for orbit propagation.
       // This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
-      status = trk2statevec_univarRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
+      status = trk2statevec_univarRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler);
     } else {
       // Integrate to perform clustering in the standard heliolinc3d parameter space
       // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
       // Use the Kepler f and g functions for orbit propagation
       // This is faster than the universal variable formulation, but cannot handle hyperbolic
       // (i.e., unbound, interstellar) orbits. Being fastest for normal orbits, it is the default,
-      // and also corresponds to config.use_univar == 0, 4, or 6
-      status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
+      // and also corresponds to use_univar == 0, 4, or 6
+      status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler);
     }
 
     if(status==1) {
@@ -27999,19 +28176,19 @@ int heliolinc_alg_all(const vector <hlimage> &image_log, const vector <hldet> &d
     if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
     if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-    if(config.use_univar==6 || config.use_univar==7) {
+    if(use_univar==6 || use_univar==7) {
       // Use old DBSCAN algorithm in six dimensions for clustering the standard heliolinc parameter space
       status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
       if(status!=0) {
 	cerr << "ERROR: form_clusters exited with error code " << status << "\n";
       }
-    } else if(config.use_univar==2 || config.use_univar==3) {
+    } else if(use_univar==2 || use_univar==3) {
       // Use a KDtree range-query in six dimensions for clustering the heliolinc_RR parameter space
       status = form_clusters_RR(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
       if(status!=0) {
 	cerr << "ERROR: form_clusters_RR exited with error code " << status << "\n";
       }
-    } else if (config.use_univar==4 || config.use_univar==5) {
+    } else if (use_univar==4 || use_univar==5) {
       // Use a KDtree range-query in only three dimensions for clustering the position-only heliolinc parameter space
       status = form_clusters_kdR(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
       if(status!=0) {
