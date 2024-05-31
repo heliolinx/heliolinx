@@ -781,9 +781,7 @@ keyword          | type         | Status      | Units       | Default           
 -pairdets        | file name    | Required    | NA          | none              | CSV-formatted paired detection catalog produced by `make_tracklets`
 -tracklets       | file name    | Required    | NA          | none              | CSV-formatted tracklet catalog produced by `make_tracklets`
 -trk2det         | file name    | Required    | NA          | none              | CSV-formatted, two-column tracklet-to-detection mapping produced by `make_tracklets`
--mjd             | float        | Optional    | days (MJD)  | midpoint of the   | Reference time, in Modified Julian Days (MJD), to which the
-                 |              |             |             | time spanned by   | state vectors from all tracklets will be integrated
-                 |              |             |             | the observations  |
+-mjd             | float        | Optional    | days (MJD)  | midpoint of timespan | Reference time, in Modified Julian Days (MJD), to which the state vectors from all tracklets will be integrated
 -autorun         | 0 or 1       | Optional    | none        | 1                 | -autorun 0 turns off the default setting of the reference MJD to the midpoint of the time spanned by the input observations, and causes -mjd to become a required argument.
 -obspos          | file name    | Required    | km, km/sec  | none              | Heliocentric ephemeris for Earth, in CSV format, from JPL Horizons 
 -heliodist       | file name    | Required    | AU, AU/day,&nbsp; | none              | Space-delimited list of heliocentric hypotheses to be
