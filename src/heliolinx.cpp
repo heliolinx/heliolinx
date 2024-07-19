@@ -110,6 +110,29 @@ void fill_struct(hlclust & out, hlclust const& in) {
     out.orbit_eval_count = in.orbit_eval_count;
 }
 
+void fill_struct(glint_trail & out, glint_trail const& in) {
+    out.x  = in.x;
+    out.y  = in.y;
+    out.length  = in.length;
+    out.PA  = in.PA;
+    out.linrms  = in.linrms;
+    out.eqrms  = in.eqrms;
+    out.magmean  = in.magmean;
+    out.magrms  = in.magrms;
+    out.stepsize  = in.stepsize;
+    out.qc1  = in.qc1;
+    out.npt  = in.npt;
+    out.flashnum  = in.flashnum;
+};
+
+void fill_struct(point3d_index & out, point3d_index const& in) {
+    out.x  = in.x;
+    out.y  = in.y;
+    out.z  = in.z;
+    out.index  = in.index;
+}; 
+
+
 template<typename T>
 std::vector<T> ndarray_to_vec(py::array_t<T> py_vec) {
     std::vector<T> vec = {};
@@ -414,6 +437,65 @@ std::tuple<py::array, py::array>linkPlanarity(
 }
 
 
+// findGlints: July 17, 2024:
+// Minimalist wrapper, only handles the python <-> C++ translations.
+// All the interesting algorithmic stuff happens in functions called from solarsyst_dyn_geo01.
+// This is the pixel x,y version.
+
+std::tuple<py::array, py::array>findGlints(
+    FindGlintsConfig config,
+    py::array_t<point3d_index> py_detvec
+  ) {
+  cout << "C++ wrapper for find_glints_xypix\n";
+  
+  std::vector <point3d_index> detvec = ndarray_to_vec(py_detvec);
+  int status = 0;
+  std::vector <glint_trail> trailvec;
+  std::vector <longpair> trail2det;
+     
+  status = find_glints_xypix(detvec, config, trailvec, trail2det);
+  if(status!=0) {
+    cerr << "ERROR: find_glints_xypix returned failure status " << status << "\n";
+    auto py_empty = vec_to_ndarray<point3d_index>({});
+    return(std::make_tuple(py_empty, py_empty));
+  }
+      
+  auto py_detout1 = vec_to_ndarray<glint_trail>(trailvec);
+  auto py_detout2 = vec_to_ndarray<longpair>(trail2det);
+
+  return(std::make_tuple(py_detout1, py_detout2));
+}
+
+
+// findGlintsRadec: July 17, 2024:
+// Minimalist wrapper, only handles the python <-> C++ translations.
+// All the interesting algorithmic stuff happens in functions called from solarsyst_dyn_geo01.
+// This is the RA, Dec version.
+std::tuple<py::array, py::array>findGlintsRadec(
+    FindGlintsConfig config,
+    py::array_t<point3d_index> py_sourcecat
+  ) {
+  cout << "C++ wrapper for find_glints_radec\n";
+  
+  std::vector <point3d_index> detvec = ndarray_to_vec(py_sourcecat);
+  int status = 0;
+  std::vector <glint_trail> trailvec;
+  std::vector <longpair> trail2det;
+     
+  status = find_glints_radec(detvec, config, trailvec, trail2det);
+  if(status!=0) {
+    cerr << "ERROR: find_glints_radec returned failure status " << status << "\n";
+    auto py_empty = vec_to_ndarray<point3d_index>({});
+    return(std::make_tuple(py_empty, py_empty));
+  }
+      
+  auto py_detout1 = vec_to_ndarray<glint_trail>(trailvec);
+  auto py_detout2 = vec_to_ndarray<longpair>(trail2det);
+
+  return(std::make_tuple(py_detout1, py_detout2));
+}
+
+
 template <typename S>
 py::array_t<S> create_recarray(size_t n) {
     return py::array_t<S>(n);
@@ -430,7 +512,9 @@ PYBIND11_MODULE(heliolinx, m) {
     PYBIND11_NUMPY_DTYPE(tracklet, Img1, RA1, Dec1, Img2, RA2, Dec2, npts, trk_ID);
     PYBIND11_NUMPY_DTYPE(hlradhyp, HelioRad, R_dot, R_dubdot);
     PYBIND11_NUMPY_DTYPE(hlclust, clusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, metric, rating, reference_MJD, heliohyp0, heliohyp1, heliohyp2, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
-
+    PYBIND11_NUMPY_DTYPE(point3d_index, x, y, z, index);
+    PYBIND11_NUMPY_DTYPE(glint_trail, x, y, length, PA, linrms, eqrms, magmean, magrms, stepsize, qc1, npt, flashnum);
+		     
     NDARRAY_FACTORY(hldet)
     NDARRAY_FACTORY(EarthState)
     NDARRAY_FACTORY(hlimage)
@@ -438,6 +522,8 @@ PYBIND11_MODULE(heliolinx, m) {
     NDARRAY_FACTORY(tracklet)
     NDARRAY_FACTORY(hlradhyp)
     NDARRAY_FACTORY(hlclust)
+    NDARRAY_FACTORY(point3d_index)
+    NDARRAY_FACTORY(glint_trail)
 
 /*    py::class_<hldet>(m, "hldet")
       .def(py::init<double &, double &, double &, float &, float &, float &, float &, float &, float &, int &, std::string &, std::string &, std::string &, long &, long &, long &>());
@@ -528,15 +614,31 @@ PYBIND11_MODULE(heliolinx, m) {
       .def_readwrite("minpointnum", &LinkPurifyConfig::minpointnum) 
       .def_readwrite("use_heliovane", &LinkPurifyConfig::use_heliovane) 
       .def_readwrite("verbose", &LinkPurifyConfig::verbose);
+
+    // Config class for FindGlints
+    py::class_<FindGlintsConfig>(m, "FindGlintsConfig")
+      .def(py::init<>())
+      .def_readwrite("minpoints", &FindGlintsConfig::minpoints) 
+      .def_readwrite("maxgcr", &FindGlintsConfig::maxgcr)
+      .def_readwrite("maxrange", &FindGlintsConfig::maxrange)
+      .def_readwrite("centerknown", &FindGlintsConfig::centerknown)
+      .def_readwrite("incenRA", &FindGlintsConfig::incenRA)
+      .def_readwrite("incenDec", &FindGlintsConfig::incenDec)
+      .def_readwrite("freq_downscale", &FindGlintsConfig::freq_downscale)
+      .def_readwrite("freq_upscale", &FindGlintsConfig::freq_upscale)
+      .def_readwrite("max_phase_err", &FindGlintsConfig::max_phase_err);
+
     
     m.def("iotest02", &iotest02, "A function to test python I/O");
     m.def("observer_coords", &observer_coords, "calculate position of an observer on Earth");
-    m.def("observer_vel", &observer_vel, "calculate position of an observer on Earth");
+    m.def("observer_vel", &observer_vel, "calculate velocity of an observer on Earth");
     m.def("makeTracklets", &makeTracklets,  "Make tracklets from set of detections.");
     m.def("heliolinc", &heliolinc,  "Link input tracklets into candidate discoveries.");
     m.def("linkRefineHerget", &linkRefineHerget, "Refine linkages, eliminating duplicates and preserving the best candidates.");
     m.def("linkPurify", &linkPurify, "Purify linkages, eliminating duplicates, and rejecting astrometric outliers.");
     m.def("linkPlanarity", &linkPlanarity, "Purify linkages, eliminating duplicates, and rejecting astrometric outliers.");
-   }
+    m.def("findGlints", &findGlints, "Identify glint trails produced by space junk, using pixel x,y coordinates");
+    m.def("findGlintsRadec", &findGlintsRadec, "Identify glint trails produced by space junk, using RA, Dec coordinates");
+  }
 
 

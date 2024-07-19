@@ -392,6 +392,8 @@ struct HeliovaneConfig {
                                //   no sensible default is possible, because the reference
                                //   time MUST be near the center of the time spanned by
                                //   the input detection catalog.
+  int autorun = 1;             // If no viable value for MJDref is supplied, automatically generate
+                               // a reasonable one and run with it.
   double clustrad = 1.0e5l;    // Clustering radius for the DBSCAN algorithm, in km.
   double clustchangerad = 0.5l; // Geocentric distance (AU), within which the clustering
                                 // radius remains fixed at a minimum value and does not
@@ -474,6 +476,27 @@ struct LinkPurifyConfig {
   int use_heliovane = 0;       // Are we analyzing data from heliovane rather than heliolinc?
   int verbose=0;
 };
+
+struct FindGlintsConfig {       // Note that the pixel-xy and RA/Dec versions use the same config struct.
+  long minpoints = 5;          // Minimum number of points that counts as a glint-trail
+  double maxgcr = 1.0;         // Maximum RMS deviation from a straight line (pixels or arcsec)
+  double maxrange = 500.0;     // Range of the k-d tree query (pixels or arcsec) used to identify groups of sources
+                               // that could make up a glint-trail.
+  // The next three parameters are relevant only for the RA/Dec version.
+  int centerknown = 0;         // Were RA and Dec of the image center supplied by the calling function?
+  double incenRA = 0.0;        // RA of image center, supplied by calling function.
+  double incenDec = 0.0;       // Dec of image center, supplied by calling function.
+  // The next three parameters apply to the check for equal spacing of glints along the trail.
+  // The reference frequency is set by the number of detected sources (npt) divided by the
+  // length of the trail (traillen).
+  double freq_downscale = 0.9; // Lowest frequency probed, in units of the reference frequency.
+  double freq_upscale = 3.0;   // Highest frequency probed, in units of the reference frequency.
+                               // The default setting of 3.0 enables scanning of the correct
+                               // frequency even if only 1/3 of the flashes were detected.
+  double max_phase_err = 0.02; // Determines the sampling interval for the frequency search, which is
+                               // set to max_phase_err/traillen
+};
+
 
 class observatory{ // observatory code and location values.
 public:
@@ -562,6 +585,7 @@ public:
   double y;
   long index;
   xy_index(double x, double y, long index) :x(x), y(y), index(index) { }
+  xy_index() = default;
 };
 
 class kdpoint { // Point in an xy_index k-d tree designed as a vector,
@@ -574,6 +598,7 @@ public:
   long right;
   int dim;
   kdpoint(xy_index point, long left, long right, int dim) :point(point), left(left), right(right), dim(dim) {}
+  kdpoint() = default;
 };
   
 class xyind_lower_x{ // Function for sorting vectors of type xy_index by x
@@ -598,6 +623,7 @@ public:
   int num_dets;
   double imradius;
   img_log01(double mjd, double ra, double dec, int ndet, double imrad) :MJD(mjd), RA(ra), Dec(dec), num_dets(ndet), imradius(imrad) { }
+  img_log01() = default;
 };
 
 class img_log02{ // Image log that indexes a time-sorted detection vector:
@@ -609,6 +635,7 @@ public:
   long startind;
   long endind;
   img_log02(double mjd, double ra, double dec, long startind, long endind) :MJD(mjd), RA(ra), Dec(dec), startind(startind), endind(endind) { }
+  img_log02() = default;
 };
 
 class img_log03{ // Image log that indexes a time-sorted detection vector including observatory code:
@@ -626,6 +653,7 @@ public:
     std::strncpy(this->obscode, obscode.c_str(), sizeof(this->obscode));
     this->obscode[sizeof(this->obscode)-1] = 0;
   }
+  img_log03() = default;
 };
 
 class early_det{
@@ -711,6 +739,7 @@ public:
   double x;
   double y;
   point2d(double x, double y) :x(x), y(y) { }
+  point2d() = default;
 };
 
 class point3d{ // Double-precision 3-D point
@@ -719,6 +748,7 @@ public:
   double y;
   double z;
   point3d(double x, double y, double z) :x(x), y(y), z(z) { }
+  point3d() = default;
 };
 
 class point3d_index{ // Double-precision 3-D point with long-integer idex
@@ -728,6 +758,7 @@ public:
   double z;
   long index;
   point3d_index(double x, double y, double z, long index) :x(x), y(y), z(z), index(index) { }
+  point3d_index() = default;
 };
 
 class lower_point3d_index_x{ // Sort point3d_index by x
@@ -1512,6 +1543,24 @@ struct EarthState {
             : MJD(MJD), x(x), y(y), z(z), vx(vx), vy(vy), vz(vz) {}
 };
 
+class glint_trail{ // Trail of glints within a single image
+public:
+  double x;        // RA in decimal degrees, or pixel x coodinate
+  double y;        // Dec in decimal degrees, or pixel y coordinate
+  double length;   // trail length in arcsec or pixels
+  double PA;       // position angle, east from north or CCW from +y, degrees
+  double linrms;   // RMS deviation from best-fit line, arcsec or pixels
+  double eqrms;    // RMS deviation from best line with constant step size, arcsec or pixels
+  double magmean;  // Mean magnitude of individual flashes
+  double magrms;   // RMS scatter of magnitudes about mean
+  double stepsize; // Distance between adjacent flashes, arcsec or pixels
+  double qc1;      // Additional parameter reserved for flexibility
+  long npt;        // Number of detections
+  long flashnum;    // Inferred total number of flashes, allowing for missing detections
+  glint_trail(double x, double y, double length, double PA, double linrms, double eqrms, double magmean, double magrms, double stepsize, double qc1, long npt, long flashnum) :x(x), y(y), length(length), PA(PA), linrms(linrms), eqrms(eqrms), magmean(magmean), magrms(magrms), stepsize(stepsize), qc1(qc1), npt(npt), flashnum(flashnum) { }
+  glint_trail() = default;
+};
+
 void make_ivec(long nx, vector <int> &ivec);
 void make_imat(int nx, int ny, vector <vector <int>> &imat);
 void make_lvec(int nx, vector <long> &lvec);
@@ -1746,6 +1795,8 @@ int find_trailpairs(vector <hldet> &detvec, const vector <hlimage> &img_log, vec
 int merge_pairs(const vector <hldet> &pairdets, vector <vector <long>> &indvecs, const vector <longpair> &pairvec, vector <tracklet> &tracklets, vector <longpair> &trk2det, int mintrkpts, double maxgcr, double minarc, double minvel, double maxvel, int verbose);
 int merge_pairs2(const vector <hldet> &pairdets, vector <vector <long>> &indvecs, const vector <longpair> &pairvec, vector <tracklet> &tracklets, vector <longpair> &trk2det, int mintrkpts, int max_netl, double maxgcr, double minarc, double minvel, double maxvel, int verbose);
 int merge_trailpairs(const vector <hldet> &pairdets, vector <vector <long>> &indvecs, const vector <longpair> &pairvec, vector <tracklet> &tracklets, vector <longpair> &trk2det, int mintrkpts, double maxgcr, double minarc, double minvel, double maxvel, int verbose);
+int find_glints_radec(const vector <point3d_index> &detvec, FindGlintsConfig config, vector <glint_trail> &trailvec, vector <longpair> &trail2det);
+int find_glints_xypix(const vector <point3d_index> &detvec, FindGlintsConfig config, vector <glint_trail> &trailvec, vector <longpair> &trail2det);
 int record_pairs(vector <hldet> &detvec, vector <hldet> &detvec_fixed, vector <tracklet> &tracklets, vector <longpair> &trk2det, int verbose);
 int make_tracklets(vector <hldet> &detvec, vector <hlimage> &image_log, MakeTrackletsConfig config, vector <hldet> &pairdets,vector <tracklet> &tracklets, vector <longpair> &trk2det);
 int make_tracklets2(vector <hldet> &detvec, vector <hlimage> &image_log, MakeTrackletsConfig config, vector <hldet> &pairdets,vector <tracklet> &tracklets, vector <longpair> &trk2det);
@@ -1780,6 +1831,7 @@ int heliolinc_alg_fgfunc(const vector <hlimage> &image_log, const vector <hldet>
 int heliolinc_alg_univar(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, vector <hlclust> &outclust, vector <longpair> &clust2det);
 int heliolinc_alg_danby(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, vector <hlclust> &outclust, vector <longpair> &clust2det);
 int heliovane_alg_danby(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const vector <hlradhyp> &lambdahyp, const vector <EarthState> &earthpos, HeliovaneConfig config, vector <hlclust> &outclust, vector <longpair> &clust2det);
+int heliovane_alg_all(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const vector <hlradhyp> &lambdahyp, const vector <EarthState> &earthpos, HeliovaneConfig config, vector <hlclust> &outclust, vector <longpair> &clust2det);
 int heliolinc_alg_omp(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, vector <hlclust> &outclust, vector <longpair> &clust2det);
 int heliolinc_alg_omp2(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, vector <hlclust> &outclust, vector <longpair> &clust2det);
 int heliolinc_alg_omp3(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, vector <hlclust> &outclust, vector <longpair> &clust2det);
@@ -1792,6 +1844,7 @@ int heliolinc_alg_kd(const vector <hlimage> &image_log, const vector <hldet> &de
 int heliolinc_alg_RR(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, vector <hlclust> &outclust, vector <longpair> &clust2det);
 int heliolinc_alg_R(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, vector <hlclust> &outclust, vector <longpair> &clust2det);
 int heliolinc_alg_all(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, vector <hlclust> &outclust, vector <longpair> &clust2det);
+int heliolinc_omp_all(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, vector <hlclust> &outclust, vector <longpair> &clust2det);
 int heliovane_alg_ompdanby(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const vector <hlradhyp> &lambdahyp, const vector <EarthState> &earthpos, HeliovaneConfig config, vector <hlclust> &outclust, vector <longpair> &clust2det);
 int link_refine_Herget(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <hlclust> &inclust, const vector  <longpair> &inclust2det, LinkRefineConfig config, vector <hlclust> &outclust, vector <longpair> &outclust2det);
 int link_refine_Herget_univar(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <hlclust> &inclust, const vector  <longpair> &inclust2det, LinkRefineConfig config, vector <hlclust> &outclust, vector <longpair> &outclust2det);
@@ -1812,4 +1865,4 @@ int greatcircfit(const vector <double> &MJDvec, const vector <double> &RAvec, co
 int read_orbline(ifstream &instream1, asteroid_orbit &oneorb);
 int read_orbline(ifstream &instream1, asteroid_orbitLD &oneorb);
 int read_orbline(string lnfromfile, asteroid_orbit &oneorb);
-
+int zenith_radecLD(long double detmjd, long double lon, long double obscos, long double obssine, long double &RA, long double &Dec);

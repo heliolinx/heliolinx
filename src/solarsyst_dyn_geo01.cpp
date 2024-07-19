@@ -21140,6 +21140,937 @@ int merge_trailpairs(const vector <hldet> &pairdets, vector <vector <long>> &ind
   return(0);
 }
 
+// find_glints_radec: July 09, 2024: Based on find_pairs and merge_pairs,
+// but designed for a much simpler
+// task: identifying pairs of detections within a single image. Hence, there is
+// no time-component and no looping over an image catalog.
+// The input vector is of type point3d_index, where it is intended that
+// x=RA, y=Dec, and z=magnitude, while index will be unchanged by the current
+// function and retained to enable the calling function to map back to some
+// external catalog. 
+int find_glints_radec(const vector <point3d_index> &detvec, FindGlintsConfig config, vector <glint_trail> &trailvec, vector <longpair> &trail2det)
+{
+  trailvec={};
+  trail2det={};
+
+  double RA = 0.0l;
+  double Dec = 0.0l;
+  
+  long detnum = detvec.size();
+  if(detnum<config.minpoints) {
+    // Too few detections for any valid glint trails
+    cout << "Note: find_glints_radec called with only " << detnum << " input detections:\n";
+    cout << "too few to find any valid trails\n";
+    return(0); // This is not an error case, just a valid finding of zero glint trails.
+  }
+  
+  long detct=0;
+  xy_index xyind=xy_index(0.0, 0.0, 0);
+  vector <xy_index> axyvec = {};
+  double dist,pa;
+  dist = pa = 0.0l;
+  longpair onepair = longpair(0,0);
+  vector <long> ivec1;
+  double cenRA = config.incenRA;
+  double cenDec = config.incenDec;
+  point3d p3 = point3d(0,0,0);
+  point3d p3avg = point3d(0,0,0);
+  vector <double> x;
+  vector <double> y;
+  vector <double> z;
+  int status;
+  vector <long_index> num_matches;
+  long i,j;
+  vector <xy_index> trailxyvec = {};
+  vector <point3d_index> ppset = {};
+  vector <vector <long>> ppind = {};
+  long glintpnum=0;
+  long glintnum=0;
+  double traillen, linrms, eqrms, magmean, magrms, stepsize, qc1;
+  traillen = linrms = eqrms = magmean = magrms = stepsize = qc1 = 0.0l;
+  long npt=0;
+  long flashnum=0;
+  glint_trail oneglint = glint_trail(RA, Dec, traillen, pa, linrms, eqrms, magmean, magrms, stepsize, qc1, npt, flashnum);
+  double xcen,ycen;
+  long longest_trail, trail_length;
+  //int verbose = 1;
+  double GCR = 0.0l;
+  vector <glint_trail> alltrailvec;
+  vector <vector <long>> indvecs;
+  vector <int> detused;
+  make_ivec(detnum, detused);
+  double_index dindex = double_index(0l,0l);
+  vector <double_index> dindvec;
+  vector <long> anchor_det;
+  
+  if(config.centerknown <= 0) {
+    // Image boresight center was not supplied by the calling function.
+    // Infer it approximately from the input detections
+    for(detct=0; detct<detnum; detct++) {
+      p3avg = point3d(0,0,0);
+      RA = detvec[detct].x;
+      Dec = detvec[detct].y;
+      p3 =  celeproj01(RA,Dec); // Project current detection
+      x.push_back(p3.x); // Note that the projection from spherical to Cartesian
+      y.push_back(p3.y); // coordinates avoids angle-wrapping issues.
+      z.push_back(p3.z);
+    }
+    p3avg.x = avg_extrema(x); // Because the sources on an image could be distributed
+    p3avg.y = avg_extrema(y); // very non-uniformly, the average of the extrema is
+    p3avg.z = avg_extrema(z); // a better indicator for the image center than either
+    // the mean or the median.
+    status = celedeproj01(p3avg, &cenRA, &cenDec);
+    if(status==0) ; // All is well.
+    else if(status==1) {
+      cout << "Warning: vector of zeros fed to celedeproj01\n";
+      return(1);
+    }
+    else if(status==2) {
+      cout << "Warning: impossible z value " << p3avg.z << " fed to celedeproj01\n";
+      return(2);
+    }
+    else {
+      cout << "Warning: unspecified failure from celedeproj01 with\n";
+      cout << "input " << p3avg.x << " " << p3avg.y << " " << p3avg.z << "\n";
+      return(status);
+    }
+  }
+
+  cout << "Image center is at " << cenRA << ", " << cenDec << "\n";
+
+  // If we get here, we have a valid center for the image. Project all detections
+  // relative to this central point.
+  xyind=xy_index(0.0, 0.0, 0);
+  axyvec = {};
+  dist=pa=0.0;
+  for(detct=0; detct<detnum; detct++) {
+    RA = detvec[detct].x;
+    Dec = detvec[detct].y;
+    distradec02(cenRA,cenDec,RA,Dec,&dist,&pa);
+    // We are using arc projection here
+
+    xyind = xy_index(-dist*sin(pa/DEGPRAD),dist*cos(pa/DEGPRAD),detct);
+    axyvec.push_back(xyind);
+    if((!isnormal(xyind.x) && xyind.x!=0) || (!isnormal(xyind.y) && xyind.y!=0)) {
+      cerr << "nan-producing input: ra1, dec1, ra2, dec2, dist, pa:\n";
+      cerr << cenRA << " " << cenDec << " " << RA << " " << Dec << " " << dist << " " << pa << " " << xyind.x << " " << xyind.x << "\n";
+    }
+  }
+  if(long(axyvec.size()) != detnum) {
+    cerr << "ERROR: not all detections were successfully projected\n";
+    return(3);
+  } else cout << "Successfully projected all " << detnum << " input detections\n";
+  
+  // Create k-d tree of the projected detections.
+  int dim=1;
+  xy_index xyi = axyvec[0];
+  kdpoint root = kdpoint(xyi,-1,-1,dim);
+  kdpoint kdtest = kdpoint(xyi,-1,-1,dim);
+  vector <kdpoint> kdvec ={};
+  long medpt;
+  medpt = medindex(axyvec,dim);
+  root = kdpoint(axyvec[medpt],-1,-1,1);
+  kdvec.push_back(root);
+  kdtest=kdvec[0];
+  kdtree01(axyvec,dim,medpt,0,kdvec);
+  cout << "Loaded kd-tree with " << kdvec.size() << " projected points\n";
+  
+  // Loop over detections, looking for matches.
+  num_matches={};
+  for(detct=0 ; detct<detnum ; detct++) {
+    vector <long> indexvec = {};
+    if((isnormal(axyvec[detct].x) || axyvec[detct].x==0) && (isnormal(axyvec[detct].y) || axyvec[detct].y==0)) {
+      kdrange01(kdvec,axyvec[detct].x,axyvec[detct].y,config.maxrange/3600.0l,indexvec);
+    } else {
+      cerr << "WARNING: detection " << detct << " is not normal: " << axyvec[detct].x << " " << axyvec[detct].y << "\n";
+    }
+    long matchnum=indexvec.size();
+    if(matchnum>=config.minpoints) {
+      // This detection could be the root of a glint trail.
+      trailxyvec={};
+      ppset={};
+      ppind={};
+      RA = detvec[detct].x;
+      Dec = detvec[detct].y;
+      for(i=0; i<matchnum; i++) { // Loop over the pair-partners of detection detct.
+	j = kdvec[indexvec[i]].point.index;
+	if(j!=detct) {
+	  // j is the index of a pair-partner to detection detct.
+	  // Project detection j into an arc-WCS style x,y coords centered on detct.
+	  double RA_j = detvec[j].x;
+	  double Dec_j = detvec[j].y;
+	  distradec02(RA, Dec, RA_j, Dec_j, &dist, &pa);
+	  dist *= 3600.0L; // Convert distance from degrees to arcsec.
+	  xyind = xy_index(-dist*sin(pa/DEGPRAD),dist*cos(pa/DEGPRAD),j);
+	  trailxyvec.push_back(xyind);
+	  ppset.push_back(detvec[j]);
+	  ppind.push_back({}); // We need these vectors mainly just to have some way to store the
+	                       // indices of mutually consistent pair partners on the next step
+	}
+      }
+      if(trailxyvec.size() != ppset.size() || trailxyvec.size() != ppind.size()) {
+	cerr << "ERROR: vectors of projected and original\n";
+	cerr << "pair partner candidates do not have the same length!\n";
+	cerr << trailxyvec.size() << ", " << ppset.size() << ", and " << ppind.size() << " must all be the same, and are not!\n";
+	return(4);
+      }
+      // Perform n^2 search on the projected points stored in trailxyvec
+      // to find the largest subset that lie along a consistent line.
+      for(i=0; i<long(trailxyvec.size()); i++) {
+	// Make sure corresponding index vector in ppset is empty
+	ppind[i] = {};
+	// Count additional pair partners (besides ppset[i]) that plausibly
+	// lie along the line defined by detct and ppset[i].
+	if(DEBUG>=2) cout << "Counting consistent pair partners\n";
+	for(j=0; j<long(trailxyvec.size()); j++) {
+	  if(j!=i) {
+	    dist = fabs(trailxyvec[j].x*trailxyvec[i].y - trailxyvec[j].y*trailxyvec[i].x)/sqrt(trailxyvec[i].x*trailxyvec[i].x + trailxyvec[i].y*trailxyvec[i].y);
+	    if(dist < 2.0*config.maxgcr) {
+	      // Detections detct, i, and j all lie along a plausibly
+	      // linear, constant-velocity trajectory on the sky.
+	      ppind[i].push_back(j); // Store detection j as possible partner for detct and i.
+	    }
+	  }
+	}
+      }
+      // Now, ppset stores all the possible pair-partners of detection detct,
+      // and ppind stores, for each one of these, the ppset indices of ADDITIONAL ones that
+      // lie on a potentially consistent trajectory with it: that is, are trail partners.
+      // Find which detection in ppset has the largest number of possible trail partners.
+      longest_trail=-1;
+      trail_length=0;
+      for(i=0; i<long(ppset.size()); i++) {
+	if(long(ppind[i].size())+2 > trail_length) {
+	  trail_length = ppind[i].size()+2; //We add one for detct, one for i, to get actual trail length
+	  longest_trail = i;
+	  if(DEBUG>=2) cout << "longest trail = " << longest_trail << ", length = " << trail_length << "\n";
+	} else if(DEBUG>=2) cout << "not the longest\n";
+      }
+      // cout << "longest trail = " << longest_trail << ", length = " << trail_length << "\n";
+      if(trail_length >= config.minpoints && trail_length>=3) {
+	// Load a vector with all the points for longest_trail 
+	vector <xy_index> trailfitvec={};
+	// Load the reference point detct, the center of projection
+	xyind=xy_index(0.0l, 0.0l, detct);
+	trailfitvec.push_back(xyind);
+	// Load the pair-partner corresponding to longest_trail
+	trailfitvec.push_back(trailxyvec[longest_trail]);
+	// Load the additional points stored in ppind:
+	for(i=0;i<long(ppind[longest_trail].size());i++) {
+	  trailfitvec.push_back(trailxyvec[ppind[longest_trail][i]]);
+	}
+	glintpnum = trailfitvec.size();
+	// Perform linear fits to x and y
+	vector <double> xvec={};
+	vector <double> yvec={};
+	vector <double> xmod={};
+	vector <double> ymod={};
+	vector <double> fiterr={};
+	double xslope,xintercept,yslope,yintercept,uvecx,uvecy;
+	int xslopeisbest=1;
+	double worsterr=-1.0l;
+	long worstpoint;
+	for(i=0;i<glintpnum;i++) {
+	  xvec.push_back(trailfitvec[i].x);
+	  yvec.push_back(trailfitvec[i].y);
+	}
+	status = linfituw01(xvec, yvec, xslope, xintercept);
+	status = linfituw01(yvec, xvec, yslope, yintercept);
+	if(isnormal(xslope) && isnormal(xintercept)) {
+	  if(isnormal(yslope) && isnormal(yintercept) && yslope<xslope) {
+	    // Prefer y slope because it is shallower, though both are valid.
+	    xslopeisbest=0;
+	  }
+	} else if(isnormal(yslope) && isnormal(yintercept)) {
+	    // Prefer y slope because the x fit contained NANs.
+	    xslopeisbest=0;
+	} else {
+	  cerr << "Both linear fits failed in glint_trail: skipping to the next candidate.\n";
+	  continue;
+	}
+	if(xslopeisbest==1) {
+	  xmod = xvec;
+	  // Calculate components of a unit vector parallel to the line
+	  uvecx = 1.0l/sqrt(1+xslope*xslope);
+	  uvecy = xslope/sqrt(1+xslope*xslope);
+	  // Load model vector for y
+	  ymod={};
+	  for(i=0;i<glintpnum;i++) ymod.push_back(xintercept + xslope*xvec[i]);
+	} else if(xslopeisbest==0) {
+	  ymod = yvec;
+	  // Calculate components of a unit vector parallel to the line
+	  uvecx = yslope/sqrt(1+yslope*yslope);
+	  uvecy = 1.0l/sqrt(1+yslope*yslope);
+	  // Load model vector for x
+	  xmod = {};
+	  for(i=0;i<glintpnum;i++) xmod.push_back(yintercept + yslope*yvec[i]);
+	} else {
+	  cerr << "Logically excluded value for xslopeisbest: " << xslopeisbest << "\n";
+	  return(3);
+	}
+	// Load fit residuals for each point.
+	GCR = xcen = ycen = 0.0l;
+	for(i=0;i<glintpnum;i++) {
+	  fiterr.push_back(uvecy*(xvec[i]-xmod[i]) - uvecx*(yvec[i]-ymod[i]));
+	  GCR+=fiterr[i]*fiterr[i];
+	  xcen += xmod[i];
+	  ycen += ymod[i];
+	}
+	GCR = sqrt(GCR/double(glintpnum-2));
+	xcen/=double(glintpnum);
+	ycen/=double(glintpnum);
+	//if(verbose>0) cout << "GCR = " << GCR << "\n";
+	// Reject successive points until either there are only three left
+	// or the worst error drops below maxgcr.
+	worstpoint=1;
+	while(GCR>config.maxgcr && glintpnum > 3 && glintpnum > config.minpoints && worstpoint!=0) {
+	  //cout << "GCR = " << GCR << ", " << glintpnum << " points remaining, rejecting point " << worstpoint << "\n";
+	  // Identify the worst point
+	  worsterr=-1.0l;
+	  worstpoint=0;
+	  for(i=0;i<glintpnum;i++) {
+	    if(fabs(fiterr[i])>worsterr) {
+	      worsterr = fabs(fiterr[i]);
+	      worstpoint = i;
+	    }
+	  }
+	  if(worstpoint!=0) {
+	    // Remove the worst point from trailfitvec
+	    for(i=worstpoint; i<glintpnum-1; i++) {
+	      trailfitvec[i] = trailfitvec[i+1];
+	    }
+	    glintpnum--;
+	    // Re-do the fit, through the calculation of GCR.
+	    xslopeisbest=1;
+	    xvec = yvec = xmod = ymod = fiterr = {};
+	    for(i=0;i<glintpnum;i++) {
+	      xvec.push_back(trailfitvec[i].x);
+	      yvec.push_back(trailfitvec[i].y);
+	    }
+	    status = linfituw01(xvec, yvec, xslope, xintercept);
+	    status = linfituw01(yvec, xvec, yslope, yintercept);
+	    if(isnormal(xslope) && isnormal(xintercept)) {
+	      if(isnormal(yslope) && isnormal(yintercept) && yslope<xslope) {
+		// Prefer y slope because it is shallower, though both are valid.
+		xslopeisbest=0;
+	      }
+	    } else if(isnormal(yslope) && isnormal(yintercept)) {
+	      // Prefer y slope because the x fit contained NANs.
+	      xslopeisbest=0;
+	    } else {
+	      cerr << "Both linear fits failed in glint_trail: skipping to the next candidate.\n";
+	      continue;
+	    }
+	    if(xslopeisbest==1) {
+	      xmod = xvec;
+	      // Calculate components of a unit vector parallel to the line
+	      uvecx = 1.0l/sqrt(1+xslope*xslope);
+	      uvecy = xslope/sqrt(1+xslope*xslope);
+	      // Load model vector for y
+	      ymod={};
+	      for(i=0;i<glintpnum;i++) ymod.push_back(xintercept + xslope*xvec[i]);
+	    } else if(xslopeisbest==1) {
+	      ymod = yvec;
+	      // Calculate components of a unit vector parallel to the line
+	      uvecx = yslope/sqrt(1+yslope*yslope);
+	      uvecy = 1.0l/sqrt(1+yslope*yslope);
+	      // Load model vector for x
+	      xmod={};
+	      for(i=0;i<glintpnum;i++) xmod.push_back(yintercept + yslope*yvec[i]);
+	    }
+	    // Load fit residuals for each point.
+	    GCR = xcen = ycen = 0.0l;
+	    fiterr={};
+	    for(i=0;i<glintpnum;i++) {
+	      fiterr.push_back(uvecy*(xvec[i]-xmod[i]) - uvecx*(yvec[i]-ymod[i]));
+	      GCR+=fiterr[i]*fiterr[i];
+	      xcen += xmod[i];
+	      ycen += ymod[i];
+	    }
+	    GCR = sqrt(GCR/double(glintpnum-2));
+	    xcen/=double(glintpnum);
+	    ycen/=double(glintpnum);
+	  }
+	}
+	if(GCR<=config.maxgcr && glintpnum > 3 && glintpnum > config.minpoints) {
+	  // We rejected enough points and we still have a valid glint trail
+	  linrms=GCR; // RMS scatter from best linear fit, regardless of spacing.
+	  vector <double> distalong={};
+	  double flashfreq,mindistalong,maxdistalong;
+	  for(i=0;i<glintpnum;i++) {
+	    distalong.push_back(uvecx*(xvec[i]-xcen) + uvecy*(yvec[i]-ycen));
+	  }
+	  sort(distalong.begin(),distalong.end());
+	  mindistalong = distalong[0];
+	  maxdistalong = distalong[glintpnum-1];
+	  //for(i=0;i<glintpnum;i++) {
+	  //  cout << "distalong[" << i << "] = " << distalong[i] << "\n";
+	  //}
+	  traillen = maxdistalong-mindistalong;
+	  // Re-define the zeropoint of distalong so that it starts from the
+	  // first flash, and there are no negative entries
+	  for(i=0;i<glintpnum;i++) distalong[i] -= mindistalong;
+	  // Calculate frequency under the assumption that no flashes are missed
+	  flashfreq = double(glintpnum-1)/traillen; // Units are flashes per arcsecond.
+	  double minfreq = flashfreq*config.freq_downscale;
+	  double maxfreq = flashfreq*config.freq_upscale;
+	  double bestfreq=0.0l;
+	  double minrms=LARGERR;
+	  double flashrms=0.0;
+	  vector <double> flashphase;
+	  double meanphase=0.0l;
+	  flashfreq = minfreq;
+	  //cout << "flashfreq = " << flashfreq << ", maxfreq = " << maxfreq << "\n";
+	  while(flashfreq <= maxfreq) {
+	    flashphase = {};
+	    for(i=0;i<glintpnum;i++) {
+	      flashphase.push_back(distalong[i]*flashfreq+0.5l - floor(distalong[i]*flashfreq+0.5l));
+	      // Note: for good phase, we expect distalong[i]*flashfreq will always be close to an integer,
+	      // hence we add 0.5 so all flashphase entries will cluster near 0.5 instead of
+	      // being split between slightly more than 0.0 and slightly less than 1.0.
+	    }
+	    status = dmeanrms01(flashphase, &meanphase, &flashrms);
+	    if(flashrms<minrms) {
+	      minrms = flashrms;
+	      bestfreq = flashfreq;
+	    }
+	    //cout << "freq, rms, best = " << flashfreq << " " << flashrms << " " << bestfreq << "\n";
+	    flashfreq += config.max_phase_err/traillen;
+	  }
+	  flashnum = bestfreq*traillen+1.5; // Best integer guess at the total number of flashes,
+	                                    // including any that were not detected.
+	  stepsize = 1.0l/bestfreq;
+	  //cout << "bestfreq: " << bestfreq << " " << bestfreq*traillen << " " << flashnum << " " << stepsize << "\n";
+	  // Re-calculate mean phase of the flashes based on the best frequency
+	  flashphase = {};
+	  for(i=0;i<glintpnum;i++) {
+	    flashphase.push_back(distalong[i]*bestfreq+0.5l - floor(distalong[i]*bestfreq+0.5l));
+	    // Note: for good phase, we expect distalong[i]*flashfreq will always be close to an integer,
+	    // hence we add 0.5 so all flashphase entries will cluster near 0.5 instead of
+	    // being split between slightly more than 0.0 and slightly less than 1.0.
+	  }
+	  status = dmeanrms01(flashphase, &meanphase, &flashrms);
+	  // Note that the mean phase will be exactly 0.5 if the first flash,
+	  // from which distalong is measured, was precisely on-schedule as
+	  // defined by the mean of all the others.
+	  // Predict locations of flashes, based on best frequency identified.
+	  // Must first reload distalong to match the order of xvec and yvec.
+	  distalong={};
+	  for(i=0;i<glintpnum;i++) {
+	    distalong.push_back(uvecx*(xvec[i]-xcen) + uvecy*(yvec[i]-ycen) - mindistalong);
+	  }
+	  // Now proceed with the prediction.
+	  xmod = ymod = {};
+	  eqrms = 0.0l;
+	  for(i=0;i<glintpnum;i++) {
+	    // Calculate phase of idealized, equally-spaced flash corresponding to point i
+	    double distref = floor(distalong[i]*bestfreq+0.5l) + meanphase - 0.5l;
+	    //cout << "i=" << i << ", ideal phase = " << distref << " ";
+	    // Translate the phase into distance in arcseconds relative to the trail center
+	    distref /= bestfreq;
+	    //cout << distref << " arcsec from , ";
+	    // Change the reference point to the trail center rather than the first flash
+	    distref += mindistalong;
+	    //cout << distref << " arcsec from trail center\n";
+	    // Convert this into an x,y position using the known center of the
+	    // trail and the along-trail unit vector.
+	    xmod.push_back(xcen + distref*uvecx);
+	    ymod.push_back(ycen + distref*uvecy);
+	    eqrms += DSQUARE(xvec[i] - xmod[i]) + DSQUARE(yvec[i] - ymod[i]);
+	  }
+	  eqrms = sqrt(eqrms/double(glintpnum));
+	  double tpa=0.0l;
+	  double tRA=0.0l;
+	  double tDec=0.0l;
+	  dist = sqrt(xcen*xcen + ycen*ycen)/3600.0l; //arc2cel wants degrees, not arcsec.
+	  if(xcen==0.0l && ycen>=0.0l) tpa = 0.0l;
+	  else if(xcen==0.0l && ycen<0.0l) tpa=180.0;
+	  else if(xcen>0.0l) tpa = 270.0 +  DEGPRAD*atan(ycen/xcen);
+	  else if(xcen<0.0l) tpa = 90.0 +  DEGPRAD*atan(ycen/xcen);
+	  arc2cel01(RA, Dec, dist, tpa, tRA, tDec);
+
+	  // Convert trail unit vector into a celestial position angle.
+	  if(uvecx==0.0l && uvecy>=0.0l) pa = 0.0l;
+	  else if(uvecx==0.0l && uvecy<0.0l) pa=180.0;
+	  else if(uvecx>0.0l) pa = 270.0 +  DEGPRAD*atan(uvecy/uvecx);
+	  else if(uvecx<0.0l) pa = 90.0 +  DEGPRAD*atan(uvecy/uvecx);
+
+	  // Calculate magnitude RMS
+	  vector <double> magvec = {};
+	  for(i=0;i<glintpnum;i++) magvec.push_back(detvec[trailfitvec[i].index].z);
+	  status = dmeanrms01(magvec, &magmean, &magrms);
+
+	  // Load output vectors
+	  oneglint = glint_trail(tRA, tDec, traillen, pa, linrms, eqrms, magmean, magrms, stepsize, qc1, glintpnum, flashnum);
+	  //cout << "stepsize = " << oneglint.stepsize << "\n";
+	  alltrailvec.push_back(oneglint);
+	  vector <long> indvec={};
+	  for(i=0;i<glintpnum;i++) indvec.push_back(trailfitvec[i].index);
+	  indvecs.push_back(indvec);
+	  // Load vector for sorting best among overlapping glint trails
+	  dindex = double_index(double(indvec.size()) + 1.0l - GCR/config.maxgcr, glintnum);
+	  dindvec.push_back(dindex);
+	  // Load vector keeping track of the anchor detection for each glint trail
+	  anchor_det.push_back(detct);
+	  // Increment count of valid glints
+	  glintnum++;
+	}
+      }
+    }
+  }
+  cout << "De-duplicating a total of " << glintnum << " candidate glint trails\n";
+  sort(dindvec.begin(), dindvec.end(), lower_double_index());
+  // Best glint trail (longest, with lowest GCR) will be at the end
+  long goodglints=0;
+  for(i=0; i<glintnum; i++) {
+    long thisglint = dindvec[glintnum-1-i].index;
+    if(detused[anchor_det[thisglint]]==0) {
+      // The anchor detection has not already been claimed by another glint trail
+      // Load it onto the final output vectors
+      trailvec.push_back(alltrailvec[thisglint]);
+      // cout << "stepsize = " << alltrailvec[thisglint].stepsize << "\n";
+      // Write out the individual detection indices, and mark all of the
+      // individual detections as used.
+      for(j=0; j<long(indvecs[thisglint].size()); j++) {
+	onepair = longpair(goodglints,indvecs[thisglint][j]);
+	trail2det.push_back(onepair);
+	detused[indvecs[thisglint][j]] = 1;
+      }
+      goodglints++;
+    }
+  }
+  cout << "Final de-duplicated total of glint trails is " << goodglints << "\n";
+  return(0);
+}
+
+// find_glints_xypix: July 12, 2024: 
+// Like find_glints_radec, but takes as input x,y pixel positions rather
+// than RA, Dec. The input vector is of type point3d_index, where x and 
+// y are pixel coordinates and it is expected that z=magnitude,
+// while index will be unchanged by the current
+// function and retained to enable the calling function to map back to some
+// external catalog. 
+int find_glints_xypix(const vector <point3d_index> &detvec, FindGlintsConfig config, vector <glint_trail> &trailvec, vector <longpair> &trail2det)
+{
+  trailvec={};
+  trail2det={};
+
+  long detnum = detvec.size();
+  if(detnum<config.minpoints) {
+    // Too few detections for any valid glint trails
+    cout << "Note: find_glints_radec called with only " << detnum << " input detections:\n";
+    cout << "too few to find any valid trails\n";
+    return(0); // This is not an error case, just a valid finding of zero glint trails.
+  }
+  
+  long detct=0;
+  xy_index xyind=xy_index(0.0, 0.0, 0);
+  vector <xy_index> axyvec = {};
+  double dist,pa;
+  dist = pa = 0.0l;
+  longpair onepair = longpair(0,0);
+  vector <long_index> num_matches;
+  long i,j;
+  vector <xy_index> trailxyvec = {};
+  vector <vector <long>> ppind = {};
+  long glintpnum=0;
+  long glintnum=0;
+  double traillen, linrms, eqrms, magmean, magrms, stepsize, qc1, xcen, ycen;
+  traillen = linrms = eqrms = magmean = magrms = stepsize = qc1 = xcen = ycen = 0.0l;
+  long npt=0;
+  long flashnum=0;
+  glint_trail oneglint = glint_trail(xcen, ycen, traillen, pa, linrms, eqrms, magmean, magrms, stepsize, qc1, npt, flashnum);
+  long longest_trail, trail_length;
+  //int verbose = 1;
+  double GCR = 0.0l;
+  vector <glint_trail> alltrailvec;
+  vector <vector <long>> indvecs;
+  vector <int> detused;
+  make_ivec(detnum, detused);
+  double_index dindex = double_index(0l,0l);
+  vector <double_index> dindvec;
+  vector <long> anchor_det;
+  int status=0;
+  
+  xyind=xy_index(0.0, 0.0, 0);
+  axyvec = {};
+  for(detct=0; detct<detnum; detct++) {
+    xyind = xy_index(detvec[detct].x, detvec[detct].y,detct);
+    // In the RA, Dec version we do a spherical projection here, but
+    // it isn't necessary with x,y pixel coords.
+    axyvec.push_back(xyind);
+  }
+  if(long(axyvec.size()) != detnum) {
+    cerr << "ERROR: not all detections were successfully loaded\n";
+    return(3);
+  } else cout << "Successfully loaded all " << detnum << " input detections\n";
+  
+  // Create k-d tree of the projected detections.
+  int dim=1;
+  xy_index xyi = axyvec[0];
+  kdpoint root = kdpoint(xyi,-1,-1,dim);
+  kdpoint kdtest = kdpoint(xyi,-1,-1,dim);
+  vector <kdpoint> kdvec ={};
+  long medpt;
+  medpt = medindex(axyvec,dim);
+  root = kdpoint(axyvec[medpt],-1,-1,1);
+  kdvec.push_back(root);
+  kdtest=kdvec[0];
+  kdtree01(axyvec,dim,medpt,0,kdvec);
+  cout << "Loaded kd-tree with " << kdvec.size() << " points\n";
+  
+  // Loop over detections, looking for matches.
+  num_matches={};
+  for(detct=0 ; detct<detnum ; detct++) {
+    vector <long> indexvec = {};
+    if((isnormal(axyvec[detct].x) || axyvec[detct].x==0) && (isnormal(axyvec[detct].y) || axyvec[detct].y==0)) {
+      kdrange01(kdvec,axyvec[detct].x,axyvec[detct].y,config.maxrange,indexvec);
+    } else {
+      cerr << "WARNING: detection " << detct << " is not normal: " << axyvec[detct].x << " " << axyvec[detct].y << "\n";
+    }
+    long matchnum=indexvec.size();
+    if(matchnum>=config.minpoints) {
+      // This detection could be the root of a glint trail.
+      trailxyvec={};
+      ppind={};
+      for(i=0; i<matchnum; i++) { // Loop over the pair-partners of detection detct.
+	j = kdvec[indexvec[i]].point.index;
+	if(j!=detct) {
+	  // j is the index of a pair-partner to detection detct.
+	  xyind = xy_index(detvec[j].x - detvec[detct].x, detvec[j].y - detvec[detct].y,j);
+	  trailxyvec.push_back(xyind);
+	  // In the RA, Dec version we do a spherical projection here, relative to the
+	  // coordinates of detvec[detct] -- but with x,y pixel coords, all we need
+	  // is a simple difference.
+	  ppind.push_back({}); // We need these vectors mainly just to have some way to store the
+	                       // indices of mutually consistent pair partners on the next step
+	}
+      }
+      if(trailxyvec.size() != ppind.size()) {
+	cerr << "ERROR: vectors of projected and original\n";
+	cerr << "pair partner candidates do not have the same length!\n";
+	cerr << trailxyvec.size() << " and " << ppind.size() << " must have the same size, and do not!\n";
+	return(4);
+      }
+      // Perform n^2 search on the projected points stored in trailxyvec
+      // to find the largest subset that lie along a consistent line.
+      for(i=0; i<long(trailxyvec.size()); i++) {
+	ppind[i] = {};
+	// Count additional pair partners (besides trailxyvec[i]) that plausibly
+	// lie along the line defined by detct and trailxyvec[i].
+	if(DEBUG>=2) cout << "Counting consistent pair partners\n";
+	for(j=0; j<long(trailxyvec.size()); j++) {
+	  if(j!=i) {
+	    dist = fabs(trailxyvec[j].x*trailxyvec[i].y - trailxyvec[j].y*trailxyvec[i].x)/sqrt(trailxyvec[i].x*trailxyvec[i].x + trailxyvec[i].y*trailxyvec[i].y);
+	    if(dist < 2.0*config.maxgcr) {
+	      // Detections detct, i, and j all lie along a plausibly
+	      // linear, constant-velocity trajectory on the sky.
+	      ppind[i].push_back(j); // Store detection j as possible partner for detct and i.
+	    }
+	  }
+	}
+      }
+      // Now, trailxyvec stores all the possible pair-partners of detection detct,
+      // and ppind stores, for each one of these, the trailxyvec indices of ADDITIONAL ones that
+      // lie on a potentially consistent trajectory with it: that is, are trail partners.
+      // Find which detection in trailxyvec has the largest number of possible trail partners.
+      longest_trail=-1;
+      trail_length=0;
+      for(i=0; i<long(trailxyvec.size()); i++) {
+	if(long(ppind[i].size())+2 > trail_length) {
+	  trail_length = ppind[i].size()+2; //We add one for detct, one for i, to get actual trail length
+	  longest_trail = i;
+	  if(DEBUG>=2) cout << "longest trail = " << longest_trail << ", length = " << trail_length << "\n";
+	} else if(DEBUG>=2) cout << "not the longest\n";
+      }
+      if(trail_length >= config.minpoints && trail_length>=3) {
+	// Load a vector with all the points for longest_trail 
+	vector <xy_index> trailfitvec={};
+	// Load the reference point detct.
+	xyind = xy_index(0.0l,0.0l,detct);
+	trailfitvec.push_back(xyind);
+	// Load the pair-partner corresponding to longest_trail
+	trailfitvec.push_back(trailxyvec[longest_trail]);
+	// Load the additional points stored in ppind:
+	for(i=0;i<long(ppind[longest_trail].size());i++) {
+	  trailfitvec.push_back(trailxyvec[ppind[longest_trail][i]]);
+	}
+	glintpnum = trailfitvec.size();
+	// Perform linear fits to x and y
+	vector <double> xvec={};
+	vector <double> yvec={};
+	vector <double> xmod={};
+	vector <double> ymod={};
+	vector <double> fiterr={};
+	double xslope,xintercept,yslope,yintercept,uvecx,uvecy;
+	int xslopeisbest=1;
+	double worsterr=-1.0l;
+	long worstpoint;
+	for(i=0;i<glintpnum;i++) {
+	  xvec.push_back(trailfitvec[i].x);
+	  yvec.push_back(trailfitvec[i].y);
+	}
+	status = linfituw01(xvec, yvec, xslope, xintercept);
+	if(status!=0) cerr << "WARNING: linear fit to " << xvec.size() << " points with x as the independent variable has failed\n";
+	status = linfituw01(yvec, xvec, yslope, yintercept);
+	if(status!=0) cerr << "WARNING: linear fit to " << xvec.size() << " points with x as the independent variable has failed\n";
+	if(isnormal(xslope) && isnormal(xintercept)) {
+	  if(isnormal(yslope) && isnormal(yintercept) && yslope<xslope) {
+	    // Prefer y slope because it is shallower, though both are valid.
+	    xslopeisbest=0;
+	  }
+	} else if(isnormal(yslope) && isnormal(yintercept)) {
+	    // Prefer y slope because the x fit contained NANs.
+	    xslopeisbest=0;
+	} else {
+	  cerr << "Both linear fits failed in glint_trail: skipping to the next candidate.\n";
+	  continue;
+	}
+	if(xslopeisbest==1) {
+	  xmod = xvec;
+	  // Calculate components of a unit vector parallel to the line
+	  uvecx = 1.0l/sqrt(1+xslope*xslope);
+	  uvecy = xslope/sqrt(1+xslope*xslope);
+	  // Load model vector for y
+	  ymod={};
+	  for(i=0;i<glintpnum;i++) ymod.push_back(xintercept + xslope*xvec[i]);
+	} else if(xslopeisbest==0) {
+	  ymod = yvec;
+	  // Calculate components of a unit vector parallel to the line
+	  uvecx = yslope/sqrt(1+yslope*yslope);
+	  uvecy = 1.0l/sqrt(1+yslope*yslope);
+	  // Load model vector for x
+	  xmod = {};
+	  for(i=0;i<glintpnum;i++) xmod.push_back(yintercept + yslope*yvec[i]);
+	} else {
+	  cerr << "Logically excluded value for xslopeisbest: " << xslopeisbest << "\n";
+	  return(3);
+	}
+	// Load fit residuals for each point.
+	GCR = xcen = ycen = 0.0l;
+	for(i=0;i<glintpnum;i++) {
+	  fiterr.push_back(uvecy*(xvec[i]-xmod[i]) - uvecx*(yvec[i]-ymod[i]));
+	  GCR+=fiterr[i]*fiterr[i];
+	  xcen += xmod[i];
+	  ycen += ymod[i];
+	}
+	GCR = sqrt(GCR/double(glintpnum-2));
+	xcen/=double(glintpnum);
+	ycen/=double(glintpnum);
+	// Reject successive points until either there are only three left
+	// or the worst error drops below maxgcr.
+	worstpoint=1;
+	while(GCR>config.maxgcr && glintpnum > 3 && glintpnum > config.minpoints && worstpoint!=0) {
+	  // Identify the worst point
+	  worsterr=-1.0l;
+	  worstpoint=0;
+	  for(i=0;i<glintpnum;i++) {
+	    if(fabs(fiterr[i])>worsterr) {
+	      worsterr = fabs(fiterr[i]);
+	      worstpoint = i;
+	    }
+	  }
+	  if(worstpoint!=0) {
+	    // Remove the worst point from trailfitvec
+	    for(i=worstpoint; i<glintpnum-1; i++) {
+	      trailfitvec[i] = trailfitvec[i+1];
+	    }
+	    glintpnum--;
+	    // Re-do the fit, through the calculation of GCR.
+	    xslopeisbest=1;
+	    xvec = yvec = xmod = ymod = fiterr = {};
+	    for(i=0;i<glintpnum;i++) {
+	      xvec.push_back(trailfitvec[i].x);
+	      yvec.push_back(trailfitvec[i].y);
+	    }
+	    status = linfituw01(xvec, yvec, xslope, xintercept);
+	    status = linfituw01(yvec, xvec, yslope, yintercept);
+	    if(isnormal(xslope) && isnormal(xintercept)) {
+	      if(isnormal(yslope) && isnormal(yintercept) && yslope<xslope) {
+		// Prefer y slope because it is shallower, though both are valid.
+		xslopeisbest=0;
+	      }
+	    } else if(isnormal(yslope) && isnormal(yintercept)) {
+	      // Prefer y slope because the x fit contained NANs.
+	      xslopeisbest=0;
+	    } else {
+	      cerr << "Both linear fits failed in glint_trail: skipping to the next candidate.\n";
+	      continue;
+	    }
+	    if(xslopeisbest==1) {
+	      xmod = xvec;
+	      // Calculate components of a unit vector parallel to the line
+	      uvecx = 1.0l/sqrt(1+xslope*xslope);
+	      uvecy = xslope/sqrt(1+xslope*xslope);
+	      // Load model vector for y
+	      ymod={};
+	      for(i=0;i<glintpnum;i++) ymod.push_back(xintercept + xslope*xvec[i]);
+	    } else if(xslopeisbest==1) {
+	      ymod = yvec;
+	      // Calculate components of a unit vector parallel to the line
+	      uvecx = yslope/sqrt(1+yslope*yslope);
+	      uvecy = 1.0l/sqrt(1+yslope*yslope);
+	      // Load model vector for x
+	      xmod={};
+	      for(i=0;i<glintpnum;i++) xmod.push_back(yintercept + yslope*yvec[i]);
+	    }
+	    // Load fit residuals for each point.
+	    GCR = xcen = ycen = 0.0l;
+	    fiterr={};
+	    for(i=0;i<glintpnum;i++) {
+	      fiterr.push_back(uvecy*(xvec[i]-xmod[i]) - uvecx*(yvec[i]-ymod[i]));
+	      GCR+=fiterr[i]*fiterr[i];
+	      xcen += xmod[i];
+	      ycen += ymod[i];
+	    }
+	    GCR = sqrt(GCR/double(glintpnum-2));
+	    xcen/=double(glintpnum);
+	    ycen/=double(glintpnum);
+	  }
+	}
+	if(GCR<=config.maxgcr && glintpnum > 3 && glintpnum > config.minpoints) {
+	  // We rejected enough points and we still have a valid glint trail
+	  linrms=GCR; // RMS scatter from best linear fit, regardless of spacing.
+	  vector <double> distalong={};
+	  double flashfreq,mindistalong,maxdistalong;
+	  for(i=0;i<glintpnum;i++) {
+	    distalong.push_back(uvecx*(xvec[i]-xcen) + uvecy*(yvec[i]-ycen));
+	  }
+	  sort(distalong.begin(),distalong.end());
+	  mindistalong = distalong[0];
+	  maxdistalong = distalong[glintpnum-1];
+	  //for(i=0;i<glintpnum;i++) {
+	  //  cout << "distalong[" << i << "] = " << distalong[i] << "\n";
+	  //}
+	  traillen = maxdistalong-mindistalong;
+	  // Re-define the zeropoint of distalong so that it starts from the
+	  // first flash, and there are no negative entries
+	  for(i=0;i<glintpnum;i++) distalong[i] -= mindistalong;
+	  // Calculate frequency under the assumption that no flashes are missed
+	  flashfreq = double(glintpnum-1)/traillen; // Units are flashes per arcsecond.
+	  double minfreq = flashfreq*config.freq_downscale;
+	  double maxfreq = flashfreq*config.freq_upscale;
+	  double bestfreq=0.0l;
+	  double minrms=LARGERR;
+	  double flashrms=0.0;
+	  vector <double> flashphase;
+	  double meanphase=0.0l;
+	  flashfreq = minfreq;
+	  //cout << "flashfreq = " << flashfreq << ", maxfreq = " << maxfreq << "\n";
+	  while(flashfreq <= maxfreq) {
+	    flashphase = {};
+	    for(i=0;i<glintpnum;i++) {
+	      flashphase.push_back(distalong[i]*flashfreq+0.5l - floor(distalong[i]*flashfreq+0.5l));
+	      // Note: for good phase, we expect distalong[i]*flashfreq will always be close to an integer,
+	      // hence we add 0.5 so all flashphase entries will cluster near 0.5 instead of
+	      // being split between slightly more than 0.0 and slightly less than 1.0.
+	    }
+	    status = dmeanrms01(flashphase, &meanphase, &flashrms);
+	    if(flashrms<minrms) {
+	      minrms = flashrms;
+	      bestfreq = flashfreq;
+	    }
+	    //cout << "freq, rms, best = " << flashfreq << " " << flashrms << " " << bestfreq << "\n";
+	    flashfreq += config.max_phase_err/traillen;
+	  }
+	  flashnum = bestfreq*traillen+1.5; // Best integer guess at the total number of flashes,
+	                                    // including any that were not detected.
+	  stepsize = 1.0l/bestfreq;
+	  //cout << "bestfreq: " << bestfreq << " " << bestfreq*traillen << " " << flashnum << " " << stepsize << "\n";
+	  // Re-calculate mean phase of the flashes based on the best frequency
+	  flashphase = {};
+	  for(i=0;i<glintpnum;i++) {
+	    flashphase.push_back(distalong[i]*bestfreq+0.5l - floor(distalong[i]*bestfreq+0.5l));
+	    // Note: for good phase, we expect distalong[i]*flashfreq will always be close to an integer,
+	    // hence we add 0.5 so all flashphase entries will cluster near 0.5 instead of
+	    // being split between slightly more than 0.0 and slightly less than 1.0.
+	  }
+	  status = dmeanrms01(flashphase, &meanphase, &flashrms);
+	  // Note that the mean phase will be exactly 0.5 if the first flash,
+	  // from which distalong is measured, was precisely on-schedule as
+	  // defined by the mean of all the others.
+	  // Predict locations of flashes, based on best frequency identified.
+	  // Must first reload distalong to match the order of xvec and yvec.
+	  distalong={};
+	  for(i=0;i<glintpnum;i++) {
+	    distalong.push_back(uvecx*(xvec[i]-xcen) + uvecy*(yvec[i]-ycen) - mindistalong);
+	  }
+	  // Now proceed with the prediction.
+	  xmod = ymod = {};
+	  eqrms = 0.0l;
+	  for(i=0;i<glintpnum;i++) {
+	    // Calculate phase of idealized, equally-spaced flash corresponding to point i
+	    double distref = floor(distalong[i]*bestfreq+0.5l) + meanphase - 0.5l;
+	    //cout << "i=" << i << ", ideal phase = " << distref << " ";
+	    // Translate the phase into distance in arcseconds relative to the trail center
+	    distref /= bestfreq;
+	    //cout << distref << " arcsec from , ";
+	    // Change the reference point to the trail center rather than the first flash
+	    distref += mindistalong;
+	    //cout << distref << " arcsec from trail center\n";
+	    // Convert this into an x,y position using the known center of the
+	    // trail and the along-trail unit vector.
+	    xmod.push_back(xcen + distref*uvecx);
+	    ymod.push_back(ycen + distref*uvecy);
+	    eqrms += DSQUARE(xvec[i] - xmod[i]) + DSQUARE(yvec[i] - ymod[i]);
+	  }
+	  eqrms = sqrt(eqrms/double(glintpnum));
+
+	  // Convert trail unit vector into a celestial position angle.
+	  if(uvecx==0.0l && uvecy>=0.0l) pa = 0.0l;
+	  else if(uvecx==0.0l && uvecy<0.0l) pa=180.0;
+	  else if(uvecx>0.0l) pa = 270.0 +  DEGPRAD*atan(uvecy/uvecx);
+	  else if(uvecx<0.0l) pa = 90.0 +  DEGPRAD*atan(uvecy/uvecx);
+
+	  // Calculate magnitude RMS
+	  vector <double> magvec = {};
+	  for(i=0;i<glintpnum;i++) magvec.push_back(detvec[trailfitvec[i].index].z);
+	  status = dmeanrms01(magvec, &magmean, &magrms);
+	
+	  // Load output vectors
+	  oneglint = glint_trail(detvec[detct].x + xcen, detvec[detct].y + ycen, traillen, pa, linrms, eqrms, magmean, magrms, stepsize, qc1, glintpnum, flashnum);
+	  //cout << "stepsize = " << oneglint.stepsize << "\n";
+	  alltrailvec.push_back(oneglint);
+	  vector <long> indvec={};
+	  for(i=0;i<glintpnum;i++) indvec.push_back(trailfitvec[i].index);
+	  indvecs.push_back(indvec);
+	  // Load vector for sorting best among overlapping glint trails
+	  dindex = double_index(double(indvec.size()) + 1.0l - GCR/config.maxgcr, glintnum);
+	  dindvec.push_back(dindex);
+	  // Load vector keeping track of the anchor detection for each glint trail
+	  anchor_det.push_back(detct);
+	  // Increment count of valid glints
+	  glintnum++;
+	}
+      }
+    }
+  }
+  cout << "De-duplicating a total of " << glintnum << " candidate glint trails\n";
+  sort(dindvec.begin(), dindvec.end(), lower_double_index());
+  // Best glint trail (longest, with lowest GCR) will be at the end
+  long goodglints=0;
+  for(i=0; i<glintnum; i++) {
+    long thisglint = dindvec[glintnum-1-i].index;
+    if(detused[anchor_det[thisglint]]==0) {
+      // The anchor detection has not already been claimed by another glint trail
+      // Load it onto the final output vectors
+      trailvec.push_back(alltrailvec[thisglint]);
+      // cout << "stepsize = " << alltrailvec[thisglint].stepsize << "\n";
+      // Write out the individual detection indices, and mark all of the
+      // individual detections as used.
+      for(j=0; j<long(indvecs[thisglint].size()); j++) {
+	onepair = longpair(goodglints,indvecs[thisglint][j]);
+	trail2det.push_back(onepair);
+	detused[indvecs[thisglint][j]] = 1;
+      }
+      goodglints++;
+    }
+  }
+  cout << "Final de-duplicated total of glint trails is " << goodglints << "\n";
+  return(0);
+}
+
+
 
 // record_pairs: May 10, 2023: For use in remake_tracklets, record
 // already trackletized vectors in the formats used by make_tracklets_new,
@@ -23172,6 +24103,7 @@ int trk2statevane_univar(const vector <hlimage> &image_log, const vector <trackl
   double timediff=0l;
   double E = 0.0l;
   double v_inf = 0.0l;
+  int verbose=1;
  
   // Calculate approximate heliocentric ecliptic longitude (lambda) from the
   // input quadratic approximation. This is all in units of degrees an days.
@@ -23243,8 +24175,10 @@ int trk2statevane_univar(const vector <hlimage> &image_log, const vector <trackl
       else v_inf = -sqrt(-2.0l*E); // This is a bit weird, but we allow the user to
       // set a negative v_inf, if desired, to rule out
       // objects that are barely bound to the sun.
-      if(v_inf>max_v_inf) continue; // Skip further calculation if v_inf is too high.
-
+      if(v_inf>max_v_inf) {
+	if(verbose) cout << "v_inf is too high.\n";
+	continue; // Skip further calculation if v_inf is too high.
+      }
       // Begin new stuff added to eliminate 'globs'
       // These are spurious linkages of unreasonably large numbers (typically tens of thousands)
       // of detections that arise when the hypothetical heliocentric distance at a time when
@@ -23300,12 +24234,14 @@ int trk2statevane_univar(const vector <hlimage> &image_log, const vector <trackl
 	  allstatevecs.push_back(stateveci);
 	} else {
 	  // Kepler integration encountered unphysical situation.
+	  if(verbose) cout << "Kepler integration encountered unphysical situation.\n";
 	  continue;
 	}
       }
     } else {
       badpoint=1;
       // Heliocentric projection found no physical solution.
+      if(verbose) cout << "Heliocentric projection found no physical solution.\n";
       continue;
     }
   }
@@ -26464,6 +27400,191 @@ int heliovane_alg_danby(const vector <hlimage> &image_log, const vector <hldet> 
   return(0);    
 }
 
+// heliovane_alg_all: June 27, 2024:
+// Attempt to aggregate all extant single-threaded versions of heliovane into
+// a single code whose behavior is determined by config.use_univar
+int heliovane_alg_all(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const vector <hlradhyp> &lambdahyp, const vector <EarthState> &earthpos, HeliovaneConfig config, vector <hlclust> &outclust, vector <longpair> &clust2det)
+{
+  outclust = {};
+  clust2det = {};
+   
+  point3d Earthrefpos = point3d(0l,0l,0l);
+  double lambda_Earth = 0.0l;
+  double lambda_temp = 0.0l;
+  long imnum = image_log.size();
+  long pairnum = tracklets.size();
+  long trk2detnum = trk2det.size();
+  long lambdanum = lambdahyp.size();
+  long lambdact=0;
+  vector <double> lambda;
+  vector <double> lambda_dot;
+  vector <double> lambda_ddot;
+  long realclusternum, gridpoint_clusternum, status;
+  realclusternum = gridpoint_clusternum = status = 0;
+  vector <point6ix2> allstatevecs;
+  double min_proj_sine = sin(config.min_incid_angle/DEGPRAD);
+  int automjd=0;
+  long i=0;
+
+  // Echo config struct
+  cout << "Configuration parameters:\n";
+  cout << "MJD of reference time: " << config.MJDref << "\n";
+  cout << "DBSCAN clustering radius: " << config.clustrad << " km\n";
+  cout << "DBSCAN npt: " << config.dbscan_npt << "\n";
+  cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
+  cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
+  cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
+  cout << "Max geocentric distance (will be exceeded by center only of the outermost bin): " << config.maxgeodist << " AU\n";
+  cout << "Logarthmic step size (and bin width) for geocentric distance bins: " << config.geologstep << "\n";
+  cout << "Minimum inferred geocentric distance for a valid tracklet: " << config.mingeoobs << " AU\n";
+  cout << "Minimum inferred impact parameter (w.r.t. Earth) for a valid tracklet: " << config.minimpactpar << " km\n";
+  cout << "Minimum solar elongation: " << config.minsunelong << " degrees\n";
+  cout << "Maximum solar elongation: " << config.maxsunelong << " degrees\n";
+  cout << "Minimum angle of incidence between the observer-to-target\n";
+  cout << "unit vector and the heliocentric vane: " << config.min_incid_angle << " degrees\n";
+  cout << "hence, min_proj_sine is: " << min_proj_sine << "\n";
+  cout << "Maximum heliocentric distance is " << config.maxheliodist << " AU\n";
+  
+  if(config.verbose) cout << "Verbose output selected\n";
+  
+  if(imnum<=0) {
+    cerr << "ERROR: heliovane supplied with empty image catalog\n";
+    return(1);
+  } else if(pairnum<=0) {
+    cerr << "ERROR: heliovane supplied with empty tracklet array\n";
+    return(1);
+  } else if(trk2detnum<=0) {
+    cerr << "ERROR: heliovane supplied with empty trk2det array\n";
+    return(1);
+  } else if(lambdanum<=0) {
+    cerr << "ERROR: heliovane supplied with empty heliocentric hypothesis array\n";
+    return(1);
+  }
+  
+  // Find MJD for first and last detections.
+  double minMJD = detvec[0].MJD;
+  double maxMJD = detvec[0].MJD;
+  for(i=0; i<long(detvec.size()); i++) {
+    if(minMJD > detvec[i].MJD) minMJD = detvec[i].MJD;
+    if(maxMJD < detvec[i].MJD) maxMJD = detvec[i].MJD;
+  }
+  if(!isnormal(config.MJDref) || config.MJDref < minMJD || config.MJDref > maxMJD) {
+    if(config.autorun<=0) {
+      cout << "\nERROR: input positive-valued reference MJD is required\n";
+      cout << "MJD range is " << minMJD << " to " << maxMJD << "\n";
+      cout << fixed << setprecision(2) << "Suggested reference value is " << minMJD*0.5L + maxMJD*0.5L << "\n";
+      return(1);
+    } else {
+      cout << "\nUser did not input a positive-valued reference MJD in the\n";
+      cout << "acceptable range, so heliovane will generate one internally\n";
+      cout << "MJD range is " << minMJD << " to " << maxMJD << "\n";
+      cout << fixed << setprecision(2) << "Suggested reference value is " << minMJD*0.5L + maxMJD*0.5L << "\n";
+      config.MJDref = round(minMJD*50.0l + maxMJD*50.0l)/100.0l;
+      cout << fixed << setprecision(2) << "Adopting reference MJD = " << config.MJDref << "\n";
+      automjd=1;
+    } 
+  }
+
+  double chartimescale = (maxMJD - minMJD)*SOLARDAY/TIMECONVSCALE; // Note that the units are seconds.
+  Earthrefpos = earthpos01(earthpos, config.MJDref);
+  // Calculate heliocentric ecliptic longitude of Earth at the reference time.
+  if(Earthrefpos.y==0.0l) {
+    if(Earthrefpos.x>=0) lambda_Earth = 0.0l;
+    else lambda_Earth = 180.0l;
+  } else if(Earthrefpos.y>0.0l) {
+    lambda_Earth = 90.0l - DEGPRAD*atan(Earthrefpos.x/Earthrefpos.y);
+  } else if(Earthrefpos.y<0.0l) {
+    lambda_Earth = 270.0l - DEGPRAD*atan(Earthrefpos.x/Earthrefpos.y);
+  } else {
+    cerr << "ERROR: logically excluded case in solving for Earth's ecliptic longitide\n";
+    return(1);
+  }
+  cout << "Earth's ecliptic longitude at the reference time is " << lambda_Earth << " degrees.\n";
+  
+  // Convert heliocentric ecliptic longitudes from Earth-relative
+  // to absolute.
+  lambda = lambda_dot = lambda_ddot = {};
+  for(lambdact=0; lambdact<lambdanum; lambdact++) {
+    lambda_temp = lambdahyp[lambdact].HelioRad + lambda_Earth;
+    while(lambda_temp>=360.0l) lambda_temp -= 360.0l;
+    while(lambda_temp<0.0l) lambda_temp += 360.0l;
+    lambda.push_back(lambda_temp);
+    lambda_dot.push_back(lambdahyp[lambdact].R_dot);
+    lambda_ddot.push_back(lambdahyp[lambdact].R_dubdot);
+  }
+
+  // Begin master loop over heliocentric hypotheses
+  outclust={};
+  clust2det={};
+  realclusternum=0;  
+  for(lambdact=0;lambdact<lambdanum;lambdact++) {
+    gridpoint_clusternum=0;
+    cout << "Working on hypothesis " << lambdact << ": " << lambdahyp[lambdact].HelioRad << " deg, " << lambdahyp[lambdact].R_dot << " deg/day " << lambdahyp[lambdact].R_dubdot << " deg/day^2\n";
+    // Covert all tracklets into state vectors at the reference time, under
+    // the assumption that the heliocentric distance hypothesis is correct.
+    if(config.use_univar==1 || config.use_univar==3) {
+      // Use the universal variable formulation of the Kepler problem for orbit propagation.
+      // This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
+      status = trk2statevane_univar(image_log, tracklets, lambda[lambdact], lambda_dot[lambdact], lambda_ddot[lambdact], chartimescale, config.minsunelong, config.maxsunelong, min_proj_sine, config.maxheliodist, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
+    } else {
+      // Use the Kepler f and g functions for orbit propagation
+      // This is faster than the universal variable formulation, but cannot handle hyperbolic
+      // (i.e., unbound, interstellar) orbits. Being fastest for normal orbits, it is the default,
+      status = trk2statevane_fgfunc(image_log, tracklets, lambda[lambdact], lambda_dot[lambdact], lambda_ddot[lambdact], chartimescale, config.minsunelong, config.maxsunelong, min_proj_sine, config.maxheliodist, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
+    }
+    
+    if(status==1) {
+      cerr << "WARNING: hypothesis " << lambdact << ": " << lambdahyp[lambdact].HelioRad << " " << lambdahyp[lambdact].R_dot << " " << lambdahyp[lambdact].R_dubdot << " led to\nnegative heliocentric distance or other invalid result: SKIPPING\n";
+      continue;
+    } else if(status==2) {
+      // This is a weirder error case and is fatal.
+      cerr << "Fatal error case from trk2statevec.\n";
+      return(3);
+    }
+    // If we get here, trk2statevane probably ran OK.
+    if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
+    if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
+    if(config.use_univar==2 || config.use_univar==3) {
+      // Use old DBSCAN algorithm for clustering.
+      status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, lambdahyp[lambdact].HelioRad, lambdahyp[lambdact].R_dot, lambdahyp[lambdact].R_dubdot, chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+      if(status!=0) {
+	cerr << "ERROR: form_clusters exited with error code " << status << "\n";
+      }
+    } else {
+      // Use a KDtree range-query in six dimensions for clustering.
+      status = form_clusters_kd4(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, lambdahyp[lambdact].HelioRad, lambdahyp[lambdact].R_dot, lambdahyp[lambdact].R_dubdot, chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+      if(status!=0) {
+	cerr << "ERROR: form_clusters_kd4 exited with error code " << status << "\n";
+      }
+    }
+    // The form_clusters functions, because they were originally written for heliolinc,
+    // scale the heliocentric hypothesis specifications assuming it is translating
+    // heliolinc's internal units of km, km/day and km/day^2 into AU, km/sec, and m/sec^2
+    // For heliovane, we must reverse this tranformation.
+    for(long i=0;i<long(outclust.size());i++) {
+      outclust[i].heliohyp0 *= AU_KM;
+      outclust[i].heliohyp1 *= SOLARDAY;
+      outclust[i].heliohyp2 *= SOLARDAY*SOLARDAY/1000.0l;
+    }
+    // Note that the outputs will now be deg, deg/day, and deg/day^2
+  }
+  // De-duplicate the final output set
+  cout << "De-duplicating output set of " << outclust.size() << " candidate linkages\n";
+  vector <hlclust> outclust2;
+  vector  <longpair> outclust2det2;
+  link_dedup(outclust, clust2det, outclust2, outclust2det2);
+  outclust = outclust2;
+  for(long i=0; i<long(outclust.size()); i++) {
+    outclust[i].reference_MJD = config.MJDref;
+  }
+  clust2det = outclust2det2;
+  cout << "Final de-duplicated set contains " << outclust.size() << " linkages\n";  
+  if(automjd) {
+    cout << "Automatically calculated reference MJD was " << config.MJDref << "\n";
+  }
+  return(0);    
+}
+
 
 // heliolinc_alg_omp: May 17, 2023:
 // Attempt to parallelize tracklet-to-state-vector step
@@ -28063,6 +29184,8 @@ int heliolinc_alg_all(const vector <hlimage> &image_log, const vector <hldet> &d
   vector <point6ix2> allstatevecs;
   int use_univar=0;
   int NotKepler=0;
+  int automjd=0;
+  long i=0;
   
   if(config.use_univar>7 && config.use_univar<=15) {
     use_univar = config.use_univar-8;
@@ -28100,18 +29223,31 @@ int heliolinc_alg_all(const vector <hlimage> &image_log, const vector <hldet> &d
     return(1);
   }
   
-  double MJDmin = image_log[0].MJD;
-  double MJDmax = image_log[imnum-1].MJD;
-  if(config.MJDref<MJDmin || config.MJDref>MJDmax) {
-    // Input reference MJD is invalid. Suggest a better value before exiting.
-    cerr << "\nERROR: reference MJD, supplied as " << config.MJDref << ",\n";
-    cerr << "must fall in the time interval spanned by the data (" << MJDmin << " to " << MJDmax << "\n";
-    cerr << fixed << setprecision(2) << "Suggested value is " << MJDmin*0.5l + MJDmax*0.5l << "\n";
-    cout << "based on your input image catalog\n";
-    return(2);
+  // Find MJD for first and last detections.
+  double minMJD = detvec[0].MJD;
+  double maxMJD = detvec[0].MJD;
+  for(i=0; i<long(detvec.size()); i++) {
+    if(minMJD > detvec[i].MJD) minMJD = detvec[i].MJD;
+    if(maxMJD < detvec[i].MJD) maxMJD = detvec[i].MJD;
+  }
+  if(!isnormal(config.MJDref) || config.MJDref < minMJD || config.MJDref > maxMJD) {
+    if(config.autorun<=0) {
+      cout << "\nERROR: input positive-valued reference MJD is required\n";
+      cout << "MJD range is " << minMJD << " to " << maxMJD << "\n";
+      cout << fixed << setprecision(2) << "Suggested reference value is " << minMJD*0.5L + maxMJD*0.5L << "\n";
+      return(1);
+    } else {
+      cout << "\nUser did not input a positive-valued reference MJD in the\n";
+      cout << "acceptable range, so heliolinc will generate one internally\n";
+      cout << "MJD range is " << minMJD << " to " << maxMJD << "\n";
+      cout << fixed << setprecision(2) << "Suggested reference value is " << minMJD*0.5L + maxMJD*0.5L << "\n";
+      config.MJDref = round(minMJD*50.0l + maxMJD*50.0l)/100.0l;
+      cout << fixed << setprecision(2) << "Adopting reference MJD = " << config.MJDref << "\n";
+      automjd=1;
+    } 
   }
 
-  double chartimescale = (MJDmax - MJDmin)*SOLARDAY/TIMECONVSCALE; // Note that the units are seconds.
+  double chartimescale = (maxMJD - minMJD)*SOLARDAY/TIMECONVSCALE; // Note that the units are seconds.
   Earthrefpos = earthpos01(earthpos, config.MJDref);
 
   // Convert heliocentric radial motion hypothesis matrix
@@ -28214,7 +29350,286 @@ int heliolinc_alg_all(const vector <hlimage> &image_log, const vector <hldet> &d
   }
   clust2det = outclust2det2;
   cout << "Final de-duplicated set contains " << outclust.size() << " linkages\n";
+  if(automjd) {
+    cout << "Automatically calculated reference MJD was " << config.MJDref << "\n";
+  }
+  return(0);    
+}
 
+// heliolinc_omp_all: June 26, 2024
+// Attempt to aggregate multi-threaded of all available flavors of heliolinc
+// into a single code whose behavior is determined by config.use_univar.
+int heliolinc_omp_all(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, vector <hlclust> &outclust, vector <longpair> &clust2det)
+{
+  outclust = {};
+  clust2det = {};
+   
+  point3d Earthrefpos = point3d(0l,0l,0l);
+  long imnum = image_log.size();
+  long pairnum = tracklets.size();
+  long trk2detnum = trk2det.size();
+  long accelnum = radhyp.size();
+
+  vector <double> heliodist;
+  vector <double> heliovel;
+  vector <double> helioacc;
+  long realclusternum, gridpoint_clusternum, status, acct;
+  realclusternum = gridpoint_clusternum = status = acct = 0;
+  vector <point6ix2> allstatevecs;
+  int use_univar=0;
+  int NotKepler=0;
+  int automjd=0;
+  long i=0;
+  
+  if(config.use_univar>7 && config.use_univar<=15) {
+    use_univar = config.use_univar-8;
+    NotKepler=1;
+  } else {
+    use_univar = config.use_univar;
+    NotKepler=0;
+  }
+  
+  // Echo config struct
+  cout << "Configuration parameters:\n";
+  cout << "MJD of reference time: " << config.MJDref << "\n";
+  cout << "DBSCAN clustering radius: " << config.clustrad << " km\n";
+  cout << "DBSCAN npt: " << config.dbscan_npt << "\n";
+  cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
+  cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
+  cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
+  cout << "Max geocentric distance (will be exceeded by center only of the outermost bin): " << config.maxgeodist << " AU\n";
+  cout << "Logarthmic step size (and bin width) for geocentric distance bins: " << config.geologstep << "\n";
+  cout << "Minimum inferred geocentric distance for a valid tracklet: " << config.mingeoobs << " AU\n";
+  cout << "Minimum inferred impact parameter (w.r.t. Earth) for a valid tracklet: " << config.minimpactpar << " km\n";
+  if(config.verbose) cout << "Verbose output selected\n";
+  
+  if(imnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty image catalog\n";
+    return(1);
+  } else if(pairnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty tracklet array\n";
+    return(1);
+  } else if(trk2detnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty trk2det array\n";
+    return(1);
+  } else if(accelnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty heliocentric hypothesis array\n";
+    return(1);
+  }
+  
+  // Find MJD for first and last detections.
+  double minMJD = detvec[0].MJD;
+  double maxMJD = detvec[0].MJD;
+  for(i=0; i<long(detvec.size()); i++) {
+    if(minMJD > detvec[i].MJD) minMJD = detvec[i].MJD;
+    if(maxMJD < detvec[i].MJD) maxMJD = detvec[i].MJD;
+  }
+  if(!isnormal(config.MJDref) || config.MJDref < minMJD || config.MJDref > maxMJD) {
+    if(config.autorun<=0) {
+      cout << "\nERROR: input positive-valued reference MJD is required\n";
+      cout << "MJD range is " << minMJD << " to " << maxMJD << "\n";
+      cout << fixed << setprecision(2) << "Suggested reference value is " << minMJD*0.5L + maxMJD*0.5L << "\n";
+      return(1);
+    } else {
+      cout << "\nUser did not input a positive-valued reference MJD in the\n";
+      cout << "acceptable range, so heliolinc will generate one internally\n";
+      cout << "MJD range is " << minMJD << " to " << maxMJD << "\n";
+      cout << fixed << setprecision(2) << "Suggested reference value is " << minMJD*0.5L + maxMJD*0.5L << "\n";
+      config.MJDref = round(minMJD*50.0l + maxMJD*50.0l)/100.0l;
+      cout << fixed << setprecision(2) << "Adopting reference MJD = " << config.MJDref << "\n";
+      automjd=1;
+    } 
+  }
+
+  double chartimescale = (maxMJD - minMJD)*SOLARDAY/TIMECONVSCALE; // Note that the units are seconds.
+  Earthrefpos = earthpos01(earthpos, config.MJDref);
+
+  // Convert heliocentric radial motion hypothesis matrix
+  // from units of AU, AU/day, and GMSun/R^2
+  // to units of km, km/day, and km/day^2.
+  heliodist = heliovel = helioacc = {};
+  for(acct=0;acct<accelnum;acct++) {
+    heliodist.push_back(radhyp[acct].HelioRad * AU_KM);
+    heliovel.push_back(radhyp[acct].R_dot * AU_KM);
+    helioacc.push_back(radhyp[acct].R_dubdot * (-GMSUN_KM3_SEC2*SOLARDAY*SOLARDAY/heliodist[acct]/heliodist[acct]));
+  }
+
+  // Begin master loop over heliocentric hypotheses
+  outclust={};
+  clust2det={};
+  realclusternum=0;
+
+  int nt = 0;  
+  #pragma omp parallel
+  {
+  nt = omp_get_num_threads();
+  } 
+  cout << "nthreads = " << nt << "\n";
+  long cyclenum = accelnum/nt;
+  while(nt*cyclenum < accelnum) cyclenum++;
+
+  vector <vector <hlclust>> outclust_mat;
+  vector <vector <longpair>> clust2det_mat;
+  vector <hlclust> ov1;
+  vector <longpair> ov2;
+  long threadct=0;
+  // Load completely empty matrices of the correct size.
+  for(threadct=0; threadct<nt; threadct++) {
+    ov1={};
+    ov2={};
+    outclust_mat.push_back(ov1);
+    clust2det_mat.push_back(ov2);
+  }
+  for(long cyclect=0; cyclect<cyclenum; cyclect++) {
+    for(threadct=0; threadct<nt; threadct++) {
+      outclust_mat[threadct]={};
+      clust2det_mat[threadct]={};
+      acct = threadct + cyclect*nt;
+      if(acct<accelnum) {
+	cout << "Thread number " << threadct << " will check hypothesis " << acct << ": " << radhyp[acct].HelioRad << " AU, " << radhyp[acct].R_dot*AU_KM/SOLARDAY << " km/sec " << radhyp[acct].R_dubdot << " GMsun/r^2\n";
+      }
+    }
+    #pragma omp parallel
+    {
+    vector <point6ix2> allstatevecs;
+    long gridpoint_clusternum = 0;
+    int status=0;
+    int ithread = omp_get_thread_num();
+    int nthreads = omp_get_num_threads();
+    long accelct = ithread + cyclect*nthreads;
+    if(accelct<accelnum) {
+      // Covert all tracklets into state vectors at the reference time, under
+      // the assumption that the heliocentric distance hypothesis is correct.
+      if(use_univar == 1 || use_univar == 5 || use_univar == 7) {
+	// Integrate to perform clustering in the standard heliolinc3d parameter space
+	// of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
+	// Use the universal variable formulation of the Kepler problem for orbit propagation.
+	// This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
+	status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler);
+	if(status==1) {
+	  cerr << "FAILURE IN THREAD " << ithread << ": ";
+	  cerr << "hypothesis " << accelct << ": " << radhyp[accelct].HelioRad << " " << radhyp[accelct].R_dot << " " << radhyp[accelct].R_dubdot << " led to\nnegative heliocentric distance or other invalid result: SKIPPING\n";
+	} else if(status==2) {
+	  // This is a weirder error case and is fatal.
+	  cerr << "Fatal error case from trk2statevec_univar.\n";
+	  //return(3);
+	}
+      } else if(use_univar == 2) {
+	// Integrate to perform clustering in the parameter space of Ben Engebreth's 
+	// heliolinc_RR algorithm, which uses position vectors at two different
+	// reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
+	// Use the Kepler f and g functions for orbit propagation
+	// This is faster than the universal variable formulation, but cannot handle hyperbolic
+	status = trk2statevec_fgfuncRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler);
+	if(status==1) {
+	  cerr << "FAILURE IN THREAD " << ithread << ": ";
+	  cerr << "hypothesis " << accelct << ": " << radhyp[accelct].HelioRad << " " << radhyp[accelct].R_dot << " " << radhyp[accelct].R_dubdot << " led to\nnegative heliocentric distance or other invalid result: SKIPPING\n";
+	} else if(status==2) {
+	  // This is a weirder error case and is fatal.
+	  cerr << "Fatal error case from trk2statevec_fgfuncRR.\n";
+	  //return(3);
+	}
+      } else if(use_univar == 3) {
+	// Integrate to perform clustering in the parameter space of Ben Engebreth's 
+	// heliolinc_RR algorithm, which uses position vectors at two different
+	// reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
+	// Use the universal variable formulation of the Kepler problem for orbit propagation.
+	// This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
+	status = trk2statevec_univarRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler);
+	if(status==1) {
+	  cerr << "FAILURE IN THREAD " << ithread << ": ";
+	  cerr << "hypothesis " << accelct << ": " << radhyp[accelct].HelioRad << " " << radhyp[accelct].R_dot << " " << radhyp[accelct].R_dubdot << " led to\nnegative heliocentric distance or other invalid result: SKIPPING\n";
+	} else if(status==2) {
+	  // This is a weirder error case and is fatal.
+	  cerr << "Fatal error case from trk2statevec_univarRR.\n";
+	  //return(3);
+	}
+      } else {
+	// Integrate to perform clustering in the standard heliolinc3d parameter space
+	// of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
+	// Use the Kepler f and g functions for orbit propagation
+	// This is faster than the universal variable formulation, but cannot handle hyperbolic
+	// (i.e., unbound, interstellar) orbits. Being fastest for normal orbits, it is the default,
+	// and also corresponds to use_univar == 0, 4, or 6
+	status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler);
+	if(status==1) {
+	  cerr << "FAILURE IN THREAD " << ithread << ": ";
+	  cerr << "hypothesis " << accelct << ": " << radhyp[accelct].HelioRad << " " << radhyp[accelct].R_dot << " " << radhyp[accelct].R_dubdot << " led to\nnegative heliocentric distance or other invalid result: SKIPPING\n";
+	} else if(status==2) {
+	  // This is a weirder error case and is fatal.
+	  cerr << "Fatal error case from trk2statevec_fgfunc.\n";
+	  //return(3);
+ 	}	
+      }
+      if(status==0 && allstatevecs.size()>1) {
+	// trk2statevec probably ran OK, and some clusters possible.
+	if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
+
+	if(use_univar==6 || use_univar==7) {
+	  // Use old DBSCAN algorithm in six dimensions for clustering the standard heliolinc parameter space
+	  status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+	  if(status!=0) {
+	    cerr << "ERROR: form_clusters exited with error code " << status << "\n";
+	  }
+	} else if(use_univar==2 || use_univar==3) {
+	  // Use a KDtree range-query in six dimensions for clustering the heliolinc_RR parameter space
+	  status = form_clusters_RR(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+	  if(status!=0) {
+	    cerr << "ERROR: form_clusters_RR exited with error code " << status << "\n";
+	  }
+	} else if (use_univar==4 || use_univar==5) {
+	  // Use a KDtree range-query in only three dimensions for clustering the position-only heliolinc parameter space
+	  status = form_clusters_kdR(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+	  if(status!=0) {
+	    cerr << "ERROR: form_clusters_kdR exited with error code " << status << "\n";
+	  }
+	} else {
+	  // Use a KDtree range-query in six dimensions for clustering the standard heliolinc parameter space
+	  status = form_clusters_kd4(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+	  if(status!=0) {
+	    cerr << "ERROR: form_clusters_kd4 exited with error code " << status << "\n";
+	  }
+	}
+      }
+    }
+    }
+    // Parallel section is done, load the results.
+    for(threadct=0; threadct<nt; threadct++) {
+      // Determine the number of clusters already loaded
+      realclusternum = outclust.size();
+      // Redefine the cluster index number clusternum in outclust_mat[threadct]
+      for(long i=0; i<long(outclust_mat[threadct].size()); i++) {
+	outclust_mat[threadct][i].clusternum += realclusternum;
+      }
+      // Redefine the cluster index number in clust2det_mat[threadct]
+      for(long i=0; i<long(clust2det_mat[threadct].size()); i++) {
+	clust2det_mat[threadct][i].i1 += realclusternum;
+      }
+      // Load new points into master outclust vector
+      for(long i=0; i<long(outclust_mat[threadct].size()); i++) {
+	outclust.push_back(outclust_mat[threadct][i]);
+      }
+      // Load new points into master clust2det vector
+      for(long i=0; i<long(clust2det_mat[threadct].size()); i++) {
+	clust2det.push_back(clust2det_mat[threadct][i]);
+      }
+    }
+  }
+  
+  // De-duplicate the final output set
+  cout << "De-duplicating output set of " << outclust.size() << " candidate linkages\n";
+  vector <hlclust> outclust2;
+  vector  <longpair> outclust2det2;
+  link_dedup(outclust, clust2det, outclust2, outclust2det2);
+  outclust = outclust2;
+  for(long i=0; i<long(outclust.size()); i++) {
+    outclust[i].reference_MJD = config.MJDref;
+  }
+  clust2det = outclust2det2;
+  cout << "Final de-duplicated set contains " << outclust.size() << " linkages\n";
+  if(automjd) {
+    cout << "Automatically calculated reference MJD was " << config.MJDref << "\n";
+  }
   return(0);    
 }
 
@@ -29305,7 +30720,7 @@ int link_purify(const vector <hlimage> &image_log, const vector <hldet> &detvec,
       cerr << "ERROR: cluster index mismatch " << inclustct << " != " << onecluster.clusternum << " at input cluster " << inclustct << "\n";
       return(5);
     }
-    if(onecluster.totRMS<=config.maxrms) {
+    if(onecluster.totRMS<=config.maxrms && onecluster.obsnights>=config.minobsnights && onecluster.uniquepoints>=config.minpointnum) {
       // This cluster passes the initial cut. Analyze it.
       // Load a vector with the indices to detvec
       clustind = {};
@@ -29820,7 +31235,7 @@ int link_purify2(const vector <hlimage> &image_log, const vector <hldet> &detvec
       cerr << "ERROR: cluster index mismatch " << inclustct << " != " << onecluster.clusternum << " at input cluster " << inclustct << "\n";
       return(5);
     }
-    if(onecluster.totRMS<=config.maxrms) {
+    if(onecluster.totRMS<=config.maxrms && onecluster.obsnights>=config.minobsnights && onecluster.uniquepoints>=config.minpointnum) {
       // This cluster passes the initial cut. Analyze it.
       // Load a vector with the indices to detvec
       clustind = {};
@@ -30320,7 +31735,7 @@ int link_purify_graddec(const vector <hlimage> &image_log, const vector <hldet> 
       cerr << "ERROR: cluster index mismatch " << inclustct << " != " << onecluster.clusternum << " at input cluster " << inclustct << "\n";
       return(5);
     }
-    if(onecluster.totRMS<=config.maxrms) {
+    if(onecluster.totRMS<=config.maxrms && onecluster.obsnights>=config.minobsnights && onecluster.uniquepoints>=config.minpointnum) {
       // This cluster passes the initial cut. Analyze it.
       // Load a vector with the indices to detvec
       clustind = {};
@@ -30825,7 +32240,7 @@ int link_purify_quad1(const vector <hlimage> &image_log, const vector <hldet> &d
       cerr << "ERROR: cluster index mismatch " << inclustct << " != " << onecluster.clusternum << " at input cluster " << inclustct << "\n";
       return(5);
     }
-    if(onecluster.totRMS<=config.maxrms) {
+    if(onecluster.totRMS<=config.maxrms && onecluster.obsnights>=config.minobsnights && onecluster.uniquepoints>=config.minpointnum) {
       // This cluster passes the initial cut. Analyze it.
       // Load a vector with the indices to detvec
       clustind = {};
@@ -31381,7 +32796,7 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
       cerr << "ERROR: point number mismatch " << ptnum << " != " << onecluster.uniquepoints << " at input cluster " << inclustct << "\n";
       return(6);
     }
-    if(onecluster.totRMS > config.maxrms) {
+    if(onecluster.totRMS > config.maxrms && onecluster.obsnights>=config.minobsnights && onecluster.uniquepoints>=config.minpointnum) {
       if(config.verbose>0 || inclustct%1000==0) cout << "Cluster " << inclustct << " of " << inclustnum << ": RMS = " << onecluster.totRMS << "km is too high: REJECTED.\n";
       continue; // This cluster fails the initial cut: skip it.
     }
@@ -31632,7 +33047,7 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
 	normout2 += DSQUARE(planeout2[ptct]*AU_KM/vecabs3d(heliopos2[ptct]));
       }
       // Calculate RMS deviation from planarity, scaled to a heliocentric distance
-      normout2 = sqrt(normout1/double(ptnum));
+      normout2 = sqrt(normout2/double(ptnum));
     }
     // Now normout2<normout1 means the second case is better.
     // planeout vectors contain out-of-plane estimates
@@ -34237,3 +35652,45 @@ int read_orbline(string lnfromfile, asteroid_orbit &oneorb)
 	   
 #undef DANBYK_689
 #undef DANBYK_6935
+
+
+// zenith_radec: May 31, 2024
+// Given an MJD and the longitude and MPC latitude sin and cos terms
+// for an observatory, calculate RA and Dec of the zenith from
+// that location at that time.
+int zenith_radecLD(long double detmjd, long double lon, long double obscos, long double obssine, long double &RA, long double &Dec)
+{
+  long double gmst=0;
+  long double djdoff = detmjd-51544.5L;
+  long double zenithRA=0.0;
+  long double zenithDec=0.0;
+  long double junkRA=0.0;
+  long double junkDec=0.0;
+
+  gmst = 18.697374558L + 24.06570982441908L*djdoff;
+  // Add the longitude, converted to hours.
+  // Note: at this point it stops being gmst.
+  gmst += lon/15.0L;
+  // Get a value between 0 and 24.0.
+  while(gmst>=24.0L) gmst -= 24.0L;
+  while(gmst<0.0L) gmst += 24.0L;
+  // Convert to degrees
+  zenithRA = gmst * 15.0L;
+  // Get zenithDec    
+  if(obscos!=0.0L) {
+    zenithDec = atan(obssine/obscos)*DEGPRAD;
+  } else if(obssine>=0.0L) {
+    zenithDec = 90.0L;
+  } else {
+    zenithDec=-90.0L;
+  }
+  // Now zenithRA and zenithDec are epoch-of-date coordinates.
+  // If you want them in J2000.0, this is the place to convert them.
+  int precesscon=-1; //Precess epoch-of-date to J2000.0
+  junkRA = zenithRA/DEGPRAD;
+  junkDec = zenithDec/DEGPRAD;
+  precess01aLD(junkRA,junkDec,detmjd,&zenithRA,&zenithDec,precesscon);
+  RA = zenithRA*DEGPRAD;
+  Dec = zenithDec*DEGPRAD;
+  return(0);
+}

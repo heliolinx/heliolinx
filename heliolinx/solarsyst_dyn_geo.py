@@ -127,6 +127,12 @@ atlasdet = np.dtype(list(dict(
     Dup=int,
 ).items()))
 
+point3d_index = np.dtype(list(dict(
+    x=float,
+    y=float,
+    z=float,
+    index=int,
+).items()))
 
 def celeproj(ra, dec, **kwargs):
     """ Project an RA, Dec position onto the Cartesian unit sphere """
@@ -207,6 +213,21 @@ def read_ObsCodes(obscode_file, **kwargs):
 
     obsarr = np.array(c)
     return(obsarr)
+
+
+def read_3col_file(threecol, **kwargs):
+    """ Read three columns from a csv file, recording line number as well """
+    file1 = open(threecol, 'r')
+    lines = file1.readlines()
+    c = []
+    for i in range(len(lines)-1) :
+        line = lines[i]
+        flist = [float(j) for j in line.split(" ")]
+        a = list((flist[0], flist[1], flist[2], i))
+        c.append(a)
+
+    colsread = np.array(c)
+    return(colsread)
 
 
 def load_earth_ephemerides(fn, **kwargs):
