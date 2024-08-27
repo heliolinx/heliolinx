@@ -80,24 +80,24 @@ using namespace std;
                         // universal variables.
 #define KEPTRANSTOL 1e-15L // Maximum error for an acceptable solution of the
                            // trancendental Kepler Equation.
-#define KEPTRANSTOL2 (double(1e-10)) // Maximum error for an acceptable solution of the
+#define KEPTRANSTOL2 1.0e-10 // Maximum error for an acceptable solution of the
                             // trancendental Kepler Equation.
-#define HYPTRANSTOL 1e-13l // Maximum error for an acceptable solution of the
+#define HYPTRANSTOL 1.0e-13l // Maximum error for an acceptable solution of the
                            // Kepler Equation with universal variables
-#define KEP2PBVPTOL 1e-12L // Maximum error for an acceptable solution of the
+#define KEP2PBVPTOL 1.0e-12L // Maximum error for an acceptable solution of the
                            // Kepler two-point boundary value problem.
-#define KEP2PBVPTOL2 (double(1e-8l)) // Maximum error for an acceptable solution of the
+#define KEP2PBVPTOL2 1.0e-8 // Maximum error for an acceptable solution of the
                            // Kepler two-point boundary value problem.
-#define QSTAR_XTOL 1e-4l  // Transition to use series rather than analytical forms
-                         // for the Q(x*) function from Danby 6.11
+#define QSTAR_XTOL 1.0e-4  // Transition to use series rather than analytical forms
+                           // for the Q(x*) function from Danby 6.11
 #define QSTAR_N  10 // Number of terms to calculate for the series expansion 
                    // of the Q(x*) function from Danby 6.11
 #define LARGERR 1e30L // Large number supposed to be a safe initialization
                       // for most minimum-finding problems.
-#define LARGERR2 (double(1e30l)) // Large number supposed to be a safe initialization
-                                // for most minimum-finding problems.
-#define LARGERR3 1e60L // Large number supposed to be a safe initialization
-                       // for most minimum-finding problems.
+#define LARGERR2 1.0e30 // Large number supposed to be a safe initialization
+                      // for most minimum-finding problems.
+#define LARGERR3 1.0e60 // Large number supposed to be a safe initialization
+                      // for most minimum-finding problems.
 #define GMSUN_KM3_SEC2 132712440041.279419L // GM for the Sun: that is, the Universal
                                             // Gravitational Constant times the solar mass,
                                             // in units of km^3/sec^2. 
@@ -130,13 +130,13 @@ using namespace std;
                               // reducing the chance of hyperbolic orbits.
 #define SIMPLEX_SCALE_LIMIT ((sqrt(5.0L)-1.0L)/2.0L) // Can get negative distances if simplex_scale
                                                      // exceeds this value.
-#define QUADSTEP_SCALEFAC 0.03l
+#define QUADSTEP_SCALEFAC 0.03
 #define LOG10_e 0.434294481903252L
 #define LN10 2.30258509299405L
 #define IMAGETIMETOL 1.0 // Tolerance for matching image time, in seconds
 
 // Parameters related to heliolinc clustering
-#define INTEGERIZING_SCALEFAC 100.0l // We divide state vectors by this value to integerize
+#define INTEGERIZING_SCALEFAC 100.0L // We divide state vectors by this value to integerize
                                      // them. Given a standard integer with a range
                                      // of +/- 2^31 = 2.15e9, this gives the state vectors
                                      // a range of +/- 2.15e11 km = 1400 AU, which is
@@ -149,12 +149,12 @@ using namespace std;
                            // in a tracklet, to enable them to be counted as being
                            // on separate nights.
 #define EPH_INTERP_POLYORDER 5 // Order of polynomial for interpolating JPL ephemerides.
-#define TIMECONVSCALE 4.0l // The characteristic timescale used to convert velocities
+#define TIMECONVSCALE 4.0 // The characteristic timescale used to convert velocities
                            // to distance units is equal to the full temporal span
                            // divided by TIMECONVSCALE.
-#define FTOL_HERGET_SIMPLEX 1e-5l
-#define FTOL_QUAD 1e-5l
-#define QUADCONV_FACTOR 10.0l
+#define FTOL_HERGET_SIMPLEX 1.0e-5
+#define FTOL_QUAD 1.0e-5
+#define QUADCONV_FACTOR 10.0
 #define MAX_SHUTTER_CORR 10.0 // Implied shutter corrections larger than this value,
                               // in seconds, are implausible and will cause link_refine_Herget
                               // to exit with an error.
@@ -419,7 +419,7 @@ struct HeliovaneConfig {
                                // rather than the default fg function formulation.
   double minsunelong = 0.0l;  // Minimum solar elongation in degrees
   double maxsunelong = 180.0l;  // Maximum solar elongation in degrees
-  double min_incid_angle = 40.0l; // Minimum value for the angle at which the observer-to-target unitvector
+  double min_incid_angle = 20.0l; // Minimum value for the angle at which the observer-to-target unitvector
                                  // intersects the heliocentric vane, in degrees.
   double maxheliodist = 2.0l; // Maximum heliocentric distance in AU. Partially redundant with
                                // min_proj_sine.

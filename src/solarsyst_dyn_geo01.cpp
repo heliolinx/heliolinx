@@ -13180,7 +13180,12 @@ double orbitchi_univar(const point3d &objectpos, const point3d &objectvel, const
       cerr << "WARNING: about to call stateunit_to_celestial with bad input\n";
       cerr << "Input start pos: " << objectpos.x << " "  << objectpos.y << " "  << objectpos.z << "\n";
       cerr << "Recovered start pos: " << obspos[0].x << " "  << obspos[0].y << " "  << obspos[0].z << "\n";
+      cerr << "Current heliocentric pos: " << obspos[obsct].x << " "  << obspos[obsct].y << " "  << obspos[obsct].z << "\n";
+      cerr << "LTT correction: " << light_travel_time*obsvel[obsct].x << " "  << light_travel_time*obsvel[obsct].y << " "  << light_travel_time*obsvel[obsct].z << "\n";
+      cerr << "Corrected topocentric pos: "<< outpos.x << " "  << outpos.y << " "  << outpos.z << "\n";
       cerr << "Observerpos: " << observerpos[obsct].x << " "  << observerpos[obsct].y << " "  << observerpos[obsct].z << "\n";
+      chisq=LARGERR3; // Error code
+      return(chisq);
     }
     // Calculate unit vector
     outpos.x /= dval;
@@ -13959,9 +13964,8 @@ double Hergetchi_vstar(double geodist1, double geodist2, int Hergetpoint1, int H
   double orbchi;
   // Note that the output vectors fitRA, fitDec, and resid are null-wiped
   // internally in orbitchi01, so it isn't necessary to wipe them here.
-  //cout << "Hergetchi_vstar launching orbitchi_univar\n"; //Squiggle
   orbchi = orbitchi_univar(startpos, startvel, obsMJD[Hergetpoint1]-geodist1/CLIGHT_AUDAY, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, &a, &e);
-  //cout << "orbitchi_univar finished with chisq = " << orbchi << "\n"; //Squiggle
+
   orbit={};
   orbit.push_back(a);
   orbit.push_back(e);
@@ -13979,6 +13983,7 @@ double Hergetchi_vstar(double geodist1, double geodist2, int Hergetpoint1, int H
   return(orbchi);
 }
 
+#undef POSADJ
 
 // Herget_simplex_init: November 09, 2022:
 // Initialize a 2-D simplex suitable for downhill simplex orbit
@@ -14933,6 +14938,11 @@ double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, i
     // Calculate new trial point
     trialdist[0] = refdist[0] - (simplex[worstpoint][0] - refdist[0]);
     trialdist[1] = refdist[1] - (simplex[worstpoint][1] - refdist[1]);
+    // Make sure we don't have negative distances
+    if(trialdist[0]<0.0) trialdist[0] = -trialdist[0];
+    else if(trialdist[0]==0.0) trialdist[0] += MINHERGETDIST*10.0;
+    if(trialdist[1]<0.0) trialdist[1] = -trialdist[1];
+    else if(trialdist[1]==0.0) trialdist[1] += MINHERGETDIST*10.0;
     // Calculate chi-square value at this new point
     chisq = Hergetchi_vstar(trialdist[0], trialdist[1], Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, verbose);
     if(chisq>=LARGERR3) {
@@ -14947,6 +14957,11 @@ double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, i
      // Extrapolate further in this direction: maybe we can do even better
       trialdist[0] = refdist[0] - 2.0L*(simplex[worstpoint][0] - refdist[0]);
       trialdist[1] = refdist[1] - 2.0L*(simplex[worstpoint][1] - refdist[1]);
+      // Make sure we don't have negative distances
+      if(trialdist[0]<0.0) trialdist[0] = -trialdist[0];
+      else if(trialdist[0]==0.0) trialdist[0] += MINHERGETDIST*10.0;
+      if(trialdist[1]<0.0) trialdist[1] = -trialdist[1];
+      else if(trialdist[1]==0.0) trialdist[1] += MINHERGETDIST*10.0;
       newchi = Hergetchi_vstar(trialdist[0], trialdist[1], Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, verbose);
       if(newchi>=LARGERR3) {
 	cerr << "WARNING: Hergetchi_vstar() returned error code with input " << trialdist[0] << ", " << trialdist[1] << "\n";
@@ -14978,6 +14993,11 @@ double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, i
 	// instead of reflecting away from it.
 	trialdist[0] = 0.5L*(simplex[worstpoint][0] + refdist[0]);
 	trialdist[1] = 0.5L*(simplex[worstpoint][1] + refdist[1]);
+	// Make sure we don't have negative distances
+	if(trialdist[0]<0.0) trialdist[0] = -trialdist[0];
+	else if(trialdist[0]==0.0) trialdist[0] += MINHERGETDIST*10.0;
+	if(trialdist[1]<0.0) trialdist[1] = -trialdist[1];
+	else if(trialdist[1]==0.0) trialdist[1] += MINHERGETDIST*10.0;
 	// Calculate chi-square value at this new point
 	chisq = Hergetchi_vstar(trialdist[0], trialdist[1], Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, verbose);
 	if(chisq>=LARGERR3) {
@@ -14999,6 +15019,11 @@ double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, i
 	    if(i!=bestpoint) {
 	      simplex[i][0] = 0.5L*(simplex[i][0] + simplex[bestpoint][0]);
 	      simplex[i][1] = 0.5L*(simplex[i][1] + simplex[bestpoint][1]);
+	      // Make sure we don't have negative distances
+	      if(simplex[i][0]<0.0) simplex[i][0] = -simplex[i][0];
+	      else if(simplex[i][0]==0.0) simplex[i][0] += MINHERGETDIST*10.0;
+	      if(simplex[i][1]<0.0) simplex[i][1] = -simplex[i][1];
+	      else if(simplex[i][1]==0.0) simplex[i][1] += MINHERGETDIST*10.0;
 	      simpchi[i] = Hergetchi_vstar(simplex[i][0], simplex[i][1], Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, verbose);
 	      if(simpchi[i]>=LARGERR3) {
 		cerr << "WARNING: Hergetchi_vstar() returned error code on simplex point " << i << ": " << simplex[i][0] << ", " << simplex[i][1] << "\n";
@@ -15024,6 +15049,11 @@ double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, i
       for(i=0;i<3;i++) {
 	simplex[i][0] = refdist[0] + (simplex[i][0]-refdist[0])*SIMP_EXPAND_FAC;
 	simplex[i][1] = refdist[1] + (simplex[i][1]-refdist[1])*SIMP_EXPAND_FAC;
+	// Make sure we don't have negative distances
+	if(simplex[i][0]<0.0) simplex[i][0] = -simplex[i][0];
+	else if(simplex[i][0]==0.0) simplex[i][0] += MINHERGETDIST*10.0;
+	if(simplex[i][1]<0.0) simplex[i][1] = -simplex[i][1];
+	else if(simplex[i][1]==0.0) simplex[i][1] += MINHERGETDIST*10.0;
       }
       // Re-evaluate the chi-square values
       for(i=0;i<3;i++) {
