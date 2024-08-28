@@ -164,7 +164,7 @@ int main(int argc, char *argv[])
   }
   
   // Write paired detection file
-  cout << "Writing paired detection file with " << pairdets.size() << " lines\n";
+  cout << "Writing paired detection file " << pairdetfile_out << " with " << pairdets.size() << " lines\n";
   outstream1.open(pairdetfile_out);
   outstream1 << "#MJD,RA,Dec,mag,trail_len,trail_PA,sigmag,sig_across,sig_along,image,idstring,band,obscode,known_obj,det_qual,origindex\n";
   for(i=0;i<long(pairdets.size());i++) {
@@ -180,7 +180,7 @@ int main(int argc, char *argv[])
   outstream1.close();
 
   // Write tracklet file
-  cout << "Writing tracklet file with " << tracklets.size() << " lines\n";
+  cout << "Writing tracklet file " << trackletfile_out << " with " << tracklets.size() << " lines\n";
   outstream1.open(trackletfile_out);
   outstream1 << "#Image1,RA1,Dec1,Image2,RA2,Dec2,npts,trk_ID\n";
   for(i=0;i<long(tracklets.size());i++) {
@@ -191,7 +191,7 @@ int main(int argc, char *argv[])
   outstream1.close();
 
   // Write trk2det file
-  cout << "Writing trk2det file with " << trk2det.size() << " lines\n";
+  cout << "Writing trk2det file " << trk2detfile_out << " with " << trk2det.size() << " lines\n";
   outstream1.open(trk2detfile_out);
   outstream1 << "#trk_ID,detnum\n";
   for(i=0;i<long(trk2det.size());i++) {
