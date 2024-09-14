@@ -22417,6 +22417,158 @@ int make_tracklets2(vector <hldet> &detvec, vector <hlimage> &image_log, MakeTra
   return(0);
 }
 
+// make_tracklets3: September 13, 2024: Output culled paired detection file.
+int make_tracklets3(vector <hldet> &detvec, vector <hlimage> &image_log, MakeTrackletsConfig config, vector <hldet> &pairdets,vector <tracklet> &tracklets, vector <longpair> &trk2det)
+{
+ 
+  long i=0;
+  std::vector <longpair> pairvec;
+  std::vector <vector <long>> indvecs;
+  
+  // Echo config struct
+  cout << "Configuration parameters for new make_tracklets:\n";
+  cout << "Min. number of tracklet points: " << config.mintrkpts << "\n";
+  cout << "Time-tolerance for matching detections on the same image: " << config.imagetimetol << " days (" << config.imagetimetol*SOLARDAY << " seconds)\n";
+  cout << "Maximum angular velocity: " << config.maxvel << " deg/day\n";
+  cout << "Minimum angular velocity: " << config.minvel << " deg/day\n";
+  cout << "Minimum angular arc: " << config.minarc << " arcsec\n";
+  cout << "Maximum inter-image time interval: " << config.maxtime << " days (" << config.maxtime*1440.0 << " minutes)\n";
+  cout << "Minimum inter-image time interval: " << config.mintime << " days (" << config.mintime*1440.0 << " minutes)\n";
+  cout << "Image radius: " << config.imagerad << " degrees\n";
+  cout << "Maximum Great Circle Residual for tracklets with more than two points: " << config.maxgcr << " arcsec\n";
+  if(config.forcerun) {
+    cout << "forcerun has been invoked: execution will attempt to push through\n";
+    cout << "any errors that are not immediately fatal, including those that\n";
+    cout << "could produce inaccurate final results.\n";
+  }
+  if(config.verbose) cout << "Verbose output has been requested\n";
+  
+  int status = load_image_indices(image_log, detvec, config.imagetimetol, config.forcerun);
+  if(status!=0) {
+    cerr << "ERROR: failed to load_image_indices from detection vector\n";
+    return(status);
+  }
+  
+  // Echo detection vector
+  //for(i=0;i<detvec.size();i++) {
+  //  cout << "det " << i << " " << detvec[i].MJD << " " << detvec[i].RA << " " << detvec[i].Dec << " " << detvec[i].mag  << " " << detvec[i].obscode << " " << detvec[i].image << "\n";
+  //}
+  if(config.verbose) {
+    // Echo image log
+    for(i=0;i<long(image_log.size());i++) {
+      cout << "image " << i << " " << image_log[i].MJD << " " << image_log[i].RA << " " << image_log[i].Dec << " " << image_log[i].X << " " << image_log[i].obscode  << " " << image_log[i].startind  << " " << image_log[i].endind << "\n";
+    }
+  }
+
+  if(config.mintrkpts==2) {
+    // Simply output to main pairdets vector:
+    // there will be no need to revise pairdets afterwards.
+
+    // Create pairs, output a vector pairdets of type hldet; a vector indvecs of type vector <long>,
+    // with the same length as pairdets, giving the indices of all the detections paired with a given detection;
+    // and the vector pairvec of type longpair, giving all the pairs of detections.
+    status = find_pairs(detvec, image_log, pairdets, indvecs, pairvec, config.mintime, config.maxtime, config.imagerad, config.maxvel, config.verbose);
+  
+    if(status!=0) {
+      cerr << "ERROR: find_pairs reports failure status " << status << "\n";
+      return(status);
+    }
+
+    // Sanity-check indvecs
+    cout << "make_tracklets is sanity-checking indvecs\n";
+    long detnum = indvecs.size();
+    long detct=0;
+    for(detct=0; detct<detnum; detct++) {
+      for(i=0; i<long(indvecs[detct].size()); i++) {
+	if(indvecs[detct][i]<0 || indvecs[detct][i]>=detnum) {
+	  cerr << "ERROR: indvecs[" << detct << "][" << i << "] out of range: " << indvecs[detct][i] << "\n";
+	  cerr << "Acceptable range is 0 to " << detnum << "\n";
+	  return(9);
+	}
+      }
+    }
+    cout << "Sanity-check finished\n";
+  
+    status = merge_pairs2(pairdets, indvecs, pairvec, tracklets, trk2det, config.mintrkpts, config.max_netl, config.maxgcr, config.minarc, config.minvel, config.maxvel, config.verbose);
+
+    if(status!=0) {
+      cerr << "ERROR: merge_pairs reports failure status " << status << "\n";
+      return(status);
+    } else cout << "merge_pairs finished OK\n";
+  } else {
+    // The minimum number of tracklet points is more than two, so pairdets will
+    // need to be culled after its initial construction, to eliminate detections
+    // that didn't contribute to a tracklet with more than two points. Hence, we
+    // load a temporary version of pairdets, which must be culled afterwards.
+
+    vector <hldet> pairdets_temp;
+    
+    // Create pairs, output a vector pairdets of type hldet; a vector indvecs of type vector <long>,
+    // with the same length as pairdets, giving the indices of all the detections paired with a given detection;
+    // and the vector pairvec of type longpair, giving all the pairs of detections.
+    status = find_pairs(detvec, image_log, pairdets_temp, indvecs, pairvec, config.mintime, config.maxtime, config.imagerad, config.maxvel, config.verbose);
+  
+    if(status!=0) {
+      cerr << "ERROR: find_pairs reports failure status " << status << "\n";
+      return(status);
+    }
+
+    // Sanity-check indvecs
+    cout << "make_tracklets is sanity-checking indvecs\n";
+    long detnum = indvecs.size();
+    long detct=0;
+    for(detct=0; detct<detnum; detct++) {
+      for(i=0; i<long(indvecs[detct].size()); i++) {
+	if(indvecs[detct][i]<0 || indvecs[detct][i]>=detnum) {
+	  cerr << "ERROR: indvecs[" << detct << "][" << i << "] out of range: " << indvecs[detct][i] << "\n";
+	  cerr << "Acceptable range is 0 to " << detnum << "\n";
+	  return(9);
+	}
+      }
+    }
+    cout << "Sanity-check finished\n";
+  
+    status = merge_pairs2(pairdets_temp, indvecs, pairvec, tracklets, trk2det, config.mintrkpts, config.max_netl, config.maxgcr, config.minarc, config.minvel, config.maxvel, config.verbose);
+
+    if(status!=0) {
+      cerr << "ERROR: merge_pairs reports failure status " << status << "\n";
+      return(status);
+    } else cout << "merge_pairs finished OK\n";
+
+    // Load culled version of pairdets_temp into the final pairdets vector,
+    // and re-write the indices of the trk2det vector accordingly
+    
+    // Create a vector of -1s, of the same length as pairdets_temp.
+    vector <long> detloaded;
+    for(i=0; i<long(pairdets_temp.size()); i++) detloaded.push_back(-1);
+    if(detloaded.size() != pairdets_temp.size()) {
+      cerr << "ERROR: length mismatch between detloaded and pairdets_temp!\n";
+      return(5);
+    }
+    pairdets={};
+    for(i=0; i<long(trk2det.size()); i++) {
+      long thisdet = trk2det[i].i2;
+      if(detloaded[thisdet]==-1) {
+	// This detection has not yet been loaded. Load it now.
+	pairdets.push_back(pairdets_temp[thisdet]);
+	// Re-assign the trk2det index appropriately
+	trk2det[i].i2 = long(pairdets.size()-1);
+	// Mark it as loaded.
+	detloaded[thisdet] = trk2det[i].i2;
+      } else {
+	// This detection has already been loaded to the pairdets vector.
+	// Re-assign the trk2det index appropriately.
+	trk2det[i].i2 = detloaded[thisdet];
+      }
+    }
+  }
+  
+  return(0);
+}
+
+
+
+
 
 // make_trailed_tracklets: February 14, 2024: like make_tracklets,
 // but makes use of trail information through the new function
