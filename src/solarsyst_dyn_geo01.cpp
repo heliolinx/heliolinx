@@ -5602,7 +5602,8 @@ int nplanetgrab01LD(int pointrequest, int planetnum, const vector <long double> 
   int posvecsize = planetpos.size(); 
   point3LD postemp = point3LD(0,0,0);
   int planetct=0;
-
+  outpos={}; // Wipe output vector.
+  
   if(mjdsize*planetnum != posvecsize) {
     cout << "ERROR: vector sizes do not match in nplanetgrab01LD!\n";
     cout << "Got a size of " << posvecsize << " for the position vector\n";
@@ -10064,13 +10065,13 @@ int integrate_orbit03LD(int polyorder, int planetnum, const vector <long double>
   // Make sure the output vectors are large enough
   obspos={};
   obsvel={};
-  for(obsct=0;obsct<=obsnum;obsct++) {
+  for(obsct=0;obsct<obsnum;obsct++) {
     obsvel.push_back(singlevel);
     obspos.push_back(singlepos);
   }
   // Are the observations before or after the starting time, or both?
   obsbefore=obsafter=0;
-  for(obsct=0;obsct<=obsnum;obsct++) {
+  for(obsct=0;obsct<obsnum;obsct++) {
     if(obsMJD2[obsct]<mjdstart) obsbefore=1;
     if(obsMJD2[obsct]>=mjdstart) obsafter=1;
   }
@@ -11094,6 +11095,9 @@ long double tortoisechi01(int polyorder, int planetnum, const vector <long doubl
 // more or fewer planets may be used as desired.
 // Note that the vector obsMJD is assumed to be time-sorted, and
 // serious failures will result if it is not.
+//
+// NOTE: Major bug fixed on October 01, 2024. All earlier results
+// from this program are invalid.
 int integrate_orbit04LD(int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, point3LD startpos, point3LD startvel, int startpoint, int endpoint, vector <long double> &outMJD, vector <point3LD> &outpos, vector <point3LD> &outvel)
 {
   vector <point3LD> planetsalltimes;
@@ -11146,8 +11150,9 @@ int integrate_orbit04LD(int polyorder, int planetnum, const vector <long double>
     ppfitvec.push_back(0L);
   }
 
-  // Make sure the output vectors are large enough, and load
-  // outMJD with the actual output times.
+  // Make sure the output vectors are large enough.
+  // Also, load outMJD with the actual output times
+  // and planetsalltimes with the actual planet positions.
   outpos={};
   outvel={};
   outMJD={};
@@ -11155,11 +11160,16 @@ int integrate_orbit04LD(int polyorder, int planetnum, const vector <long double>
     outvel.push_back(singlevel);
     outpos.push_back(singlepos);
     outMJD.push_back(planetmjd[startpoint+outct]);
+    planetsonce={};
+    nplanetgrab01LD(startpoint+outct, planetnum, planetmjd, planetpos, planetsonce);
+    for(i=0;i<planetnum;i++) planetsalltimes.push_back(planetsonce[i]);
   }
 
-  // Load the initial time vector
-  for(j=0;j<=polyorder+1;j++) temptime[j] = planetmjd[startpoint+j];
-    
+  // Load the initial time vector, and the
+  // planetsalltimes vector
+  for(j=0;j<=polyorder+1;j++) {
+    temptime[j] = planetmjd[startpoint+j];
+  }
   // Load starting position and velocity
   targvel[0] = startvel;
   targpos[0] = startpos;
@@ -11167,8 +11177,8 @@ int integrate_orbit04LD(int polyorder, int planetnum, const vector <long double>
 
   // Bootstrap up to a fit of order polyorder.
   // Calculate acceleration at starting point, loading planet positions from big vector.
-  planetsonce={};
-  nplanetgrab01LD(startpoint, planetnum, planetmjd, planetpos, planetsonce);
+
+  for(i=0;i<planetnum;i++) planetsonce[i] = planetsalltimes[planetnum*0 + i];
   accelcalc01LD(planetnum, planetmasses, planetsonce, targpos[0], targaccel[0]);
   dt0 = (temptime[1]-temptime[0])*SOLARDAY;
 
@@ -11178,8 +11188,7 @@ int integrate_orbit04LD(int polyorder, int planetnum, const vector <long double>
   targpos[1].z = targpos[0].z + targvel[0].z*dt0 + targaccel[0].z*0.5L*dt0*dt0;
 
   // Calculate acceleration at this new position.
-  planetsonce={};
-  nplanetgrab01LD(startpoint+1, planetnum, planetmjd, planetpos, planetsonce);
+  for(i=0;i<planetnum;i++) planetsonce[i] = planetsalltimes[planetnum*1 + i];
   accelcalc01LD(planetnum, planetmasses, planetsonce, targpos[1], targaccel[1]);
   
   // Second approx: linearly varying acceleration.
@@ -11212,8 +11221,7 @@ int integrate_orbit04LD(int polyorder, int planetnum, const vector <long double>
   targpos[2].y = targpos[1].y + targvel[1].y*dt0 + targaccel[1].y*0.5L*dt0*dt0 + accelslope.y*dt0*dt0*dt0/6.0L;
   targpos[2].z = targpos[1].z + targvel[1].z*dt0 + targaccel[1].z*0.5L*dt0*dt0 + accelslope.z*dt0*dt0*dt0/6.0L;
   // Calculate acceleration for this extrapolated position.
-  planetsonce={};
-  nplanetgrab01LD(startpoint+2, planetnum, planetmjd, planetpos, planetsonce);
+  for(i=0;i<planetnum;i++) planetsonce[i] = planetsalltimes[planetnum*2 + i];
   accelcalc01LD(planetnum, planetmasses, planetsonce, targpos[2], targaccel[2]);
 
   // Now we have three acceleration points: can load for a full polynomial fit.
@@ -11278,8 +11286,7 @@ int integrate_orbit04LD(int polyorder, int planetnum, const vector <long double>
     }
     // Re-calculate accelerations using these revised positions
     for(j=1;j<=stepsin;j++) {
-      planetsonce={};
-      nplanetgrab01LD(startpoint+j, planetnum, planetmjd, planetpos, planetsonce);
+      for(i=0;i<planetnum;i++) planetsonce[i] = planetsalltimes[planetnum*j + i];
       accelcalc01LD(planetnum, planetmasses, planetsonce, targpos[j], targaccel[j]);
     }
     cout.precision(17);
@@ -11347,8 +11354,7 @@ int integrate_orbit04LD(int polyorder, int planetnum, const vector <long double>
     }
     // Re-calculate accelerations using these revised positions
     for(j=1;j<=stepsin;j++) {
-      planetsonce={};
-      nplanetgrab01LD(startpoint+j, planetnum, planetmjd, planetpos, planetsonce);
+      for(i=0;i<planetnum;i++) planetsonce[i] = planetsalltimes[planetnum*j + i];
       accelcalc01LD(planetnum, planetmasses, planetsonce, targpos[j], targaccel[j]);
     }
   }
@@ -11436,8 +11442,7 @@ int integrate_orbit04LD(int polyorder, int planetnum, const vector <long double>
     }
     // Re-calculate accelerations using these revised positions
     for(j=1;j<=polyorder+1;j++) {
-      planetsonce={};
-      nplanetgrab01LD(latestpoint+j-polyorder-1, planetnum, planetmjd, planetpos, planetsonce);
+     for(i=0;i<planetnum;i++) planetsonce[i] = planetsalltimes[planetnum*(latestpoint+j-polyorder-1) + i];
       accelcalc01LD(planetnum, planetmasses, planetsonce, targpos[j], targaccel[j]);
     }
 
@@ -11502,8 +11507,7 @@ int integrate_orbit04LD(int polyorder, int planetnum, const vector <long double>
     }
     // Re-calculate accelerations using these revised positions
     for(j=1;j<=polyorder+1;j++) {
-      planetsonce={};
-      nplanetgrab01LD(latestpoint+j-polyorder-1, planetnum, planetmjd, planetpos, planetsonce);
+      for(i=0;i<planetnum;i++) planetsonce[i] = planetsalltimes[planetnum*(latestpoint+j-polyorder-1) + i];
       accelcalc01LD(planetnum, planetmasses, planetsonce, targpos[j], targaccel[j]);
       outvel[latestpoint+j-polyorder-1] = targvel[j];
       outpos[latestpoint+j-polyorder-1] = targpos[j];
