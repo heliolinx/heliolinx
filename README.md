@@ -361,8 +361,7 @@ Importantly, the four omitted quantities are not created equal. The magnitude, p
 Name                    | Description
 :---                    | :---
 `trail_len`             | trail length in arcsec, if source is trailed
-`trail_PA`              | trail position angle, degrees east from celestial north. If the
-                        | source is not trailed, defaults to 90.0 degrees.
+`trail_PA`              | trail position angle, degrees east from celestial north. If the source is not trailed, defaults to 90.0 degrees.
 `sigmag`                | magnitude uncertainty
 `sig_across`            | cross-track astrometric uncertainty (Dec uncertainty if not trailed)
 `sig_along`             | along-track astrometric uncertainty (RA uncertainty if not trailed)
