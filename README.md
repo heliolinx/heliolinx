@@ -845,11 +845,61 @@ The reason it is important to reject spurious mega-clusters close to the Earth i
 
 **Use universal variables** `-use_univar`: Heliolinc's default Keplerian integrator uses the f and g functions, as derived in J. M. A. Danby's *Fundamentals of Celestial Mechanics*. This method, though very efficient, cannot handle unbound (i.e., interstellar, or hyperbolic) orbits. An alternative formulation, also from Danby's book, uses universal variables and handles bound and unbound orbits equally well. Since this formulation is slightly slower, we did not make it the default -- however, it works fine and should be invoked with `-use_univar 1` whenever `heliolinc` is used to search for interstellar objects. In this case it is also necessary to set `-vinf` (see below) to a value greater than the default, 0.0 km/sec.
 
+Since its initial definition, `-use_univar` has been given additional possible values (from 2 to 15, besides the values of 0 and 1 already discussed). These enable the user to choose between various different "flavors" of `heliolinc` -- meaning, permutations of different algorithms for various stages of the analysis. The discussion of all these flavors is too involved to be included here: see the separate section on `heliolinc` flavors below.
+
 **Maximum v_infinity w.r.t. the sun** `-vinf`: In the case of an interstellar object, v_infinity is the velocity it has in the limit of infinite distance from the sun -- in other words, the velocity it had (relative to the sun) long before the encounter when it was essentially unaffected by the sun's gravity, and the velocity it will have again (neglecting planetary encounters and other complications) when it has departed the sun's gravitational influence after passing through the solar system. If E is the object's total energy (kinetic plus gravitational potential), then v_infinity is the velocity it will have when all the energy is kinetic -- i.e., v_infinity = sqrt(2E/m), where m is the object's mass. This value was about 26 km/sec for 'Oumuamua and 32 km/sec for Comet Borisov. It could potentially be larger, but the odds of an interstellar object with v_infinity greater than, e.g., 200 km/sec (which would have to come from a star in the Galactic halo population) are rather low. Hence, `heliolinc` provides the `-vinf` parameter to enable the user to avoid wasting computation on highly improbable trajectories. If you are searching for interstellar objects, you **must** explicitly supply a value for `-vinf` greater than the default 0.0 km/sec, as well as setting `-use_univar` to 1.
 
 We have also provided the somewhat strange option of specifying a negative value for v_infinity. For bound orbits with (by definition) negative total energy E, `heliolinc` interprets v_infinity as -sqrt(-2E/m). Hence, setting a negative maximum value for v_infinity will reject objects in "barely bound" solar orbits, such as long period comets in the inner solar system. This option might possibly be useful to reduce computation time in the case of a large, confusion-prone data set being searched for a specific population such as main-belt asteroids or Jupiter Trojans, which are never in "barely bound" orbits.
 
 **Verbosity level** `-verbose`: The default of 0 writes a modest number of progress updates to stdout (i.e., to the terminal). For more detailed information, try `-verbose 1`. On the other hand, `-verbose -1` will cause the program to run in eerie silence.
+
+### Flavors of heliolinc ###
+
+This table gives the flavors of heliolinc: i.e., various permutations of algorithms that are described in detail below it.
+
+`-use_univar` | Name        |Parameter space            | Clustering algorithm | Keplerian propagator | Hypothesis interpretation
+:---:         | :---:       | :---                      | :---:                | :---                 | :---     
+0             | heliolinc3D | pos & vel at 1 ref. time  | kd-tree range query  | f and g functions    | Keplerian
+1             | heliolinc3D | pos & vel at 1 ref. time  | kd-tree range query  | universal variables  | Keplerian
+2             | heliolincRR | position at 2 ref. times  | kd-tree range query  | f and g functions    | Keplerian
+3             | heliolincRR | position at 2 ref. times  | kd-tree range query  | universal variables  | Keplerian
+4             | heliolincR  | position at 1 ref. time   | kd-tree range query  | f and g functions    | Keplerian
+5             | heliolincR  | position at 1 ref. time   | kd-tree range query  | universal variables  | Keplerian
+6             | heliolinc3D | pos & vel at 1 ref. time  | DBSCAN               | f and g functions    | Keplerian
+7             | heliolinc3D | pos & vel at 1 ref. time  | DBSCAN               | universal variables  | Keplerian
+8             | heliolinc3D | pos & vel at 1 ref. time  | kd-tree range query  | f and g functions    | Taylor Series
+9             | heliolinc3D | pos & vel at 1 ref. time  | kd-tree range query  | universal variables  | Taylor Series
+10            | heliolincRR | position at 2 ref. times  | kd-tree range query  | f and g functions    | Taylor Series
+11            | heliolincRR | position at 2 ref. times  | kd-tree range query  | universal variables  | Taylor Series
+12            | heliolincR  | position at 1 ref. time   | kd-tree range query  | f and g functions    | Taylor Series
+13            | heliolincR  | position at 1 ref. time   | kd-tree range query  | universal variables  | Taylor Series
+14            | heliolinc3D | pos & vel at 1 ref. time  | DBSCAN               | f and g functions    | Taylor Series
+15            | heliolinc3D | pos & vel at 1 ref. time  | DBSCAN               | universal variables  | Taylor Series
+
+#### Comparing the different clustering parameter spaces ####
+
+Three different options are available for the parameter space in which the clustering is performed.
+
+The first, default, and most thoroughly explored option is the heliolinc3D parameter space pioneered by Siegfried Eggl. Here, the state vectors derived from each tracklet are integrated (using the Keplerian 2-body approximation) to a single reference time (which can be specified by the user as `-mjd` or allowed to default to the center of the time spanned by the input data). Clustering is performed in the 6-D parameter space of position and velocity at the reference time. The velocity vectors are converted to length units through multiplication by a characteristic timescale equal to 1/4 the total time spanned by the input data.
+
+The second option is the heliolincRR parameter space, invented by Ben Engebreth. Here, the state vectors derived from each tracklet are integrated to two different reference times. The two reference times are before and after the central time by an interval equal to 1/4 the total time spanned by the data (note: Ben Engebreth has typically used times more closely spaced than this). Clustering is performed in the 6-D parameter space of 3-D position at the first reference time and 3-D position at the second reference time. This parameter space has the advantage of naturally homogeneous length units, with no conversion required.
+
+The third option is the heliolincR parameter space, where just a single reference time is used and only the position vector is used for clustering (velocity is ignored). This is the only 3-D parameter space: the others are all 6-D.
+
+Tests of heliolinc3D vs. heliolincRR suggest very similar performance, with different metrics favoring one or the other. There is evidence that heliolincRR works best at larger heliocentric distances, but it is not conclusive. HeliolincRR has delivered the highest completeness in tests on simulated main-belt asteroids and TNOs. However, experiments aimed at quantitatively optimizing hypothesis sampling suggest that heliolincRR requires finer hypothesis sampling for the same performance -- and there is some evidence even in the aforementioned simulations that heliolinc3D provides longer linkages (more total detections on average) than heliolincRR, even though the later provides a slightly larger number of linkages.
+
+#### Comparing the different clustering algorithms ####
+
+DBSCAN is much more sophisticated than the simple kd-tree range query that we prefer as an alternative. The advantage of DBSCAN is its ability to find clusters with odd shapes such as filaments, sheets, or shells, when they are extended well beyond the clustering radius. DBSCAN can only do this if the cluster contains many more than three points, however, and the ability to accumulate clusters with odd shapes and with sizes larger than the clustering radius also makes DBSCAN more likely to create impure, 'mixed' clusters containing tracklets from more than one object.
+
+The asteroid-linking specification for LSST requires the discovery of any object that produces three (or more) unique tracklets in a two-week interval. This specification can be robustly met only if the hypothesis sampling, clustering radius, and other parameters are set such that any set of three tracklets corresponding to the same object and falling within the two-week time span will, for some hypothesis, be clustered tightly enough to fall within a single clustering radius of each other. If **any** set of **three** tracklets within a two-week time span will be clustered this tightly, regardless of how they are distributed in time, it follows that **any number** of tracklets that fall within the two-week time span (and all correspond to the same object) will fall within a single clustering radius. Hence, a simple kd-tree range query will find **the entire cluster**, regardless of how many points it has. This means that DBSCAN's elegant ability to trace an oddly-shaped yet contiguous cluster over a distance much greater than the clustering radius becomes unnecessary -- and indeed a liability because it increases the likelihood of mixed clusters. For these reasons, we prefer the kd-tree range query for linking asteroids in LSST.
+
+This is not to say, however, that DBSCAN has no value in the `heliolinc` context. For one thing, the kd-tree range query finds a much larger number of mutually overlapping clusters (since a cluster is sought centered on every single point individually). This bloats up the output files and increase post-processing times. For LSST, the fact that it delivers greater completeness and purity more than compensates -- but in other contexts, the tradeoffs might be different. In particular, if every cluster is expected to include many more than three tracklets, then DBSCAN's ability to trace extended, oddly-shaped clusters might be valuable. There may be other advantages to DBSCAN in particular situations that we have not explored. It's a good idea to test multiple flavors of `heliolinc` when using it in a new context for the first time, since one of them might offer unexpected advantages.
+
+#### Comparing different Keplerian propagators ####
+
+As has already been discussed, Keplerian integration using the universal variables formulation of the Kepler problem is able to handle unbound (i.e., hyperbolic, interstellar) orbits, while the formulation using the f and g functions is not. We default to using the f and g functions because this makes the code run somewhat faster. However, there are contexts in which you might want to use the universal variables formulation instead. Even when not searching for strictly interstellar orbits, astrometric errors in the input data (especially for slow-moving objects such as TNOs) can cause a specific tracklet that really corresponds to a bound object to have a formally unbound trajectory, even for a well-chosen hypothesis. Such a tracklet will be rejected by the integrator using the f and g functions, but retained and likely successfully linked if using the universal variables (combined with a modest positive value for `-vinf`). The flip side, of course, is that admitting formally unbound tracklets will increase confusion, resulting in longer runtimes and a greater probability of false linkages.
+
 
 
 ### Command-line arguments for the post-processing codes ###
@@ -920,7 +970,17 @@ All of the above make it appear that `-maxrms` is a useless parameter, which is 
 
 **Verbosity level** `-verbose`: The default of 0 writes a modest number of progress updates to stdout (i.e., to the terminal). These include specific information on every thousandth cluster that is analyzed, to aid in monitoring of long runs. For more detailed information, try `-verbose 1`, which will output information on every cluster rather than just every thousandth cluster -- something that may be useful when diagnosing unexpected behavior using small input files. For even more status output (probably much more than you want), try `-verbose 2`. All larger values are equivalent to `-verbose 2`. Unlike `heliolinc`, `link_purify` does not offer an extra-silent option: setting `-verbose` to negative values simply produces the default behavior.
 
+### Arguments specific to `link_planarity` ###
 
+There is only one parameter specific to `link_planarity` and not shared by `link_purify`. It has far-reaching implications, however, as we now explain:
+
+**Max out-of-plane distance** `-oop`: This parameter, which defaults to 1000 km but should usually be larger, sets the maximum distance from the mean plane for a valid observation. This is a computationally inexpensive proxy for the astrometric residual in arcseconds as used by `link_purify`. It is calculated by projecting each observation individually onto the heliocentric sphere defined by the hypothesis, thus mapping it to a 3-D position vector in the solar system. Since individual points rather than tracklets are used, there is no velocity inference and no orbital integration to a reference time: each point is considered at its own time-of-observation. The mean plane of the 3-D position vectors corresponding to all the points is calculated, and outliers with out-of-plane distance exceeding the `-oop` parameter are interatively rejected until none remain. The surviving points, all guaranteed to have inferred 3-D positions within a distance `-oop` of the mean orbit plane, are passed to the (much more computationally expensive) full Keplerian orbit fit. After this, `link_planarity` proceeds exactly like `link_purify`, iterative rejecting astrometric outliers from the best-fit orbit until the RMS residual of the survivors falls below `-max_astrom_rms`.
+
+The reason `link_planarity` exists is because the pre-screening and rejection of outlying points using their out-of-plane distances reduces the number of full Keplerian orbit fits (which are much more computationally expensive) and speeds up the analysis, typically by a factor of several. This major speedup comes at a cost: a small but nonzero fraction of good linkages are incorrectly rejected. Hence, you should use `link_planarity` **only** if post-processing time is a limiting resource in your analysis (which, unfortunately, it is quite likely to be).
+
+The keyword `-useorbMJD` is available in `link_planarity`, but should **not** be used: it should always be left to the default value of 0.
+
+Relatedly, if the post-processing codes are run multiple times in series, `link_planarity` should be used **only for the first round** of post-processing. For subsequent rounds, since astrometric fitting has already been performed and outliers eliminated, there is no further advantage to `link_planarity`, and `link_purify` should be used instead. To summarize, use `link_planarity` **only** on raw output from heliolinc. 
 
 ## Converting to MPC 80-column format ##
 
