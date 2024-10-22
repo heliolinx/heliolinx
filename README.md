@@ -37,13 +37,13 @@ Additionally, heliolinc has the potential to enable remarkable asteroid discover
 
 ##### Tracklet creation: #####
 ```
-make_tracklets_new.cpp
+make_tracklets.cpp
 ```
 
 ##### Tracklet linking (heliolinc proper): #####
 ```
-heliolinc_kd.cpp
-heliolinc_ompkd.cpp
+heliolinc.cpp
+heliolinc_omp.cpp
 ```
 
 ##### Post-processing: #####
@@ -62,7 +62,7 @@ solarsyst_dyn_geo01.h
 ```
 parse_clust2det_new.cpp
 parse_clust2det_MPC80.cpp
-split_hlfile.cpp
+modsplit_hlfile.cpp
 ```
 
 #### Makefile: ####
@@ -97,11 +97,11 @@ make install
 
 ## What the programs do: ##
 
-**make_tracklets_new:** Perform image-based pairing to create input pair/tracklet files for heliolinc
+**make_tracklets:** Perform image-based pairing to create input pair/tracklet files for heliolinc
 
-**heliolinc_kd:** Link together pairs/tracklets produced by make_tracklets into candidate asteroid discoveries, using a k-d tree range query for linking. The k-d tree linking is significant because previous versions used the DBSCAN algorithm, which is more sophisticated but actually inappropriate for the specific use case of heliolinc. Significant performance gains were realized by switching from DBSCAN to the simpler k-d tree range query.
+**heliolinc:** Link together pairs/tracklets produced by make_tracklets into candidate asteroid discoveries, using (by default) a k-d tree range query for linking. The k-d tree linking is significant because previous versions used the DBSCAN algorithm, which is more sophisticated but actually inappropriate for the specific use case of heliolinc. Significant performance gains were realized by switching from DBSCAN to the simpler k-d tree range query.
 
-**heliolinc_ompkd:** Multi-threaded version of heliolinc_kd.
+**heliolinc_omp:** Multi-threaded version of heliolinc.
 
 **link_purify:** Post-process linkages produced by heliolinc. This includes Keplerian orbit-fitting of every linkage; iterative (one at a time) rejection of astrometric outliers until the RMS astrometric residual falls below a threshold; identification of sets of mutually overlapping linkages; selection of the best linkage within each mutually overlapping set; and rejection of all the other overlapping linkages. The output from `link_purify` is a final set of linkages guaranteed to be non-overlapping (i.e., composed of detections not shared by any other linkage) and that have been successfully fit by orbits with RMS astrometric residual below the specified threshold.
 
@@ -128,10 +128,10 @@ export PATH=$PATH:/home/user/git_heliolinc/heliolinx/bin
 
 ```
 
-You can then run make_tracklets_new, with the following minimal invocation:
+You can then run make_tracklets, with the following minimal invocation:
 
 ```
-make_tracklets_new -dets test_TenObjects01a.csv -earth Earth1day2020s_02a.csv \
+make_tracklets -dets test_TenObjects01a.csv -earth Earth1day2020s_02a.csv \
  -obscode ObsCodesNew.txt -colformat colformat_LSST_02.txt
 ```
 
@@ -157,7 +157,7 @@ test_TenObjects01a.csv
 
 `outimfile01.txt` is the **output image catalog**. It exists to feed information to heliolinc about the time (MJD), boresight right ascension and declination (RA and Dec), and observer position and velocity (in heliocentric Cartesian coordinates) at the midpoint of each image. 
 
-`pairdetfile01.csv` is the **paired detection file**. It is a simplified, reformatted version of the input catalog containing only the detections that make_tracklets_new linked into a pair or longer tracklet. The columns are limited to information required by heliolinc or likely to be useful in post-processing -- regardless of what additional columns were present in the input file.
+`pairdetfile01.csv` is the **paired detection file**. It is a simplified, reformatted version of the input catalog containing only the detections that make_tracklets linked into a pair or longer tracklet. The columns are limited to information required by heliolinc or likely to be useful in post-processing -- regardless of what additional columns were present in the input file.
 
 `trackletfile01.csv` is the **tracklet file**. A tracklet is defined as a set of observations on a single night that (could) correspond to a single object. Heliolinc (and therefore the make_tracklets output files that feed it) represents each tracklet as a pair of detections. A pair of detections can be converted into a celestial position and an angular velocity -- which, in heliolinc, are combined with a hypothetical heliocentric distance and radial velocity to specify a full 3-D position and velocity. The tracklet file encodes the time by providing an index to the image catalog, but gives the RA, Dec coordinates in full. If the tracklet has more than two points (i.e., is not just a pair), the image indices are for representative images near the start and end of the tracklet, and the RA, Dec positions are from a Great Circle fit evaluated at the times corresponding to the representative images. 
 
@@ -169,7 +169,7 @@ test_TenObjects01a.csv
 Rather than letting ```make_tracklets``` generate default output names, you can specify them as follows:
 
 ```
-make_tracklets_new -dets test_TenObjects01a.csv -outimgs outim_TenObjects01a_01.txt \
+make_tracklets -dets test_TenObjects01a.csv -outimgs outim_TenObjects01a_01.txt \
 -pairdets pairdets_TenObjects01a_01.csv  -tracklets tracklets_TenObjects01a_01.csv \
 -trk2det trk2det_TenObjects01a_01.csv -earth Earth1day2020s_02a.csv -obscode ObsCodesNew.txt \
 -colformat colformat_LSST_02.txt
@@ -181,7 +181,7 @@ make_tracklets_new -dets test_TenObjects01a.csv -outimgs outim_TenObjects01a_01.
 As a first test of heliolinc, try this invocation:
 
 ```
-heliolinc_kd -imgs outim_TenObjects01a_01.txt -pairdets pairdets_TenObjects01a_01.csv \
+heliolinc -imgs outim_TenObjects01a_01.txt -pairdets pairdets_TenObjects01a_01.csv \
 -tracklets tracklets_TenObjects01a_01.csv -trk2det trk2det_TenObjects01a_01.csv -obspos Earth1day2020s_02a.csv \
 -heliodist heliohyp_rmb00a.txt
 ```
@@ -200,7 +200,7 @@ As with make_tracklets, you may want the specify the output file names. It turns
 
 
 ```
-heliolinc_kd -imgs outim_TenObjects01a_01.txt -pairdets pairdets_TenObjects01a_01.csv \
+heliolinc -imgs outim_TenObjects01a_01.txt -pairdets pairdets_TenObjects01a_01.csv \
 -tracklets tracklets_TenObjects01a_01.csv -trk2det trk2det_TenObjects01a_01.csv -obspos Earth1day2020s_02a.csv \
 -heliodist heliohyp_rmb00a.txt -clustrad 2e5 -outsum sum_TenObjects01a_01.csv \
 -clust2det clust2det_TenObjects01a_01.csv 
@@ -445,8 +445,7 @@ Column &nbsp;&nbsp;| Name                    | Description
 3 	           | `Dec`                   | declination in decimal degrees
 4                  | `mag`		     | magnitude
 5                  | `trail_len`             | trail length in arcsec, if source is trailed
-6                  | `trail_PA`              | trail position angle, degrees east from celestial north. If the
-                   |                         | source is not trailed, defaults to 90.0 degrees.
+6                  | `trail_PA`              | trail position angle, degrees east from celestial north. If the source is not trailed, defaults to 90.0 degrees.
 7 	           | `sigmag`                | magnitude uncertainty
 8                  | `sig_across`            | cross-track astrometric uncertainty (Dec uncertainty if not trailed)
 9                  | `sig_along`             | along-track astrometric uncertainty (RA uncertainty if not trailed)
@@ -460,7 +459,7 @@ Column &nbsp;&nbsp;| Name                    | Description
                    |                         | catalog (internally calculated)
 
 
-These quantities are not restricted to those required, or even used, by the programs in the baseline suite. We have already seen that `make_tracklets_new` and heliolinc can run with only MJD, RA, and Dec -- and run without degredation with only these three columns plus the Observatory Code. Instead of a list of strictly required quantities, we have tried to maintain the paired detection file as a carefully optimized set of quantities to which users will likely want convenient access in some important contexts. The emphasis here is on **convenient**: with a little customized index-tracing, access to any column in the freely formatted input file can be obtain through the `origindex` column. In other words, `origindex`, though not explicitly used by any program in `heliolinc` suite, is retained to enable mapping of the final linkages back to lines in the original detection catalog. This is likely to be useful in the (quite probable) case that you had (and wrote into your input detection catalog) a bunch of interesting data besides the columns preserved in the paired detection file. You can then use the preserved line numbers to recover this original, detailed information for every linked detection. Note that `origindex` starts counting from zero on the first data line of your input detection catalog. Since this file is expected to have a one-line header, origindex=0 actually corresponds to the second line of the file: the first line is a header, and the second line is the first **data** line and is assigned origindex=0. Note also that the user does not include `origindex` as a column in the original input file to `make_tracklets`: rather, `make_tracklets` calculates and outputs it regardless of what other columns are presentin the original input file.
+These quantities are not restricted to those required, or even used, by the programs in the baseline suite. We have already seen that `make_tracklets` and heliolinc can run with only MJD, RA, and Dec -- and run without degredation with only these three columns plus the Observatory Code. Instead of a list of strictly required quantities, we have tried to maintain the paired detection file as a carefully optimized set of quantities to which users will likely want convenient access in some important contexts. The emphasis here is on **convenient**: with a little customized index-tracing, access to any column in the freely formatted input file can be obtain through the `origindex` column. In other words, `origindex`, though not explicitly used by any program in `heliolinc` suite, is retained to enable mapping of the final linkages back to lines in the original detection catalog. This is likely to be useful in the (quite probable) case that you had (and wrote into your input detection catalog) a bunch of interesting data besides the columns preserved in the paired detection file. You can then use the preserved line numbers to recover this original, detailed information for every linked detection. Note that `origindex` starts counting from zero on the first data line of your input detection catalog. Since this file is expected to have a one-line header, origindex=0 actually corresponds to the second line of the file: the first line is a header, and the second line is the first **data** line and is assigned origindex=0. Note also that the user does not include `origindex` as a column in the original input file to `make_tracklets`: rather, `make_tracklets` calculates and outputs it regardless of what other columns are presentin the original input file.
 
 Besides the internally calculated `origindex`, the quantities in the paired detection file can be divided into three catagories: Used internally (if available) by all versions of the `heliolinc` suite; used only for processing of trailed sources; not currently used by `heliolinc`, but may be used in future versions and/or very useful for externally evaluating `heliolinc` results. The columns in each category are as follows:
 
@@ -554,24 +553,24 @@ The short example file provided for test runs, `heliohyp_rmb00a.txt`, probes onl
 
 #### Splitting `heliolinc` hypothesis files, and recombining output ####
 
-For analyses involving large number of hypotheses, such as those targeting NEOs, you can break the hypothesis files into smaller pieces for embarrassingly parallel runs. For example, the file radhyp_NEOF_01b.txt could be broken into 35 pieces with 5000 hypotheses each (except the last, which would have only 2095. **Don't forget that each individual hypothesis file needs its own one-line header**. There is also a multithreaded version of `heliolinc_kd`, called `heliolinc_ompkd`, which will be discussed below.
+For analyses involving large number of hypotheses, such as those targeting NEOs, you can break the hypothesis files into smaller pieces for embarrassingly parallel runs. For example, the file radhyp_NEOF_01b.txt could be broken into 35 pieces with 5000 hypotheses each (except the last, which would have only 2095. **Don't forget that each individual hypothesis file needs its own one-line header**. There is also a multithreaded version of `heliolinc`, called `heliolinc_omp`, which will be discussed below.
 
 The NEO files with tens of thousands of hypotheses have been run successfully only on carefully chosen subsets of input data: trailed sources in the case of radhyp_NEOF_01b.txt, and detections at less than 90 degrees solar elongation in the case of radhypo_ie01a.txt. Processing unculled input data, such as is expected for runs targeting the main belt with radhypo_mb02a.txt, might not be computationally tractable with the NEO files. If you want to find NEOs without culling the input data (e.g., if you are targeting NEOs outside Earth's orbit that might not be moving fast enough to make trails on your images), a way to make this computationally tractable is to cut out the the hypotheses closest to Earth, where the sampling is finest. For example, radhyp_NEOF_01b.txt has 172095 hypotheses, but only 53135 correspond to asteroids more than 1.1 AU from the sun, and only 10761 correspond to those more distant than 1.2 AU. Using only the more distant hypotheses can greatly reduce the runtimes.
 
 If you divide a hypothesis file, such as radhyp_NEOF_01b.txt, into parts with extensions _p00, _p01, _p02, etc, and you want to run it on a set of data called `mydata` that you have already processed with `make_tracklets`, you can run `heliolinc` on it as follows:
 
 ```
-heliolinc_kd -imgs outim_mydata.txt -pairdets pairdets_mydata.csv -tracklets tracklets_mydata.csv \
+heliolinc -imgs outim_mydata.txt -pairdets pairdets_mydata.csv -tracklets tracklets_mydata.csv \
 -trk2det trk2det_mydata.csv -mjd 59816.00 -obspos Earth1day2020s_02a.csv -heliodist radhyp_NEOF_01b_p00.txt \
 -clustrad 500000.0 -mingeodist 0.01 -mingeoobs 0.005 -minimpactpar 50000.0 -outsum sum_mydata_NEOF_01b_p00.csv \
 -clust2det clust2det_mydata_NEOF_01b_p00.csv
 
-heliolinc_kd -imgs outim_mydata.txt -pairdets pairdets_mydata.csv -tracklets tracklets_mydata.csv \
+heliolinc -imgs outim_mydata.txt -pairdets pairdets_mydata.csv -tracklets tracklets_mydata.csv \
 -trk2det trk2det_mydata.csv -mjd 59816.00 -obspos Earth1day2020s_02a.csv -heliodist radhyp_NEOF_01b_p01.txt \
 -clustrad 500000.0 -mingeodist 0.01 -mingeoobs 0.005 -minimpactpar 50000.0 -outsum sum_mydata_NEOF_01b_p01.csv \
 -clust2det clust2det_mydata_NEOF_01b_p01.csv
 
-heliolinc_kd -imgs outim_mydata.txt -pairdets pairdets_mydata.csv -tracklets tracklets_mydata.csv \
+heliolinc -imgs outim_mydata.txt -pairdets pairdets_mydata.csv -tracklets tracklets_mydata.csv \
 -trk2det trk2det_mydata.csv -mjd 59816.00 -obspos Earth1day2020s_02a.csv -heliodist radhyp_NEOF_01b_p02.txt \
 -clustrad 500000.0 -mingeodist 0.01 -mingeoobs 0.005 -minimpactpar 50000.0 -outsum sum_mydata_NEOF_01b_p02.csv \
 -clust2det clust2det_mydata_NEOF_01b_p02.csv
@@ -696,7 +695,7 @@ This concludes the description of file formats used by programs in the heliolinc
 
 All the programs in the heliolinc C++ suite allow many optional arguments beyond the minimal invocations used above. In many cases these optional arguments are the key to getting the specific behavior you want from the programs. 
 
-### Arguments for make_tracklets_new ###
+### Arguments for make_tracklets ###
 
 The table below describes all of the arguments 
 
