@@ -508,7 +508,7 @@ int main(int argc, char *argv[])
   // an input data file, but no reference MJD, and config.autorun==0,
   // prohibiting the code from automatically generating a suitable
   // reference time.
-  cout << "Happy Fourth of July! config.autorun = " << config.autorun << "\n";
+  cout << "config.autorun = " << config.autorun << "\n";
   if(!isnormal(config.MJDref) || config.MJDref < minMJD || config.MJDref > maxMJD) {
     if(config.autorun<=0) {
       show_usage();

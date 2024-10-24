@@ -24289,7 +24289,6 @@ int trk2statevane_univar(const vector <hlimage> &image_log, const vector <trackl
   double timediff=0l;
   double E = 0.0l;
   double v_inf = 0.0l;
-  int verbose=1;
  
   // Calculate approximate heliocentric ecliptic longitude (lambda) from the
   // input quadratic approximation. This is all in units of degrees an days.
@@ -24362,7 +24361,6 @@ int trk2statevane_univar(const vector <hlimage> &image_log, const vector <trackl
       // set a negative v_inf, if desired, to rule out
       // objects that are barely bound to the sun.
       if(v_inf>max_v_inf) {
-	if(verbose) cout << "v_inf is too high.\n";
 	continue; // Skip further calculation if v_inf is too high.
       }
       // Begin new stuff added to eliminate 'globs'
@@ -24420,14 +24418,12 @@ int trk2statevane_univar(const vector <hlimage> &image_log, const vector <trackl
 	  allstatevecs.push_back(stateveci);
 	} else {
 	  // Kepler integration encountered unphysical situation.
-	  if(verbose) cout << "Kepler integration encountered unphysical situation.\n";
 	  continue;
 	}
       }
     } else {
       badpoint=1;
       // Heliocentric projection found no physical solution.
-      if(verbose) cout << "Heliocentric projection found no physical solution.\n";
       continue;
     }
   }

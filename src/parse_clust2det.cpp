@@ -1,4 +1,10 @@
-// April 26, 2023: parse_clust2det_new
+// April 26, 2023: parse_clust2det: Parse the output files from the
+// heliolinc suite to produce a representation of the final linkages
+// that is easy to examine manually. Specifically, a hybrid file
+// is produced with each cluster introduced by a summary line with
+// 38 columns giving a comprehensive evaluation thereof, but then
+// lines for each of the individual detections in that cluster follow,
+// in the same format as lines from the input paired detection file.
 
 #include "solarsyst_dyn_geo01.h"
 #include "cmath"
@@ -6,7 +12,7 @@
 
 static void show_usage()
 {
-  cerr << "Usage: parse_clust2det_new -pairdet pairdet_file -insum input cluster summary file -clust2det input cluster-to-detection file -trackdiv tracklet_division_time -out output file\n";
+  cerr << "Usage: parse_clust2det -pairdet pairdet_file -insum input cluster summary file -clust2det input cluster-to-detection file -trackdiv tracklet_division_time -out output file\n";
 }
 
 int main(int argc, char *argv[])
@@ -43,9 +49,8 @@ int main(int argc, char *argv[])
   int verbose=0;
   long max_known_obj=0;
   double avg_det_qual=0.0l;
-  double magrange,magmean,magrms;
-  magrange = magmean = magrms = 0.0l;
-  
+  double magrange,magmean,magrms,minGCR,maxGCR;
+  magrange = magmean = magrms = minGCR = maxGCR = 0.0l;
   
   if(argc<9) {
     show_usage();
@@ -226,7 +231,7 @@ int main(int argc, char *argv[])
       trackvec.push_back(clustvec[0]);
       angvelvec = GCRvec = PAvec = timespanvec = arcvec = {};
       for(i=1; i<long(clustvec.size()); i++) {
-	if((clustvec[i].MJD - clustvec[i-1].MJD) > nightstep) {
+	if((clustvec[i].MJD - clustvec[i-1].MJD) >= nightstep) {
 	  // We're looking at a gap between two successive tracklets.
 	  // We're interested in the distribution of such gaps,
 	  // so we add it to the nightstepvec.
@@ -241,7 +246,7 @@ int main(int argc, char *argv[])
 	  if(tracknum>1) {
 	    greatcircfit(trackvec, poleRA, poleDec, angvel, PA, crosstrack, alongtrack);
 	    angvelvec.push_back(angvel);
-	    GCRvec.push_back(sqrt(DSQUARE(crosstrack)+DSQUARE(alongtrack)));
+	    if(tracknum>2) GCRvec.push_back(sqrt(DSQUARE(crosstrack)+DSQUARE(alongtrack)));
 	    PAvec.push_back(PA);
 	    timespan = trackvec[trackvec.size()-1].MJD - trackvec[0].MJD;
 	    arc = timespan*angvel;
@@ -251,9 +256,8 @@ int main(int argc, char *argv[])
 	    trackvec = {};
 	    trackvec.push_back(clustvec[i]);
 	  } else if(tracknum==1) {
-	    // The 'tracklet' is a singleton. Set all tracket vectors to error codes or zero.
+	    // The 'tracklet' is a singleton. Set all tracklet vectors to error codes or zero.
 	    angvelvec.push_back(-1.0l);
-	    GCRvec.push_back(-1.0l);
 	    PAvec.push_back(-999.0l);
 	    arcvec.push_back(0.0l);
 	    timespanvec.push_back(0.0l);
@@ -268,7 +272,7 @@ int main(int argc, char *argv[])
 	// Handle a final tracklet.
 	greatcircfit(trackvec, poleRA, poleDec, angvel, PA, crosstrack, alongtrack);
 	angvelvec.push_back(angvel);
-	GCRvec.push_back(sqrt(DSQUARE(crosstrack)+DSQUARE(alongtrack)));
+	if(tracknum>2) GCRvec.push_back(sqrt(DSQUARE(crosstrack)+DSQUARE(alongtrack)));
 	PAvec.push_back(PA);
 	timespan = trackvec[trackvec.size()-1].MJD - trackvec[0].MJD;
 	arc = timespan*angvel;
@@ -279,7 +283,6 @@ int main(int argc, char *argv[])
       } else if(tracknum==1) {
 	// The final 'tracklet' is a singleton. Set all tracket vectors to error codes or zero.
 	angvelvec.push_back(-1.0l);
-	GCRvec.push_back(-1.0l);
 	PAvec.push_back(-999.0l);
 	arcvec.push_back(0.0l);
 	timespanvec.push_back(0.0l);
@@ -289,10 +292,18 @@ int main(int argc, char *argv[])
       // Sort all of the tracklet statistics vectors
       tracknum = angvelvec.size();
       sort(angvelvec.begin(), angvelvec.end());
-      sort(GCRvec.begin(), GCRvec.end());
       sort(PAvec.begin(), PAvec.end());
       sort(timespanvec.begin(), timespanvec.end());
       sort(arcvec.begin(), arcvec.end());
+
+      if(long(GCRvec.size())<1) minGCR = maxGCR = 0.0l;
+      else if(long(GCRvec.size())==1) minGCR = maxGCR = GCRvec[0];
+      else {
+	sort(GCRvec.begin(), GCRvec.end());
+	minGCR = GCRvec[0];
+	maxGCR = GCRvec[GCRvec.size()-1];
+      }
+      
 
       // Sort nightstepvec
       sort(nightstepvec.begin(), nightstepvec.end());
@@ -325,7 +336,7 @@ int main(int argc, char *argv[])
       }
       magvec={};
       
-      outstream1 << "\n#clusternum,posRMS,velRMS,totRMS,astromRMS,timespan,uniquepoints,obsnights,metric,orbit_a,orbit_e,orbit_MJD,orbitX,orbitY,orbitZ,orbitVX,orbitVY,orbitVZ,orbit_eval_count,avg_det_qual,max_known_obj,minvel,maxvel,minGCR,maxGCR,minpa,maxpa,mintimespan,maxtimespan,minarc,maxarc,stringID,min_nightstep,max_nightstep,magmean,magrms,magrange\n";
+      outstream1 << "\n#clusternum,posRMS,velRMS,totRMS,astromRMS,timespan,uniquepoints,obsnights,metric,orbit_a,orbit_e,orbit_MJD,orbitX,orbitY,orbitZ,orbitVX,orbitVY,orbitVZ,orbit_eval_count,avg_det_qual,max_known_obj,minvel,maxvel,minGCR,maxGCR,minpa,maxpa,mintimespan,maxtimespan,minarc,maxarc,stringID,min_nightstep,max_nightstep,magmean,magrms,magrange,rating\n";
       outstream1 << fixed << setprecision(3) << inclustvec[clustct].clusternum << "," << inclustvec[clustct].posRMS << "," << inclustvec[clustct].velRMS << "," << inclustvec[clustct].totRMS << ",";
       outstream1 << fixed << setprecision(4) << inclustvec[clustct].astromRMS << ",";
       outstream1 << fixed << setprecision(6) << inclustvec[clustct].timespan << "," << inclustvec[clustct].uniquepoints << "," << inclustvec[clustct].obsnights << "," << inclustvec[clustct].metric << ",";
@@ -333,10 +344,10 @@ int main(int argc, char *argv[])
       outstream1 << fixed << setprecision(1) << inclustvec[clustct].orbitX << "," << inclustvec[clustct].orbitY << "," << inclustvec[clustct].orbitZ << ",";
       outstream1 << fixed << setprecision(4) << inclustvec[clustct].orbitVX << "," << inclustvec[clustct].orbitVY << "," << inclustvec[clustct].orbitVZ << "," << inclustvec[clustct].orbit_eval_count << ",";
       outstream1 << fixed << setprecision(1) << avg_det_qual << "," << max_known_obj << ",";
-      outstream1 << fixed << setprecision(6) << angvelvec[0] << "," << angvelvec[tracknum-1] << "," << GCRvec[0] << "," << GCRvec[tracknum-1] << "," << PAvec[0] << "," << PAvec[tracknum-1] << "," << timespanvec[0] << "," << timespanvec[tracknum-1] << "," << arcvec[0] << "," << arcvec[tracknum-1] << "," << clustvec[0].idstring << "," << min_nightstep << "," << max_nightstep << "," << magmean << "," << magrms << "," << magrange << "\n";
+      outstream1 << fixed << setprecision(6) << angvelvec[0] << "," << angvelvec[tracknum-1] << "," << minGCR << "," << maxGCR << "," << PAvec[0] << "," << PAvec[tracknum-1] << "," << timespanvec[0] << "," << timespanvec[tracknum-1] << "," << arcvec[0] << "," << arcvec[tracknum-1] << "," << clustvec[0].idstring << "," << min_nightstep << "," << max_nightstep << "," << magmean << "," << magrms << "," << magrange << "," << inclustvec[clustct].rating << "\n";
 	
       // Write this data to the output file
-      outstream1 << "#MJD,RA,Dec,mag,trail_len,trail_PA,sigmag,sig_across,sig_along,image,idstring,band,obscode,known_obj,det_qual,origindex\n";
+      outstream1 << "#MJD,RA,Dec,mag,trail_len,trail_PA,sigmag,sig_across,sig_along,image,idstring,band,obscode,known_obj,det_qual,clusternum\n";
       for(i=0; i<long(clustvec.size()); i++) {
 	outstream1 << fixed << setprecision(7) << clustvec[i].MJD << "," << clustvec[i].RA << "," << clustvec[i].Dec << ",";
 	outstream1 << fixed << setprecision(4) << clustvec[i].mag << ",";
