@@ -46,6 +46,11 @@ heliolinc.cpp
 heliolinc_omp.cpp
 ```
 
+##### Tracklet linking (heliovane): #####
+```
+heliovane.cpp
+```
+
 ##### Post-processing: #####
 ```
 link_purify.cpp
@@ -83,6 +88,15 @@ heliohyp_rmb00a.txt
 
 ```
 test_TenObjects01a.csv
+```
+
+### Input files needed for heliovane (heliolinx-aux/tests): ###
+
+```
+test_VaneTen01a.csv
+colformat_minimal.txt
+vanehyp00a_pro_dr_morn.txt
+
 ```
 
 ## Compile the heliolinc suite ##
@@ -318,6 +332,83 @@ The cluster-to-detection files output by `link_purify` and `link_planarity` have
 Since the files output by the post processing codes have exactly the same format as the files they take as input, it is possible to run `link_purify` or `link_planarity` recursively, using as input the files that either program wrote out on a previous execution. The main reason you might want to do this is to combine linkages from multiple separate executions of post processing codes (and potentially of heliolinc also) into a single optimized and de-duplicated master set. This will be discussed more below.
 
 This completes the test run of the regular heliolinc suite of programs. If all the tests have been successful, you probably want to run the heliolinc suite on your own data. In order to accomplish that, all you need to do is convert your data into CSV (comma separated values) format and supply a column formatting file, which, as described below, tells `make_tracklets` which columns in your CSV file hold the information it requires.
+
+### Testing heliovane ###
+
+The heliovane algorithm is a niche solution to complement `heliolinc` by delivering maximum sensitivity to asteroids in a particular viewing geometry where `heliolinc` does poorly. This geometry only occurs for asteroids interior to Earth's orbit, and corresponds to a sun-asteroid-observer phase angle close to 90 degrees. Hence, `heliovane` is much less generally applicable than `heliolinc`. It is appropriate only for finding asteroids interior to the Earth's orbit, in data taken a solar elongation (sun-observer-asteroid angle) of less than 90 degrees. The name "heliovane" comes from the fact that its hypotheses are planes of constant heliocentric ecliptic latitude, extending outward from the axis of Earth's orbit (i.e., from the sun) like the main surface of a weathervane or (approximately) the vanes of a turbine. By contrast, the hypotheses used by `heliolinc` are heliocentric spheres.
+
+The input file formats for `heliovane` are exactly the same as for `heliolinc`, except for the hypothesis file. However, since `heliovane` is intended for observations at low solar elongation, we have provided a separate test file, `test_VaneTen01a.csv`, containing such data. Hence, to test `heliovane`, you should first download the following required files from `heliolinx-aux/tests`:
+
+```
+test_VaneTen01a.csv
+colformat_minimal.txt
+vanehyp00a_pro_dr_morn.txt
+
+```
+
+Next, you will need to run `make_tracklets` on the heliovane-specific test file `test_VaneTen01a.csv`:
+
+```
+make_tracklets -dets test_VaneTen01a.csv -outimgs outim_test_VaneTen01a.txt \
+-pairdets pairdets_test_VaneTen01a.csv -tracklets tracklets_test_VaneTen01a.csv \
+-trk2det trk2det_test_VaneTen01a.csv -colformat colformat_minimal.txt \
+-earth Earth1day2020s_02a.csv -obscode ObsCodesNew.txt
+```
+
+The result should be:
+
+```
+Output image catalog outim_test_VaneTen01a.txt, with 88 lines, has been written
+Writing paired detection file pairdets_test_VaneTen01a.csv with 324 lines
+Writing tracklet file tracklets_test_VaneTen01a.csv with 39 lines
+Writing trk2det file trk2det_test_VaneTen01a.csv with 324 lines
+```
+
+Then you can run `heliovane` itself on the output from `make_tracklets`, as follows:
+
+```
+heliovane -imgs outim_test_VaneTen01a.txt -pairdets pairdets_test_VaneTen01a.csv \
+-tracklets tracklets_test_VaneTen01a.csv -trk2det trk2det_test_VaneTen01a.csv \
+-obspos Earth1day2020s_02a.csv -heliolon vanehyp00a_pro_dr_morn.txt -clustrad 2.0e5 \
+-outsum sum_test_VaneTen01a.csv -clust2det clust2det_test_VaneTen01a.csv
+```
+
+The result should be:
+
+```
+De-duplicating output set of 54 candidate linkages
+Final de-duplicated set contains 28 linkages
+Automatically calculated reference MJD was 61782.36
+Writing 28 lines to output cluster-summary file sum_test_VaneTen01a.csv
+Writing 756 lines to output clust2det file clust2det_test_VaneTen01a.csv
+```
+
+Note that the invocation is exactly like `heliolinc`, except that the hypothesis file (here called `vanehyp00a_pro_dr_morn.txt`) is introduced with the keyword `-heliolon` rather than `-heliodist` as it would be for `heliolinc`. This is the emphasize the fact the the hypotheses being probed by `heliovane` are planes of constant heliocentric ecliptic **longitude**, as opposed to `heliolinc`, where the hypotheses are spheres of constant heliocentric **distance**. The reason `heliolinc` has problems with asteroids at a sun-asteroid-observer phase angle of 90 degrees is that in this case, the observer's line of sight is tangent to the `heliolinc` hypothesis sphere, making the asteroid's inferred position infinitely sensitive to hypothesis error. For this viewing geometry, the `heliovane` hypothesis is orthogonal to the `heliolinc` hypothesis, leading to maximum sensitivity for `heliovane` (on the ecliptic) at exactly the point where `heliolinc` does the worst.
+
+If desired, you can run `link_purify` on the output from `heliovane`, as follows:
+
+```
+echo "sum_test_VaneTen01a.csv clust2det_test_VaneTen01a.csv" > clusterlist_test_VaneTen01a
+
+link_purify -imgs outim_test_VaneTen01a.txt -pairdets pairdets_test_VaneTen01a.csv \
+-lflist clusterlist_test_VaneTen01a -maxrms 2.0e5 -ptpow 3 -outsum LPsum_test_VaneTen01a.csv \
+-clust2det LPclust2det_test_VaneTen01a.csv
+```
+
+The result should be:
+
+```
+Accepted good cluster 10 with metric 5.54922e+06
+Writing 10 lines to output cluster-summary file LPsum_test_VaneTen01a.csv
+Writing 324 lines to output clust2det file LPclust2det_test_VaneTen01a.csv
+```
+
+However, we do not recommend running `link_planarity` on output from `heliovane`. For the present, use only `link_purify` for `heliovane` output: `link_planarity` is expected to work well only on files from `heliolinc`.
+
+There is no reason to use `heliovane` unless you are trying to detect asteroids interior to Earth's orbit. Such asteroids can only be detected at a solar elongation (sun-observer-asteroid angle) of less than 90 degrees. Hence, in order to avoid wasting compute time, you should only run `heliovane` on data taken at solar elongations less than 90 degrees. Nevertheless, `heliovane` will work correctly and potentially find asteroids at larger solar elongations -- it is simply not likely to offer any advantage over `heliolinc` in that regime.
+
+There are many optional arguments to `heliovane` that do not apply to `heliolinc`. These are discussed below, after the section on file formats and the descriptions of optional arguments for `make_tracklets`, `heliolinc`, and the post-processing codes.
+
 
 ## Understanding the File Formats ##
 
