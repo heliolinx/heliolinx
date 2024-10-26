@@ -27726,6 +27726,7 @@ int heliovane_alg_all(const vector <hlimage> &image_log, const vector <hldet> &d
     // If we get here, trk2statevane probably ran OK.
     if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
     if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
+    long newhypstart = outclust.size();
     if(config.use_univar==2 || config.use_univar==3) {
       // Use old DBSCAN algorithm for clustering.
       status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, lambdahyp[lambdact].HelioRad, lambdahyp[lambdact].R_dot, lambdahyp[lambdact].R_dubdot, chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
@@ -27742,13 +27743,15 @@ int heliovane_alg_all(const vector <hlimage> &image_log, const vector <hldet> &d
     // The form_clusters functions, because they were originally written for heliolinc,
     // scale the heliocentric hypothesis specifications assuming it is translating
     // heliolinc's internal units of km, km/day and km/day^2 into AU, km/sec, and m/sec^2
-    // For heliovane, we must reverse this tranformation.
-    for(long i=0;i<long(outclust.size());i++) {
-      outclust[i].heliohyp0 *= AU_KM;
-      outclust[i].heliohyp1 *= SOLARDAY;
-      outclust[i].heliohyp2 *= SOLARDAY*SOLARDAY/1000.0l;
+    // For heliovane, we will simply overwrite the incorrectly translated values with
+    // the original hypothesis.
+    long newhypend = outclust.size();
+    for(long i=newhypstart; i<newhypend; i++) {
+      outclust[i].heliohyp0 = lambdahyp[lambdact].HelioRad;
+      outclust[i].heliohyp1 = lambdahyp[lambdact].R_dot;
+      outclust[i].heliohyp2 = lambdahyp[lambdact].R_dubdot;
     }
-    // Note that the outputs will now be deg, deg/day, and deg/day^2
+    // Note that the hypothesis units are deg, deg/day, and deg/day^2
   }
   // De-duplicate the final output set
   cout << "De-duplicating output set of " << outclust.size() << " candidate linkages\n";

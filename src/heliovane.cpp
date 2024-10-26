@@ -13,7 +13,7 @@
 
 static void show_usage()
 {
-  cerr << "Usage: heliovane -imgs imfile -pairdets paired detection file -tracklets tracklet file -trk2det tracklet-to-detection file -mjd mjdref -autorun 1=yes_auto-generate_MJDref -obspos observer_position_file -heliolon heliocentric_longitude_hypothesis_file -clustrad clustrad -npt dbscan_npt -minobsnights minobsnights -mintimespan mintimespan -mingeodist minimum_geocentric_distance -maxgeodist maximum_geocentric_distance -geologstep logarithmic_step_size_for_geocentric_distance_bins -minsunelong minimum_solar_elongation(deg) -maxsunelong maximum_solar_elongation(deg) -min_incid_angle min_angle_of_incidence_between_observer_to_target_vector_and_heliocentric_vane(deg) -maxheliodist maximum_heliocentric_radius(AU) -mingeoobs min_geocentric_dist_at_observation(AU) -minimpactpar min_impact_parameter(km) -useunivar 1_for_univar_0_for_fgfunc -vinf max_v_inf -outsum summary_file -clust2det clust2detfile -verbose verbosity\n";
+  cerr << "Usage: heliovane -imgs imfile -pairdets paired detection file -tracklets tracklet file -trk2det tracklet-to-detection file -mjd mjdref -autorun 1=yes_auto-generate_MJDref -obspos observer_position_file -heliolon heliocentric_longitude_hypothesis_file -clustrad clustrad -clustchangerad min_distance_for_cluster_scaling -npt dbscan_npt -minobsnights minobsnights -mintimespan mintimespan -mingeodist minimum_geocentric_distance -maxgeodist maximum_geocentric_distance -geologstep logarithmic_step_size_for_geocentric_distance_bins -minsunelong minimum_solar_elongation(deg) -maxsunelong maximum_solar_elongation(deg) -min_incid_angle min_angle_of_incidence_between_observer_to_target_vector_and_heliocentric_vane(deg) -maxheliodist maximum_heliocentric_radius(AU) -mingeoobs min_geocentric_dist_at_observation(AU) -minimpactpar min_impact_parameter(km) -useunivar 1_for_univar_0_for_fgfunc -vinf max_v_inf -outsum summary_file -clust2det clust2detfile -verbose verbosity\n";
   cerr << "\nor, at minimum:\n\n";
   cerr << "heliovane -imgs imfile -pairdets paired detection file -tracklets tracklet file -trk2det tracklet-to-detection file -obspos observer_position_file -heliolon heliocentric_longitude_hypothesis_file\n";
   cerr << "\nNote that the minimum invocation leaves some things set to defaults\n";
@@ -36,12 +36,12 @@ int main(int argc, char *argv[])
   string imfile,pairdetfile,trackletfile,trk2detfile,planetfile,lambdafile;
   string sumfile = "sumfile_test.csv";
   string clust2detfile = "clust2detfile_test.csv";
-  int default_clustrad, default_npt, default_minobsnights;
+  int default_clustrad, default_clustchangerad, default_npt, default_minobsnights;
   int default_mintimespan, default_mingeodist, default_maxgeodist;
   int default_geologstep,default_clust2detfile,default_sumfile;
   int default_mingeoobs, default_minimpactpar;
   int default_use_univar, default_max_v_inf;
-  default_clustrad = default_npt = default_minobsnights = default_mintimespan = 1;
+  default_clustrad = default_clustchangerad = default_npt = default_minobsnights = default_mintimespan = 1;
   default_mingeodist = default_maxgeodist = default_geologstep = default_clust2detfile = default_sumfile = 1;
   default_mingeoobs = default_minimpactpar = 1;
   default_use_univar = default_max_v_inf = 1;
@@ -154,6 +154,18 @@ int main(int argc, char *argv[])
       }
       else {
 	cerr << "Clustering radius keyword supplied with no corresponding argument\n";
+	show_usage();
+	return(1);
+      }
+    } else if(string(argv[i]) == "-clustchangerad" || string(argv[i]) == "-clustchangerad" || string(argv[i]) == "-clustchangerad") {
+      if(i+1 < argc) {
+	//There is still something to read;
+	config.clustchangerad = stod(argv[++i]); 
+	default_clustchangerad = 0;
+	i++;
+      }
+      else {
+	cerr << "Transition distance for cluster scaling keyword supplied with no corresponding argument\n";
 	show_usage();
 	return(1);
       }
@@ -433,6 +445,8 @@ int main(int argc, char *argv[])
   
   if(default_clustrad==1) cout << "Defaulting to cluster radius = " << config.clustrad << "km\n";
   else cout << "input clustering radius " << config.clustrad << "km\n";
+  if(default_clustchangerad==1) cout << "Defaulting to min. geocentric distance for cluster scaling = " << config.clustchangerad << "AU\n";
+  else cout << "Min. geocentric distance for cluster scaling is " << config.clustchangerad << "AU\n";
   if(default_npt==1) cout << "Defaulting to DBSCAN npt (min. no. of tracklets in a linkage) = " << config.dbscan_npt << "\n";
   else cout << "input DBSCAN npt (min. no. of tracklets in a linkage) is " << config.dbscan_npt << "\n";
   if(default_minobsnights==1) cout << "Defaulting to minimum number of unique nights = " << config.minobsnights << "\n";
@@ -556,7 +570,7 @@ int main(int argc, char *argv[])
   
   outstream1.open(sumfile);
   cout << "Writing " << outclust.size() << " lines to output cluster-summary file " << sumfile << "\n";
-  outstream1 << "#clusternum,posRMS,velRMS,totRMS,astromRMS,pairnum,timespan,uniquepoints,obsnights,metric,rating,heliohyp0,heliohyp1,heliohyp2,posX,posY,posZ,velX,velY,velZ,orbit_a,orbit_e,orbit_MJD,orbitX,orbitY,orbitZ,orbitVX,orbitVY,orbitVZ,orbit_eval_count\n";
+  outstream1 << "#clusternum,posRMS,velRMS,totRMS,astromRMS,pairnum,timespan,uniquepoints,obsnights,metric,rating,reference_MJD,heliohyp0,heliohyp1,heliohyp2,posX,posY,posZ,velX,velY,velZ,orbit_a,orbit_e,orbit_MJD,orbitX,orbitY,orbitZ,orbitVX,orbitVY,orbitVZ,orbit_eval_count\n";
   for(clustct=0 ; clustct<long(outclust.size()); clustct++) {
     outstream1 << fixed << setprecision(3) << outclust[clustct].clusternum << "," << outclust[clustct].posRMS << "," << outclust[clustct].velRMS << "," << outclust[clustct].totRMS << ",";
     outstream1 << fixed << setprecision(4) << outclust[clustct].astromRMS << ",";

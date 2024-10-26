@@ -117,6 +117,8 @@ make install
 
 **heliolinc_omp:** Multi-threaded version of heliolinc.
 
+**heliovane:** Implements a complementary linking algorithm different from heliolinc, offering much better performance in the specific niche case of asteroids interior to Earth's orbit and seen at a sun-asteroid-observer phase angle close to 90 degrees.
+
 **link_purify:** Post-process linkages produced by heliolinc. This includes Keplerian orbit-fitting of every linkage; iterative (one at a time) rejection of astrometric outliers until the RMS astrometric residual falls below a threshold; identification of sets of mutually overlapping linkages; selection of the best linkage within each mutually overlapping set; and rejection of all the other overlapping linkages. The output from `link_purify` is a final set of linkages guaranteed to be non-overlapping (i.e., composed of detections not shared by any other linkage) and that have been successfully fit by orbits with RMS astrometric residual below the specified threshold.
 
 **link_planarity:** A version of `link_purify` that uses pre-screening based on lack of coplanarity of the inferred 3-D positions to reject some outliers prior to the (much more computationally intensive) Keplerian orbit fitting. With a well-chosen coplanarity criterion, `link_planarity` achieves results almost as good as those of `link_purify` with runtimes a factor of a few shorter.
@@ -405,7 +407,7 @@ Writing 324 lines to output clust2det file LPclust2det_test_VaneTen01a.csv
 
 However, we do not recommend running `link_planarity` on output from `heliovane`. For the present, use only `link_purify` for `heliovane` output: `link_planarity` is expected to work well only on files from `heliolinc`.
 
-There is no reason to use `heliovane` unless you are trying to detect asteroids interior to Earth's orbit. Such asteroids can only be detected at a solar elongation (sun-observer-asteroid angle) of less than 90 degrees. Hence, in order to avoid wasting compute time, you should only run `heliovane` on data taken at solar elongations less than 90 degrees. Nevertheless, `heliovane` will work correctly and potentially find asteroids at larger solar elongations -- it is simply not likely to offer any advantage over `heliolinc` in that regime.
+There is no reason to use `heliovane` unless you are trying to detect asteroids interior to Earth's orbit. Such asteroids can only be detected at a solar elongation (sun-observer-asteroid angle) of less than 90 degrees. Hence, in order to avoid wasting compute time, you should only run `heliovane` on data taken at solar elongations less than 90 degrees. This is not to say that `heliovane` will fail at larger solar elongations -- on the contrary, it will work properly and potentially find asteroids there -- but it is not likely to offer any advantage over `heliolinc` in that regime.
 
 There are many optional arguments to `heliovane` that do not apply to `heliolinc`. These are discussed below, after the section on file formats and the descriptions of optional arguments for `make_tracklets`, `heliolinc`, and the post-processing codes.
 
@@ -782,6 +784,21 @@ The MJD at the epoch of the best fit orbit (colum 24), like all the columns from
 
 The clust2det file is a simple, two-column CSV, giving the cluster index (i.e., clusternum from the summary file) in the first column, and the detection number (line number from the paired detection file) in the second column. Hence, it maps the final linkages produced by heliolinc and the post processing codes to the detections in the paired detection file -- from which, if necessary, they can be mapped back to the lines in the original input file via the origindex column in the paired detection file. Note that both clusternum and detnum start counting from 0.
 
+#### Output files from heliovane ####
+
+The output files from heliovane are exactly like those from heliolinc, except for the columns in the summary file that specify the input hypothesis. These have the same names, but different units -- as they must since they are describing hypotheses concerning an asteroid's helocentric ecliptic longitude rather than its heliocentric distance. The table below gives the units.
+
+Column &nbsp;&nbsp;| Name               | Description
+:---               | :---               | :---
+13                 | heliohyp0          | Heliocentric ecliptic longitude (degrees) **relative to Earth**, at the reference time, for the hypothesis that led to this linkage
+14                 | heliohyp1          | Time-derivative of the heliocentric ecliptic longitude (**not** Earth-relative) for the hypothesis (deg/day).
+15                 | heliohyp2          | Second time-derivative of heliocentric ecliptic longitude distance for the hypothesis (deg/day^2)
+
+Notice that the first term of the hypothesis is a heliocentric ecliptic longitude **relative to Earth**, but the time derivatives refer to the actual (not Earth-relative) heliocentric ecliptic longitude. In other words, if heliohyp1 (the first time-derivative of the ecliptic longitude) is zero, it means that the object has **constant** heliocentric ecliptic longitude (i.e., is in a polar orbit or is falling directly into the sun), **not** that it is following Earth around the sun while maintaining a contant relative ecliptic longitde. Similarly, a negative first derivative of the heliocentric ecliptic longitude (which `heliovane` does allow) corresponds to a **retrograde** orbit around the sun, not merely one that is lagging behind the Earth.
+
+Internally, `heliovane` first calculates the heliocentric ecliptic longitude of the Earth at the reference time. Then, for each hypothesis, it adds heliohyp0 (the heliocentric ecliptic longitude relative to Earth) to the ecliptic longitude of the Earth to get the true heliocentric ecliptic longitude, independent of the Earth -- and it this true ecliptic longitude to which the time-derivative hypothesis terms heliohyp1 and heliohyp2 are applied. The reason heliohyp0 is initially defined relative to Earth is that this is the only way to make the hypothesis files time-independent: otherwise, one would need a different hypothesis file for each time of year, since a different range of heliocentric ecliptic longitudes would be accessible, and the proper hypothesis-spacing would also change based on how far from Earth the hypotheses placed the objects.
+
+
 This concludes the description of file formats used by programs in the heliolinc C++ suite.
 
 ## Taking Control: understanding the optional arguments ##
@@ -1073,7 +1090,55 @@ The reason `link_planarity` exists is because the pre-screening and rejection of
 
 The keyword `-useorbMJD` is available in `link_planarity`, but should **not** be used: it should always be left to the default value of 0.
 
-Relatedly, if the post-processing codes are run multiple times in series, `link_planarity` should be used **only for the first round** of post-processing. For subsequent rounds, since astrometric fitting has already been performed and outliers eliminated, there is no further advantage to `link_planarity`, and `link_purify` should be used instead. To summarize, use `link_planarity` **only** on raw output from heliolinc. 
+Relatedly, if the post-processing codes are run multiple times in series, `link_planarity` should be used **only for the first round** of post-processing. For subsequent rounds, since astrometric fitting has already been performed and outliers eliminated, there is no further advantage to `link_planarity`, and `link_purify` should be used instead. To summarize, use `link_planarity` **only** on raw output from heliolinc.
+
+
+### Command-line arguments for heliovane ###
+
+The table below describes all of the arguments, including the many that are the same as for `heliolinc`. Keywords for arguments **specific to `heliovane`** are marked with bold text.
+
+keyword          | type         | Status      | Units       | Default           | Description
+:---             | :---:        | :---:       | :---        | :---              | :---
+-imgs            | &nbsp;file name&nbsp;    | &nbsp;Required &nbsp;   | NA          | none              | space-delimited image catalog produced by `make_tracklets`
+-pairdets        | file name    | Required    | NA          | none              | CSV-formatted paired detection catalog produced by `make_tracklets`
+-tracklets       | file name    | Required    | NA          | none              | CSV-formatted tracklet catalog produced by `make_tracklets`
+-trk2det         | file name    | Required    | NA          | none              | CSV-formatted, two-column tracklet-to-detection mapping produced by `make_tracklets`
+-mjd             | float        | Optional    | days (MJD)  | midpoint of timespan | Reference time, in Modified Julian Days (MJD), to which the state vectors from all tracklets will be integrated
+-autorun         | 0 or 1       | Optional    | none        | 1                 | -autorun 0 turns off the default setting of the reference MJD to the midpoint of the time spanned by the input observations, and causes -mjd to become a required argument.
+-obspos          | file name    | Required    | km, km/sec  | none              | Heliocentric ephemeris for Earth, in CSV format, from JPL Horizons 
+**-heliolon**       | file name    | Required    | deg, deg/day, deg/day^2 | none    | Space-delimited list of heliocentric hypotheses to be probed, where each line gives a hypothetical Earth-relative heliocentric ecliptic longitude, and the first and second time-derivatives of the true (**not** Earth-relative) heliocentric ecliptic longitude.
+-clustrad        | float        | Optional    | km          | 1.0e5		| clustering radius used to find clusters in the space of state vectors that have been integrated to the reference MJD. Note: the clustering radius automatically scales with the geocentric distance in AU.
+-clustchangerad  | float        | Optional    | AU          | 0.5               | A geocentric distance within which the clustering radius no longer decreases linearly with decreasing geocentric distance, but remains fixed at the value it had at clustchangerad.
+-npt             | integer      | Optional    | none        | 3                 | Minimum number of points (i.e., tracklets, or equivalently state vectors) that are required for a valid cluster.
+-minobsnights    | integer      | Optional    | none        | 3                 | Minimum number of distinct observing nights required for a valid cluster
+-mintimespan     | float        | Optional    | days        | 1.0               | Minimum total time that must be spanned for a valid linkage (cluster).
+-mingeodist      | float        | Optional    | AU          | 0.1               | Minimum geocentric distance that will be probed. Tracklets whose inferred geocentric distances at the reference time (under a given hypothesis) are more than a factor of geologstep less than this will not be considered (under that hypothesis).
+-maxgeodist      | float        | Optional    | AU          | 100.0             | Maximum geocentric distance that will be probed. 
+-geologstep      | float        | Optional    | none        | 1.5               | Logarithmic scaling for bins of geocentric distance. The default value of 1.5 means that a bin centered on x AU will range from x/1.5 to x\*1.5, and the next (overlapping) bin will be centered on x\*1.5.
+**-minsunelong** | float        | Optional    | degrees     | 0.0               | Minimum solar elongation (sun-observer-asteroid angle) for valid observations.
+**-maxsunelong** | float        | Optional    | degrees     | 180.0             | Maximum solar elongation (sun-observer-asteroid angle) for valid observations.
+**-min_incid_angle** | float    | Optional    | degrees     | 20.0              | Minimum value for the angle at which the observer-to-target unitvector intersects the heliocentric vane, in degrees.
+**-maxheliodist** | float       | Optional    | AU          | 2.0               | Maximum inferred heliocentric distance for valid tracklets.
+-mingeoobs       | float        | Optional    | AU          | 0.0               | Minimum inferred geocentric distance at time of observation (in contrast to -mingeodist, which applies at the reference MJD.
+-minimpactpar    | float        | Optional    | km          | 0.0               | Minimum inferred impact parameter w.r.t. Earth, if trajectory is extrapolated along a straight line.
+-use_univar      | 0 to 15       | Optional    | none        | 0                 | Choose a 'flavor' of heliolinc (see below). Example: use the universal variable formulation for Keplerian oribts, which is slightly slower, but can handle unbound (i.e., interstellar) trajectories.
+-vinf            | float        | Optional    | km/sec      | 0.0               | Maximum v_infinity w.r.t. the sun. To probe interstellar trajectories, you must choose -vinf to be greater than zero **and** set -use_univar to 1.
+-outsum          | file name    | Optional    | NA          | sumfile_test.csv  | Output cluster summary file, CSV formatted, one line per cluster
+-clust2det       | file name    | Optional    | NA          | clust2detfile_test.csv | CSV-formatted, two-column cluster-to-detection mapping.
+-verbose         | integer      | Optional    | none        | 0                 | Level of verbosity for status output
+
+#### Purpose and use of heliovane-specific arguments ####
+
+**List of hypotheses to be probed** `-heliolon`: This is a space-delimited, three-column file with a one-line header. The three floating-point values in each line define an hypothesis about the target asteroids' heliocentric ecliptic longitude as a function of time, which we refer to as as 'lambda'. The first parameter of each hypothesis is delta_lambda, given in units of degrees. delta_lambda is the heliocentric ecliptic longitude relative to Earth at the reference time. It is given relative to Earth only for convenience: internally, `heliovane` immediately converts it to a true heliocentric ecliptic longitude by adding in its internally-calculated value for the heliocentric ecliptic longitude of Earth itself at the reference time. In other words, given an hypothesis value delta_lambda, `heliovane` immediatedly calculates the true ecliptic longitude lambda using the formula lambda = lambda_Earth + delta_lambda. All further handling of the hypotheses by `heliovane` relates to the true ecliptic longitude lambda, **not** to the Earth-relative longitude delta_lambda. The second parameter of each hypothesis is the 'lambda velocity': that is, the first time-derivative of the heliocentric ecliptic longitude, in units of degrees/day. The third and final parameter is the 'lambda acceleration': the second time-derivative of the heliocentric ecliptic longitude, in units of degrees/day^2.
+
+**Minimum solar elongation** `-minsunelong`: This is the minimum sun-observer-asteroid angle (solar elongation) in degrees, for valid data. Internally, `heliovane` calculates the solar elongation for each tracklet, and discards any tracklets with solar elongation less than `-minsunelong`. In general, we expect this parameter will be left at its default value of zero, since the user will want `heliovane` to find asteroids as close to the sun as the input data allow.
+
+**Maximum solar elongation** `-maxsunelong`: This is the maximum sun-observer-asteroid angle (solar elongation) in degrees, for valid data. Internally, `heliovane` calculates the solar elongation for each tracklet, and discards any tracklets with solar elongation less than `-maxsunelong`. The maximum solar elongation defaults to 180 degrees, so that, by default, no tracklets are rejected. Since `heliovane` is probably inferior to `heliolinc` for asteroids with solar elongation greater than 90 degrees, it may make sense to set `-maxsunelong` to 90 degrees (or a slightly larger value such as 105 degrees, to be on the safe side). However, ideally the user would also cull the input data set to contain only observations with solar elongations less than the selected value (e.g., 90 degrees or 105 degrees). This is desirable because it makes the input files less cumbersome, and `heliovane` will not waste any computation on tracklets it would ultimately reject.
+
+**Minimum incident angle** `-min_incid_angle`: Each hypothesis used by `heliovane` defines, for each instant in time, a plane of constant heliocentric ecliptic longitude at which a target asteroid must (by hypothesis) be located. Each observation in each input tracklet defines a line-of-sight which intersects the hypothesis plane at a well-defined angle. The reason `heliovane` exists at all is that, for asteroids at phase angle 90 degrees, the observational line-of-sight intersects the **heliolinc** hypothesis at **zero** degrees (that is, the line of sight is tangent to the `heliolinc` hypothesis sphere). For this very same geometry (if the asteroid is on the ecliptic) the line-of-sight intersects the **heliovane** hypothesis at normal incidence: that is, 90 degrees. This geometry represents the worst case scenario for `heliolinc` and (by design) the best possible case for `heliovane`. For asteroids far from the ecliptic and/or well outside of Earth's orbit, the observational line-of-sight will no longer intersect the plane defined by a `heliovane` hypothesis at anything close to normal incidence: this is a regime where `heliovane` is not expected to perform well and (in most cases) `heliolinc` will be superior. The parameter `-min_incid_angle`, which defaults to 20 degrees, sets a threshold angle-of-incidence below which tracklets are no longer considered by `heliovane`. This is intended to avoid wasting computations in a regime where `heliovane` is unlikely to deliver many linkages. However, `heliovane` can be forced to consider such cases, if desired, by setting a very low value (e.g., 5 degrees) for `-min_incid_angle`.
+
+**Maximum inferred heliocentric distance** `-maxheliodist`: Somewhat analogous to `-min_incid_angle`, the `-maxheliodist` parameter aims to avoid having `heliovane` waste computations by analyzing tracklets with large inferred distances from the sun, where `heliolinc` is expected to be much better than `heliovane` (and where the `heliovane` incident angle will also generally be quite small). Rather generously, `-maxheliodist` defaults to 2.0 AU, but it can very reasonably be set to smaller values such as 1.05 AU or even 1.0 AU.
+
 
 ## Manually viewing linkages, in csv and MPC 80-column format ##
 
