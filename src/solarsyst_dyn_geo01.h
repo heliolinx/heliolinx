@@ -1639,6 +1639,8 @@ int celestial_to_statevec(double RA, double Dec,double delta,point3d &baryvec);
 int celestial_to_statevecLD(long double RA, long double Dec,long double delta,point3LD &baryvec);
 int celestial_to_stateunit(double RA, double Dec,point3d &baryvec);
 int celestial_to_stateunitLD(long double RA, long double Dec, point3LD &baryvec);
+int celestial_to_cartunit(double RA, double Dec,point3d &cartvec);
+int cart_to_celestial(const point3d &invec, double *RA, double *Dec);
 int get_csv_string01(const string &lnfromfile, string &outstring, int startpoint);
 int get_sv_string01(const string &lnfromfile, string &outstring, int startpoint);
 int read_horizons_file(string infile, vector <double> &mjdvec, vector <point3d> &pos, vector <point3d> &vel);

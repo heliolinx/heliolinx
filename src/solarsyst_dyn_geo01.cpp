@@ -3315,6 +3315,33 @@ int celestial_to_stateunitLD(long double RA, long double Dec, point3LD &baryvec)
   return(0);
 }
 
+// celestial_to_cartunit: transform celestial coordinates in
+// RA, Dec to a Cartesian unit vector. Differs from similar
+// programs such as celestial_to_stateunit in that the output
+// Cartesian vector is in the regular Equatorial coordinate
+// system, not in Ecliptic coordinates.
+int celestial_to_cartunit(double RA, double Dec,point3d &cartvec)
+{
+  cartvec.x = cos(Dec/DEGPRAD)*cos(RA/DEGPRAD);
+  cartvec.y = cos(Dec/DEGPRAD)*sin(RA/DEGPRAD);
+  cartvec.z = sin(Dec/DEGPRAD);
+  return(0);
+}
+
+// cart_to_celestial: Reverse the transformation of celestial_to_cartunit.
+// Note that the input vector need not be normalized.
+int cart_to_celestial(const point3d &invec, double *RA, double *Dec)
+{
+  point3d cartvec = invec;
+  vecnorm3d(cartvec);
+  if(cartvec.y>0.0) *RA = 90.0 - atan(cartvec.x/cartvec.y)*DEGPRAD;
+  else if(cartvec.y==0.0 && cartvec.x>=0.0) *RA = 0.0;
+  else if(cartvec.y==0.0 && cartvec.x<0.0) *RA = 180.0;
+  else *RA = 270.0 - atan(cartvec.x/cartvec.y)*DEGPRAD;
+  *Dec = asin(cartvec.z)*DEGPRAD;
+  return(0);
+}
+
 // get_csv_string01: Given a line read from a csv file, and an
 // starting point along that line, read the next comma-separated value,
 // and put it into the output string. If the read was successful, return
