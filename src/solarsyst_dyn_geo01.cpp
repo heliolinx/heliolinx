@@ -19288,7 +19288,7 @@ int find_pairs(vector <hldet> &detvec, const vector <hlimage> &img_log, vector <
   indvecs = {};
   ivec1={};
   
-  //  for(long i=0;i<long(detvec.size());i++) {
+  //for(long i=0;i<long(detvec.size());i++) {
   //    cout  << fixed << setprecision(6) << i << ": " << detvec[i].image << " "  << detvec[i].index << " " << detvec[i].MJD << " " << detvec[i].RA << " " << detvec[i].Dec << "\n";
   //  }
   

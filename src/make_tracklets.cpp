@@ -562,6 +562,10 @@ int main(int argc, char *argv[])
     return(3);
   }
 
+  //for(i=0; i<long(detvec.size()); i++) {
+  //  cout << "index check: " << i << " " << detvec[i].index << " " << detvec[i].MJD << " " << detvec[i].RA << " " << detvec[i].Dec << "\n";
+  //}
+  
   if(DEBUGB==1) cout << "Preparing to time-sort the detection vector\n";
   
   // time-sort the detection vector
@@ -597,7 +601,7 @@ int main(int argc, char *argv[])
     // Test: print out time-sorted detection table.
     outstream1.open("testjunk01.txt");
     for(i=0;i<long(detvec.size());i++) {
-      outstream1 << fixed << setprecision(6) << detvec[i].MJD << " " << detvec[i].RA << " " << detvec[i].Dec <<  " " << detvec[i].mag << " " << detvec[i].band <<  " " << detvec[i].obscode << "\n";
+      outstream1 << fixed << setprecision(6) << detvec[i].MJD << " " << detvec[i].RA << " " << detvec[i].Dec <<  " " << detvec[i].mag << " " << detvec[i].band <<  " " << detvec[i].obscode <<  " " << detvec[i].index <<  " " << detvec[i].idstring << "\n";
     }
     outstream1.close();
   }
