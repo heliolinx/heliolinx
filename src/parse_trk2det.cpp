@@ -228,7 +228,7 @@ int main(int argc, char *argv[])
 	outstream1 << fixed << setprecision(3) << posSTDEV << ",";
 	outstream1 << fixed << setprecision(6) << poleRA << "," << poleDec << "\n";	
 	// Write the individual points to the output file
-	outstream1 << "#MJD,RA,Dec,mag,trail_len,trail_PA,sigmag,sig_across,sig_along,image,idstring,band,obscode,known_obj,det_qual,origindex\n";
+	outstream1 << "#MJD,RA,Dec,mag,trail_len,trail_PA,sigmag,sig_across,sig_along,image,idstring,band,obscode,known_obj,det_qual,trknum,origindex\n";
 	for(long j=0; j<long(trackvec.size()); j++) {
 	  outstream1 << fixed << setprecision(7) << trackvec[j].MJD << "," << trackvec[j].RA << "," << trackvec[j].Dec << ",";
 	  outstream1 << fixed << setprecision(4) << trackvec[j].mag << ",";
@@ -237,7 +237,7 @@ int main(int argc, char *argv[])
 	  outstream1 << fixed << setprecision(3) << trackvec[j].sig_across << "," << trackvec[j].sig_along << ",";
 	  outstream1 << trackvec[j].image << "," << trackvec[j].idstring << "," << trackvec[j].band << ",";
 	  outstream1 << trackvec[j].obscode << "," << trackvec[j].known_obj << ",";
-	  outstream1 << trackvec[j].det_qual << "," << trackvec[j].index << "\n";
+	  outstream1 << trackvec[j].det_qual << "," << trkct << "," << trackvec[j].index << "\n";
 	}
       }
       trackvec = {}; // Wipe trackvec
