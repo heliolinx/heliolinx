@@ -3,7 +3,7 @@
 // link_purify or link_planarity. This version splits the input files
 // into n (splitnum) parts by taking every nth line in the input
 // summary file (i.e., linenum mod n = j, for the jth part). By contrast,
-// the older and now superceded code split_hlfile.cpp split a file of
+// the older and now superseded code split_hlfile.cpp split a file of
 // N lines into n parts simply by taking lines 0 to N/n-1 for the first part,
 // lines N/n to 2N/n-1 for the second part, etc. This matters because there
 // was frequently a strong gradient in post-processing time across the

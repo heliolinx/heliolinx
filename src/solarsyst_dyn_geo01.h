@@ -41,7 +41,7 @@ using namespace std;
 #define NGPDEC 26.863L // Declination of the North Galactic Pole (Karim and Mamajek 2017)
 #define NCPGAL_LON 122.928L // Galactic longitude of the North Celestial Pole (Karim and Mamajek 2017)
 #define MJDOFF 2400000.5L // Offset from Julian Days to Modified Julian days.
-#define EARTHEQUATRAD 6378.140L // Earth's equatorial radius.
+#define EARTHEQUATRAD 6378.140L // Earth's equatorial radius in km.
 #define AU_KM 1.495978700e8L /*One AU in km*/
 #define AU 1.49597870700e11L /*One AU in meters*/
 #define EFOLDS_PER_MAG 0.921034037197618 // E-foldings per astronomical magnitude
@@ -66,7 +66,7 @@ using namespace std;
                            collapsed to the pole in precess01 routine.*/
 #define VSMALLANG 1.0e-9L /*angle difference below which angles are collapsed
                             to zero in distradec routines.*/
-
+#define TAI_MINUS_UTC 37.0L // Time in seconds by which TAI is ahead of UTC.
 #define TTDELTAT 70.0L // Time in seconds by which TT differs from UT. Thus,
                       // a light-travel-time corrected dynamical position at
                       // TT =  T + TTDELTAT corresponds to the celestial
@@ -100,7 +100,10 @@ using namespace std;
                       // for most minimum-finding problems.
 #define GMSUN_KM3_SEC2 132712440041.279419L // GM for the Sun: that is, the Universal
                                             // Gravitational Constant times the solar mass,
-                                            // in units of km^3/sec^2. 
+                                            // in units of km^3/sec^2.
+#define GMEARTH_KM3_SEC2 398600.435507L // GM for the Earth: that is, the Universal
+                                       // Gravitational Constant times the mass of Earth,
+                                       // in units of km^3/sec^2.
 #define KCONST 0.0172020989484485L // Mean daily motion in radians for an orbit around
                                    // the sun with a semimajor axis of 1AU.
 #define MINSTRINGLEN 5 // Minimum size of character array we use: e.g., for filter bandpass or obscode.
@@ -133,7 +136,19 @@ using namespace std;
 #define QUADSTEP_SCALEFAC 0.03
 #define LOG10_e 0.434294481903252L
 #define LN10 2.30258509299405L
-#define IMAGETIMETOL 1.0 // Tolerance for matching image time, in seconds
+#define IMAGETIMETOL 0.5 // Tolerance for matching image time, in seconds
+#define IMAGETIMETOL_STRICT 0.01
+
+// Begin parameters related to 6-D orbit fitting with the arctrace programs
+#define MINPOS_STEP 1.0e-6l
+#define BRACKETSCALE 10.0l
+#define GOLDENSCALE 0.38197
+#define POS_STEP 10.0l
+#define PV_TIMESCALE 1.0e7l
+#define CHI_REDFAC 0.1l
+#define ITMAX 10000
+#define CHIFAILMAX 5
+#define SHORTSTEPMAX 5
 
 // Parameters related to heliolinc clustering
 #define INTEGERIZING_SCALEFAC 100.0L // We divide state vectors by this value to integerize
@@ -701,7 +716,7 @@ public:
 class early_hldet{
 public:
   inline bool operator() (const hldet& o1, const hldet& o2) {
-    return(o1.MJD < o2.MJD || (o1.MJD==o2.MJD && stringnmatch01(o1.obscode,o2.obscode,3)==-1) || (o1.MJD==o2.MJD && stringnmatch01(o1.obscode,o2.obscode,3)==0 && o1.RA<o2.RA));
+    return(o1.MJD < o2.MJD || (fabs(o1.MJD-o2.MJD)<=IMAGETIMETOL/SOLARDAY && stringnmatch01(o1.obscode,o2.obscode,3)==-1) || (fabs(o1.MJD-o2.MJD)<=IMAGETIMETOL/SOLARDAY && stringnmatch01(o1.obscode,o2.obscode,3)==0 && o1.RA<o2.RA));
   }
 };
 
@@ -1669,6 +1684,7 @@ int observer_barycoords01(double detmjd, int polyorder, double lon, double obsco
 int observer_barycoords01LD(long double detmjd, int polyorder, long double lon, long double obscos, long double obssine, const vector <long double> &posmjd, const vector <point3LD> &planetpos, point3LD &outpos);
 int observer_baryvel01(double detmjd, int polyorder, double lon, double obscos, double obssine, const vector <double> &posmjd, const vector <point3d> &planetpos, const vector <point3d> &planetvel, point3d &outpos, point3d &outvel);
 int observer_baryvel01(double detmjd, int polyorder, double lon, double obscos, double obssine, const vector <EarthState> &earthpos, point3d &outpos, point3d &outvel);
+int observer_geocoords01(double detmjd, double lon, double obscos, double obssine, point3d &outpos);
 int helioproj01(point3d unitbary, point3d obsbary,double heliodist,double &geodist, point3d &projbary);
 int helioproj01LD(point3LD unitbary, point3LD obsbary, long double heliodist, long double &geodist, point3LD &projbary);
 int helioproj02LD(point3LD unitbary, point3LD obsbary, long double heliodist, vector <long double> &geodist, vector <point3LD> &projbary);
@@ -1723,7 +1739,10 @@ int stateunit_to_celestial(point3d &baryvec, double &RA, double &Dec);
 int stateunitLD_to_celestial(point3LD &baryvec, long double &RA, long double &Dec);
 int integrate_orbit03LD(int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, const vector <long double> &obsMJD, point3LD startpos, point3LD startvel, long double mjdstart, vector <point3LD> &obspos, vector <point3LD> &obsvel);
 long double tortoisechi01(int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, const vector <point3LD> &observerpos, const vector <long double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, const vector <long double> &scalestate, long double timescale, long double mjdstart, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid);
+long double tortoisechi02(int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, const vector <point3LD> &observerpos, const vector <long double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, const point3LD startpos, const point3LD startvel, long double mjdstart, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid);
 int integrate_orbit04LD(int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, point3LD startpos, point3LD startvel, int startpoint, int endpoint, vector <long double> &outMJD, vector <point3LD> &outpos, vector <point3LD> &outvel);
+int integrate_orbit05LD(int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, point3LD refpos, point3LD refvel, int startpoint, int refpoint, int endpoint, vector <long double> &outMJD, vector <point3LD> &outpos, vector <point3LD> &outvel);
+long double tortoisechi03(int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, const vector <point3LD> &observerpos, const vector <long double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, const point3LD startpos, const point3LD startvel, int planetfile_refpoint, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid);
 double gaussian_deviate();
 int uvw_to_galcoord(const double &u, const double &v, const double &w, double &RA, double &Dec);
 long double unitvar(mt19937_64 &generator);
@@ -1778,6 +1797,7 @@ int read_detection_filemt(string indetfile, int idcol, int mjdcol, int racol, in
 int read_detection_filemt2(string indetfile, int mjdcol, int racol, int deccol, int magcol, int idcol, int bandcol, int obscodecol, int trail_len_col, int trail_PA_col, int sigmag_col, int sig_across_col, int sig_along_col, int known_obj_col, int det_qual_col, vector <hldet> &detvec, int verbose, int forcerun);
 int read_detection_file_MPC80(string indetfile, vector <hldet> &detvec);
 int read_pairdet_file(string pairdetfile, vector <hldet> &detvec, int verbose);
+int read_hldet_file(string pairdetfile, vector <hldet> &detvec, int verbose);
 int read_tracklet_file(string trackletfile, vector <tracklet> &tracklets, int verbose);
 int read_longpair_file(string pairfile, vector <longpair> &pairvec, int verbose);
 int append_longpair_file(string pairfile, long oldsize, vector <longpair> &pairvec, int verbose);
@@ -1869,3 +1889,18 @@ int read_orbline(ifstream &instream1, asteroid_orbit &oneorb);
 int read_orbline(ifstream &instream1, asteroid_orbitLD &oneorb);
 int read_orbline(string lnfromfile, asteroid_orbit &oneorb);
 int zenith_radecLD(long double detmjd, long double lon, long double obscos, long double obssine, long double &RA, long double &Dec);
+int matXmat(const vector <vector <long double>> &A, const vector <vector <long double>> &B, vector <vector <long double>> &C);
+int matXvec(const vector <vector <long double>> &A, const vector <long double> &invec, vector <long double> &outvec);
+int vecXmat(const vector <long double> &invec, const vector <vector <long double>> &A, vector <long double> &outvec);
+int matrix_transpose(const vector <vector <long double>> &A, vector <vector <long double>> &Atrans);
+int vector_outerprod(const vector <long double> &u, const vector <long double> &v, vector <vector <long double>> &A);
+int orbgrad01a(long double oldchi, long double pos_step, long double pvtimescale, int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, const vector <point3LD> &observerpos, const vector <long double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, const point3LD startpos, const point3LD startvel, long double mjdstart, vector <long double> &gradient);
+int orbgrad01b(long double oldchi, long double pos_step, long double pvtimescale, int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, const vector <point3LD> &observerpos, const vector <long double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, const point3LD startpos, const point3LD startvel, int planetfile_refpoint, vector <long double> &gradient);
+long double nvecabs(const vector <long double> &normvec);
+long double nvecnorm(vector <long double> &normvec);
+long double nvecdotprod(const vector <long double> &vec1, const vector <long double> &vec2);
+long double orb1Dmin01a(long double oldchi, long double inputstep, long double pvtimescale, long double minchichange, const vector <long double> &unitdir, int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, const vector <point3LD> &observerpos, const vector <long double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, const point3LD startpos, const point3LD startvel, long double mjdstart, vector <double> &fitRA, vector <double> &fitDec, vector <double> &fitresid, long double *step, point3LD &newpos, point3LD &newvel);
+long double orb1Dmin01b(long double oldchi, long double inputstep, long double pvtimescale, long double minchichange, const vector <long double> &unitdir, int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, const vector <point3LD> &observerpos, const vector <long double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, const point3LD startpos, const point3LD startvel, int planetfile_refpoint, vector <double> &fitRA, vector <double> &fitDec, vector <double> &fitresid, long double *step, point3LD &newpos, point3LD &newvel);
+int arctrace01(int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, const vector <point3LD> &Sunpos, const vector <point3LD> &Sunvel, const vector <point3LD> &observerpos, const vector <long double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, double kepspan, long double minchichange, const point3LD initpos, const point3LD initvel, vector <double> &bestRA, vector <double> &bestDec, vector <double> &bestresid, point3LD &newpos, point3LD &newvel, long double *chisquared, long double *astromrms, int *refpoint);
+int arc6D01(int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, const vector <point3LD> &Sunpos, const vector <point3LD> &Sunvel, const vector <point3LD> &observer_barypos, const vector <long double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, long double minchichange, int planetfile_refpoint, const point3LD initpos, const point3LD initvel, vector <double> &bestRA, vector <double> &bestDec, vector <double> &bestresid, point3LD &newpos, point3LD &newvel, long double *chisquared, long double *astromrms);
+int arctrace02(int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, const vector <point3LD> &Sunpos, const vector <point3LD> &Sunvel, const vector <point3LD> &observerpos, const vector <long double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, double kepspan, long double minchichange, const point3LD initpos, const point3LD initvel, vector <double> &bestRA, vector <double> &bestDec, vector <double> &bestresid, point3LD &newpos, point3LD &newvel, long double *chisquared, long double *astromrms, int *refpoint);
