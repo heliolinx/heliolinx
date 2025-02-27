@@ -15057,6 +15057,10 @@ double Hergetchi_vstar(double geodist1, double geodist2, int Hergetpoint1, int H
 // only to probe details of the resulting bad behavior.
 int Herget_simplex_int(long double geodist1, long double geodist2, long double simpscale, long double simplex[3][2], int simptype)
 {
+  if(geodist1<=0.0 || geodist2<=0.0) {
+    cerr << "ERROR: Herget_simplex_int received invalid input geodists " << geodist1 << " and " << geodist2 << "\n";
+    return(1);
+  }
   if(simptype==0) {
     // Define initial simplex
     simplex[0][0] = geodist1;
@@ -15125,6 +15129,10 @@ int Herget_simplex_int(long double geodist1, long double geodist2, long double s
 
 int Herget_simplex_int(double geodist1, double geodist2, double simpscale, double simplex[3][2], int simptype)
 {
+  if(geodist1<=0.0 || geodist2<=0.0) {
+    cerr << "ERROR: Herget_simplex_int received invalid input geodists " << geodist1 << " and " << geodist2 << "\n";
+    return(1);
+  }
   if(simptype==0) {
     // Define initial simplex
     simplex[0][0] = geodist1;
@@ -15239,7 +15247,19 @@ long double Hergetfit01(long double geodist1, long double geodist2, long double 
   }
 
   // SETUP FOR DOWNHILL SIMPLEX SEARCH
-  Herget_simplex_int(geodist1, geodist2, simplex_scale, simplex, simptype);
+  int status=Herget_simplex_int(geodist1, geodist2, simplex_scale, simplex, simptype);
+  if(status==1) {
+    // This is the error code for a zero or negative input distance.
+    if(geodist1<MINHERGETDIST) geodist1=MINHERGETDIST;
+    if(geodist2<MINHERGETDIST) geodist2=MINHERGETDIST;
+    cerr << "WARNING: Herget_simplex_int() called with invalid distance.\n";
+    cerr << "retrying with newly assigned distances " << geodist1 << " and " << geodist2 << "\n";
+    status=Herget_simplex_int(geodist1, geodist2, simplex_scale, simplex, simptype);
+    if(status!=0) {
+      cerr << "ERROR: Herget_simplex_int() failed to create a good simplex\n";
+      return(LARGERR);
+    }
+  }
   
   // See if the simplex leads to hyperbolic orbits
   for(i=0;i<3;i++) {
@@ -15579,8 +15599,20 @@ double Hergetfit01(double geodist1, double geodist2, double simplex_scale, int s
   }
 
   // SETUP FOR DOWNHILL SIMPLEX SEARCH
-  Herget_simplex_int(geodist1, geodist2, simplex_scale, simplex, simptype);
-  
+  int status = Herget_simplex_int(geodist1, geodist2, simplex_scale, simplex, simptype);
+  if(status==1) {
+    // This is the error code for a zero or negative input distance.
+    if(geodist1<MINHERGETDIST) geodist1=MINHERGETDIST;
+    if(geodist2<MINHERGETDIST) geodist2=MINHERGETDIST;
+    cerr << "WARNING: Herget_simplex_int() called with invalid distance.\n";
+    cerr << "retrying with newly assigned distances " << geodist1 << " and " << geodist2 << "\n";
+    status=Herget_simplex_int(geodist1, geodist2, simplex_scale, simplex, simptype);
+    if(status!=0) {
+      cerr << "ERROR: Herget_simplex_int() failed to create a good simplex\n";
+      return(LARGERR2);
+    }
+  }
+ 
   // See if the simplex leads to hyperbolic orbits
   for(i=0;i<3;i++) {
     unboundsimplex[i] = Herget_unboundcheck01(simplex[i][0], simplex[i][1], Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec);
@@ -15922,8 +15954,20 @@ double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, i
   }
 
   // SETUP FOR DOWNHILL SIMPLEX SEARCH
-  Herget_simplex_int(geodist1, geodist2, simplex_scale, simplex, simptype);  
-  
+  int status = Herget_simplex_int(geodist1, geodist2, simplex_scale, simplex, simptype);  
+  if(status==1) {
+    // This is the error code for a zero or negative input distance.
+    if(geodist1<MINHERGETDIST) geodist1=MINHERGETDIST;
+    if(geodist2<MINHERGETDIST) geodist2=MINHERGETDIST;
+    status=Herget_simplex_int(geodist1, geodist2, simplex_scale, simplex, simptype);
+    cerr << "WARNING: Herget_simplex_int() called with invalid distance.\n";
+    cerr << "retrying with newly assigned distances " << geodist1 << " and " << geodist2 << "\n";
+    if(status!=0) {
+      cerr << "ERROR: Herget_simplex_int() failed to create a good simplex\n";
+      return(LARGERR3);
+    }
+  }
+
   for(i=0;i<3;i++) simpchi[i]=LARGERR3;
   // Calculate chi-square values for each point in the initial simplex
   // Note that the output vectors fitRA, fitDec, and resid are null-wiped
@@ -16138,7 +16182,19 @@ double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, i
       // acceptable points at all.
       simprange = LARGERR3;
       // Try to find something reasonable.
-      Herget_simplex_int(global_bestd1, global_bestd2, simplex_scale, simplex, simptype);  
+      status = Herget_simplex_int(global_bestd1, global_bestd2, simplex_scale, simplex, simptype);
+      if(status==1) {
+	// This is the error code for a zero or negative input distance.
+	if(global_bestd1<MINHERGETDIST) global_bestd1=MINHERGETDIST;
+	if(global_bestd2<MINHERGETDIST) global_bestd2=MINHERGETDIST;
+	cerr << "WARNING: Herget_simplex_int() called with invalid distance.\n";
+	cerr << "retrying with newly assigned distances " << global_bestd1 << " and " << global_bestd2 << "\n";
+	status=Herget_simplex_int(global_bestd1, global_bestd2, simplex_scale, simplex, simptype);
+	if(status!=0) {
+	  cerr << "ERROR: Herget_simplex_int() failed to create a good simplex\n";
+	  return(LARGERR3);
+	}
+      }
       for(i=0;i<3;i++) {
 	if(verbose>=2) cout << "Calling Hergetchi_vstar with distances " << simplex[i][0] << " " << simplex[i][1] << "\n";
 	simpchi[i] = Hergetchi_vstar(simplex[i][0], simplex[i][1], Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, verbose);
@@ -23380,8 +23436,10 @@ int record_pairs(vector <hldet> &detvec, vector <hldet> &detvec_fixed, vector <t
   trackdetvec={};
   lastdet=detvec_fixed[0];
   trackdetvec.push_back(lastdet);
-  for(i=1; i<detnum; i++) {
-    if(stringnmatch01(detvec_fixed[i].idstring,lastdet.idstring,SHORTSTRINGLEN)==0 && stringnmatch01(detvec_fixed[i].obscode,lastdet.obscode,MINSTRINGLEN)==0) {
+  for(i=1; i<=detnum; i++) {
+    // Final cycle with i=detnum needed to write last tracklet,
+    // will be prevented from segfaulting by i<detnum checks below.
+    if(i<detnum && stringnmatch01(detvec_fixed[i].idstring,lastdet.idstring,SHORTSTRINGLEN)==0 && stringnmatch01(detvec_fixed[i].obscode,lastdet.obscode,MINSTRINGLEN)==0) {
       // This is another point in the same tracklet
       lastdet=detvec_fixed[i];
       trackdetvec.push_back(lastdet);
@@ -23496,10 +23554,12 @@ int record_pairs(vector <hldet> &detvec, vector <hldet> &detvec_fixed, vector <t
 	cout << "Saving tracklet " << tracklets.size() << ", desig " << trackdetvec[0].idstring << ", " << trackdetvec.size() << " points, pa " << pa << " degrees, angvel " << angvel << "deg/day, arc " << dist << " arcsec\n";
 	tracklets.push_back(track1);
       }
-      // Reset for the next tracklet
-      trackdetvec={};
-      lastdet=detvec_fixed[i];
-      trackdetvec.push_back(lastdet);
+      if(i<detnum) {
+	// Reset for the next tracklet, unless i==detnum and we are finished already.
+	trackdetvec={};
+	lastdet=detvec_fixed[i];
+	trackdetvec.push_back(lastdet);
+      }
     }
     // Close loop over all detections
   }
@@ -32343,6 +32403,9 @@ int link_purify(const vector <hlimage> &image_log, const vector <hldet> &detvec,
 		if(resid[ptct-1]>resid[ptct]) badpoints.push_back(ptct-1);
 		else badpoints.push_back(ptct);
 	      }
+	    }
+	    if(badpoints.size()<=0) {
+	      cerr << "ERROR: link_purify in duplicate-rejection loop, found no time-duplicates to reject\n";
 	    }
 	    // sort the badpoints vector
 	    sort(badpoints.begin(), badpoints.end());

@@ -121,7 +121,7 @@ using namespace std;
                             // them to exactly 1.0 or -1.0 like a good robot.
 #define HERGET_DOWNSCALE 0.9L // If your Herget orbit fit is leading to hyperbolic orbits,
                               // shrink the distances by this factor to see if you can bring them in range.
-#define MINHERGETDIST 0.0001L // Make sure distances and distance separations in Herget
+#define MINHERGETDIST 0.000001L // Make sure distances and distance separations in Herget
                               // orbit fitting don't get smaller than this value (in AU).
 #define SIMPLEX_SCALEFAC 0.2L // Initial scaling for Herget simplex. For input guess x, y points will be
                               // x ( 1 + SIMPLEX_SCALEFAC - SIMPLEX_SCALEFACE^2),
