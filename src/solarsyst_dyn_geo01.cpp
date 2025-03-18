@@ -11713,6 +11713,17 @@ int integrate_orbit05LD(int polyorder, int planetnum, const vector <long double>
     cerr << "ERROR: integrate_orbit05LD called with reference point " << refpoint << " after end point " << endpoint << "\n";
     return(2);
   }
+  if(refpoint >= endpoint-polyorder-1) {
+    cerr << "ERROR: integrate_orbit05LD called with reference point " << refpoint << " too close to end point " << endpoint << "\n";
+    cerr << "to perform successful forward integration\n";
+    return(3);
+  }
+  if(refpoint <= startpoint+polyorder+1) {
+    cerr << "ERROR: integrate_orbit05LD called with reference point " << refpoint << " too close to start point " << startpoint << "\n";
+    cerr << "to perform successful backward integration\n";
+    return(3);
+  }
+  
   
   // Make sure that relevant vectors for the polynomial fitting
   // are all large enough.
@@ -11953,7 +11964,7 @@ int integrate_orbit05LD(int polyorder, int planetnum, const vector <long double>
     // Define the current reference point.
     latestpoint=polyorder+1;
     // Proceed with the full polynomial integration.
-    while(latestpoint+ref_subct<outnum) {
+    while(latestpoint+ref_subct < outnum-1) {
       latestpoint++;
       // Cycle the dynamical vectors
       for(i=0;i<polyorder+1;i++) {
@@ -12324,7 +12335,7 @@ int integrate_orbit05LD(int polyorder, int planetnum, const vector <long double>
     // Define the current reference point.
     latestpoint=polyorder+1;
     // Proceed with the full polynomial integration.
-    while(latestpoint<=ref_subct) {
+    while(latestpoint<ref_subct) {
       latestpoint++;
       // Cycle the dynamical vectors
       for(i=0;i<polyorder+1;i++) {
@@ -18043,6 +18054,7 @@ int read_detection_filemt2(string indetfile, int mjdcol, int racol, int deccol, 
 // type hldet. Intended primarily for use by make_tracklets_MPC80.cpp,
 // for processing the MPC's Isolated Tracklet File, but likely also
 // to have wider applications.
+// February 27, 2025: Edited so it does not expect a header line.
 int read_detection_file_MPC80(string indetfile, vector <hldet> &detvec)
 {
   double MJD,RA,Dec;
@@ -18072,10 +18084,7 @@ int read_detection_file_MPC80(string indetfile, vector <hldet> &detvec)
     cerr << "can't open input file " << indetfile << "\n";
     return(1);
   }
-  // Skip one-line header
-  getline(instream1,lnfromfile);
-  lct++;
-  //cout << lnfromfile << "\n";
+
   reachedeof = 0;
   while(reachedeof==0) {
     MJD = RA = Dec = 0.0l;
@@ -20071,8 +20080,11 @@ int load_image_table(vector <img_log03> &img_log, const vector <det_obsmag_indve
 // in the detection vector.
 // Also (THIS DIFFERS FROM EARLIER OVERLOADED FUNCTION),
 // calculate the observer's position and velocity at the instant
-// of each image. 
-int load_image_table(vector <hlimage> &img_log, const vector <hldet> &detvec, const vector <observatory> &observatory_list, const vector <double> &EarthMJD, const vector <point3d> &Earthpos, const vector <point3d> &Earthvel)
+// of each image.
+// March 18, 2025: added time_offset argument, to enable TAI/UTC flexibility.
+// Use time_offset=0.0 if the input times are UTC, or -37.0 (seconds) if the
+// input times are TAI.
+int load_image_table(vector <hlimage> &img_log, const vector <hldet> &detvec, double time_offset, const vector <observatory> &observatory_list, const vector <double> &EarthMJD, const vector <point3d> &Earthpos, const vector <point3d> &Earthvel)
 {
   hlimage imlog = hlimage(0.0l, 0.0l, 0.0l, "500", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0, -1.0l);
   vector <hlimage> img_log_tmp = img_log;
@@ -20132,7 +20144,7 @@ int load_image_table(vector <hlimage> &img_log, const vector <hldet> &detvec, co
 	  return(3);
 	}
 	// Calculate observer's exact heliocentric position and velocity.
-	observer_baryvel01(img_log_tmp[imct].MJD, 5, obslon, plxcos, plxsin, EarthMJD, Earthpos, Earthvel, obspos, obsvel);
+	observer_baryvel01(img_log_tmp[imct].MJD+time_offset/SOLARDAY, 5, obslon, plxcos, plxsin, EarthMJD, Earthpos, Earthvel, obspos, obsvel);
 	img_log_tmp[imct].X = obspos.x;
 	img_log_tmp[imct].Y = obspos.y;
 	img_log_tmp[imct].Z = obspos.z;
@@ -20151,7 +20163,7 @@ int load_image_table(vector <hlimage> &img_log, const vector <hldet> &detvec, co
 	  return(3);
 	}
 	// Calculate observer's exact heliocentric position and velocity.
-	observer_baryvel01(img_log_tmp[imct].MJD, 5, obslon, plxcos, plxsin, EarthMJD, Earthpos, Earthvel, obspos, obsvel);
+	observer_baryvel01(img_log_tmp[imct].MJD+time_offset/SOLARDAY, 5, obslon, plxcos, plxsin, EarthMJD, Earthpos, Earthvel, obspos, obsvel);
 	img_log_tmp[imct].X = obspos.x;
 	img_log_tmp[imct].Y = obspos.y;
 	img_log_tmp[imct].Z = obspos.z;
@@ -20200,7 +20212,7 @@ int load_image_table(vector <hlimage> &img_log, const vector <hldet> &detvec, co
 	  return(3);
 	}
 	// Calculate observer's exact heliocentric position and velocity.
-	observer_baryvel01(mjdmean, 5, obslon, plxcos, plxsin, EarthMJD, Earthpos, Earthvel, obspos, obsvel);
+	observer_baryvel01(mjdmean+time_offset/SOLARDAY, 5, obslon, plxcos, plxsin, EarthMJD, Earthpos, Earthvel, obspos, obsvel);
 	imlog = hlimage(mjdmean,0.0,0.0,detvec[endind-1].obscode,obspos.x,obspos.y,obspos.z,obsvel.x,obsvel.y,obsvel.z,startind,endind,-1.0l);
 	//Load it into the vector with mean MJD for all images.
 	if(DEBUGB==1) cout << "Working on image " << img_log.size() << ", detections from " << startind << " to " << endind << "\n";
@@ -20224,7 +20236,7 @@ int load_image_table(vector <hlimage> &img_log, const vector <hldet> &detvec, co
 	return(3);
       }
       // Calculate observer's exact heliocentric position and velocity.
-      observer_baryvel01(mjdmean, 5, obslon, plxcos, plxsin, EarthMJD, Earthpos, Earthvel, obspos, obsvel);
+      observer_baryvel01(mjdmean+time_offset/SOLARDAY, 5, obslon, plxcos, plxsin, EarthMJD, Earthpos, Earthvel, obspos, obsvel);
       imlog = hlimage(mjdmean,0.0,0.0,detvec[endind-1].obscode,obspos.x,obspos.y,obspos.z,obsvel.x,obsvel.y,obsvel.z,startind,endind,-1.0l);
       
       //Load it into the vector with mean MJD for all images,
@@ -23465,7 +23477,7 @@ int record_pairs(vector <hldet> &detvec, vector <hldet> &detvec_fixed, vector <t
 	distradec02(trackdetvec[0].RA, trackdetvec[0].Dec, trackdetvec[1].RA, trackdetvec[1].Dec, &dist, &pa);
 	angvel = dist/(trackdetvec[1].MJD-trackdetvec[0].MJD);
 	dist*=3600.0l;
-	cout << "Saving tracklet " << tracklets.size() << ", desig " << trackdetvec[0].idstring << ", " << trackdetvec.size() << " points, pa " << pa << " degrees, angvel " << angvel << "deg/day, arc " << dist << " arcsec\n";
+	cout << "Saving tracklet " << tracklets.size() << ", desig " << trackdetvec[0].idstring << ", " << trackdetvec.size() << " points, pa " << pa << " degrees, angvel " << angvel << " deg/day, arc " << dist << " arcsec\n";
 	tracklets.push_back(track1);
       } else {
 	// It's a multi-point tracklet, must perform a linear fit and
@@ -23551,7 +23563,7 @@ int record_pairs(vector <hldet> &detvec, vector <hldet> &detvec_fixed, vector <t
 	  onepair = longpair(tracklets.size(),trackdetvec[j].index);
 	  trk2det.push_back(onepair);
 	}
-	cout << "Saving tracklet " << tracklets.size() << ", desig " << trackdetvec[0].idstring << ", " << trackdetvec.size() << " points, pa " << pa << " degrees, angvel " << angvel << "deg/day, arc " << dist << " arcsec\n";
+	cout << "Saving tracklet " << tracklets.size() << ", desig " << trackdetvec[0].idstring << ", " << trackdetvec.size() << " points, pa " << pa << " degrees, angvel " << angvel << " deg/day, arc " << dist << " arcsec\n";
 	tracklets.push_back(track1);
       }
       if(i<detnum) {
@@ -38598,3 +38610,333 @@ int arctrace02(int polyorder, int planetnum, const vector <long double> &planetm
   
   return(0);
 }
+
+// eigensolve01: Given a square matrix of long doubles,
+// find its eigenvectors and eigenvalues. Return the
+// eigenvectors as columns (constant value of the second index)
+// of the matrix E, and the eigenvalues in the vector
+// eigenvals. Order both eigenvalues and eigenvectors from
+// largest to smallest absolute value of the eigenvalues.
+int eigensolve01(const vector <vector <long double>> &A, vector <vector <long double>> &E, vector <long double> &eigenvals, long double eigenoffmax, long eigenitmax)
+{
+  long nmat = A.size();
+  long i,j;
+  i=j=0;
+
+  // Test for valid input
+  if(nmat<=0) {
+    cerr << "ERROR: eigensolve01a supplied a void matrix\n";
+    return(1);
+  } else {
+    for(i=0;i<nmat;i++) {
+      if(long(A[i].size()) != nmat) {
+	cerr << "ERROR: eigensolve01a supplied a matrix that is not square\n";
+	cerr << "There are " << nmat << "rows, but row " << i << " has " << A[i].size() << " columns\n";
+	return(2);
+      }
+    }
+  }
+  for(i=0;i<nmat;i++) {
+    for(j=i+1;j<nmat;j++) {
+      if(A[i][j]!=A[j][i]) {
+	cerr << "ERROR: eigensolve01a supplied a matrix that is not symmetrical\n";
+	cerr << "A[" << i << "][" << j << "] = " << A[i][j] << "\n";
+	cerr << "A[" << j << "][" << i << "] = " << A[j][i] << "\n";
+	return(3);
+      }
+    }
+  }
+
+  // If we get here, the matrix is square and symmetrical
+  // Allocate other matrices.
+  vector <vector <long double>> B; // Diagonalized version of A
+  vector <vector <long double>> P; // Rotation matrix
+  vector <vector <long double>> Ptrans; // Transpose of P
+  vector <vector <long double>> V; // Eigenvector matrix
+  vector <vector <long double>> Tmat; // Temporary utility matrix
+  long double offdiag = 0.0l;
+  long double ondiag = 0.0l;
+  long double diagratio = 1.0;
+  long double bigelem = 0.0;
+  long double c,s,t,theta;
+  long itct,imax,jmax;
+  itct=imax=jmax=0;
+  B=A;
+  make_LDmat(nmat, nmat, P);
+  make_LDmat(nmat, nmat, V);
+  long double ldelem = 0.0l;
+  long index = 0;
+  ldouble_index ldi = ldouble_index(ldelem,index);
+  vector <ldouble_index> ldivec;
+
+  // Initialize V to the identity matrix
+  for(i=0;i<nmat;i++) {
+    for(j=0;j<nmat;j++) {
+      if(i==j) V[i][j] = 1.0l;
+      else V[i][j] = 0.0l;
+    }
+  }
+
+  while(diagratio>eigenoffmax && itct<eigenitmax) {
+    // Find the largest remaining off-diagonal element in B.
+    imax=0;
+    jmax=1;
+    bigelem = fabs(B[0][1]);
+    for(i=0;i<nmat;i++) {
+      for(j=i+1;j<nmat;j++) {
+	if(fabs(B[i][j])>bigelem) {
+	  bigelem = fabs(B[i][j]);
+	  imax=i;
+	  jmax=j;
+	}
+      }
+    }
+    theta = (B[jmax][jmax] - B[imax][imax])/2.0l/B[imax][jmax];
+    if(theta>=0) {
+      t = 1.0l/(theta+sqrt(theta*theta+1.0l));
+    } else if(theta<0.0) {
+      t = -1.0l/(-theta+sqrt(theta*theta+1.0l));
+    }
+    else {
+      cerr << "ERROR: non-normal value of theta from elements " << B[jmax][jmax] << ", " << B[imax][imax] << ", and " << B[imax][jmax] << "\n";
+      return(4);
+    }
+    // Construct rotation matrix P
+    c = 1/sqrt(t*t + 1.0l);
+    s = t*c;
+    // Initialize P to the identity matrix
+    for(i=0;i<nmat;i++) {
+      for(j=0;j<nmat;j++) {
+	if(i==j) P[i][j] = 1.0l;
+	else P[i][j] = 0.0l;
+      }
+    }
+    // Correct diagonal elements of P
+    P[imax][imax] = P[jmax][jmax] = c;
+    // Initialize Ptrans to P
+    Ptrans = P;
+    // Load off-diagonal elements of P and Ptrans
+    P[imax][jmax] = Ptrans[jmax][imax] = s;
+    P[jmax][imax] = Ptrans[imax][jmax] = -s;
+
+    // Construct new matrix B' equal to Ptrans*B*P.
+    matXmat(Ptrans, B, Tmat);
+    matXmat(Tmat, P, B);
+    
+    // Iterate the matrix whose rows will eventually be the eigenvectors
+    matXmat(V, P, Tmat);
+    V = Tmat;
+    
+    // Calculate the ratio of the sum of off-diagonal elements to the sum of on-diagonal elements
+    ondiag = 0.0l;
+    for(i=0;i<nmat;i++) ondiag += fabs(B[i][i]);
+    offdiag = 0.0l;
+    for(i=0;i<nmat;i++) {
+      for(j=i+1;j<nmat;j++) {
+	offdiag += fabs(B[i][j]);
+      }
+    }
+    diagratio = offdiag/ondiag;
+    itct++;
+  }
+  if(diagratio>eigenoffmax) {
+    cerr << "ERROR: eigensolve01 failed to converge\n";
+    return(5);
+  }
+  // If we get here, the matrix should have been successfully diagonalized.
+  // Sort the eigenvalues and eigenvectors in order of decreasing
+  // absolute value of the eigenvalues.
+  ldivec={};
+  for(i=0;i<nmat;i++) {
+    ldelem = -fabs(B[i][i]);
+    index = i;
+    ldi = ldouble_index(ldelem,index);
+    ldivec.push_back(ldi);
+  }
+  sort(ldivec.begin(),ldivec.end(),lower_ldouble_index());
+  // Load the sorted eigenvalues and eigenvectors
+  eigenvals={};
+  E=V; // Ensures matrix E has correct size, values will be re-arranged in loop below.
+  for(j=0;j<nmat;j++) {
+    jmax = ldivec[j].index; // Index of the next highest eigenvalue
+    eigenvals.push_back(B[jmax][jmax]);
+    for(i=0;i<nmat;i++) {
+      E[i][j] = V[i][jmax];
+    }
+  }
+  return(0);
+}
+  
+// eigensolve02: Given a square matrix of long doubles,
+// find its eigenvectors and eigenvalues. Return the
+// eigenvectors as columns (constant value of the second index)
+// of the matrix E, and the eigenvalues in the vector
+// eigenvals. Order both eigenvalues and eigenvectors from
+// largest to smallest absolute value of the eigenvalues.
+// Unlike eigensolve01, this version tries to guard against
+// the matrix becoming non-symmetrical.
+int eigensolve02(const vector <vector <long double>> &A, vector <vector <long double>> &E, vector <long double> &eigenvals, long double eigenoffmax, long eigenitmax)
+{
+  long nmat = A.size();
+  long i,j;
+  i=j=0;
+
+  // Test for valid input
+  if(nmat<=0) {
+    cerr << "ERROR: eigensolve02 supplied a void matrix\n";
+    return(1);
+  } else {
+    for(i=0;i<nmat;i++) {
+      if(long(A[i].size()) != nmat) {
+	cerr << "ERROR: eigensolve02 supplied a matrix that is not square\n";
+	cerr << "There are " << nmat << "rows, but row " << i << " has " << A[i].size() << " columns\n";
+	return(2);
+      }
+    }
+  }
+  for(i=0;i<nmat;i++) {
+    for(j=i+1;j<nmat;j++) {
+      if(A[i][j]!=A[j][i]) {
+	cerr << "ERROR: eigensolve02 supplied a matrix that is not symmetrical\n";
+	cerr << "A[" << i << "][" << j << "] = " << A[i][j] << "\n";
+	cerr << "A[" << j << "][" << i << "] = " << A[j][i] << "\n";
+	return(3);
+      }
+    }
+  }
+
+  // If we get here, the matrix is square and symmetrical
+  // Allocate other matrices.
+  vector <vector <long double>> B; // Diagonalized version of A
+  vector <vector <long double>> P; // Rotation matrix
+  vector <vector <long double>> Ptrans; // Transpose of P
+  vector <vector <long double>> Vtrans; // Transpose of V
+  vector <vector <long double>> V; // Eigenvector matrix
+  vector <vector <long double>> Tmat; // Temporary utility matrix
+  long double offdiag = 0.0l;
+  long double ondiag = 0.0l;
+  long double diagratio = 1.0;
+  long double bigelem = 0.0;
+  long double c,s,t,theta;
+  long itct,imax,jmax;
+  itct=imax=jmax=0;
+  B=A;
+  make_LDmat(nmat, nmat, P);
+  make_LDmat(nmat, nmat, V);
+  long double ldelem = 0.0l;
+  long index = 0;
+  ldouble_index ldi = ldouble_index(ldelem,index);
+  vector <ldouble_index> ldivec;
+
+  // Initialize V to the identity matrix
+  for(i=0;i<nmat;i++) {
+    for(j=0;j<nmat;j++) {
+      if(i==j) V[i][j] = 1.0l;
+      else V[i][j] = 0.0l;
+    }
+  }
+
+  while(diagratio>eigenoffmax && itct<eigenitmax) {
+    // Find the largest remaining off-diagonal element in B.
+    imax=0;
+    jmax=1;
+    bigelem = fabs(B[0][1]);
+    for(i=0;i<nmat;i++) {
+      for(j=0;j<nmat;j++) {
+	if(i!=j && fabs(B[i][j])>bigelem) {
+	  bigelem = fabs(B[i][j]);
+	  imax=i;
+	  jmax=j;
+	}
+      }
+    }
+    theta = (B[jmax][jmax] - B[imax][imax])/2.0l/B[imax][jmax];
+    if(theta>=0) {
+      t = 1.0l/(theta+sqrt(theta*theta+1.0l));
+    } else if(theta<0.0) {
+      t = -1.0l/(-theta+sqrt(theta*theta+1.0l));
+    }
+    else {
+      cerr << "ERROR: non-normal value of theta from elements " << B[jmax][jmax] << ", " << B[imax][imax] << ", and " << B[imax][jmax] << "\n";
+      return(4);
+    }
+    // Construct rotation matrix P
+    c = 1/sqrt(t*t + 1.0l);
+    s = t*c;
+    // Initialize P to the identity matrix
+    for(i=0;i<nmat;i++) {
+      for(j=0;j<nmat;j++) {
+	if(i==j) P[i][j] = 1.0l;
+	else P[i][j] = 0.0l;
+      }
+    }
+    // Correct diagonal elements of P
+    P[imax][imax] = P[jmax][jmax] = c;
+    // Initialize Ptrans to P
+    Ptrans = P;
+    // Load off-diagonal elements of P and Ptrans
+    P[imax][jmax] = Ptrans[jmax][imax] = s;
+    P[jmax][imax] = Ptrans[imax][jmax] = -s;
+    
+    // Iterate the matrix whose rows will eventually be the eigenvectors
+    matXmat(V, P, Tmat);
+    V=Tmat;
+    
+    // Construct new matrix B' equal to Ptrans*B*P.
+    matXmat(Ptrans, B, Tmat);
+    matXmat(Tmat, P, B);
+    
+    //Guard against roundoff error by making sure the new matrix is symmetrical. 
+    Tmat=B;
+    for(i=0;i<nmat;i++) {
+      for(j=0;j<nmat;j++) {
+    	if(i==j) B[i][j]=Tmat[i][j];
+    	else B[i][j] = 0.5l*Tmat[i][j] + 0.5l*Tmat[j][i];
+      }
+    }
+    
+    // Calculate the ratio of the sum of off-diagonal elements to the sum of on-diagonal elements
+    ondiag = offdiag = 0.0l;
+    for(i=0;i<nmat;i++) {
+      for(j=0;j<nmat;j++) {
+	if(i==j) ondiag += fabs(B[i][j]);
+	else offdiag += fabs(B[i][j]);
+      }
+    }
+    diagratio = offdiag/ondiag;
+    itct++;
+  }
+  if(diagratio>eigenoffmax) {
+    cerr << "ERROR: eigensolve01 failed to converge, diagratio still " << diagratio << " > " << eigenoffmax << "\n";
+    return(5);
+  }
+  // If we get here, the matrix should have been successfully diagonalized.
+  // Sort the eigenvalues and eigenvectors in order of decreasing
+  // absolute value of the eigenvalues.
+  ldivec={};
+  for(i=0;i<nmat;i++) {
+    ldelem = -fabs(B[i][i]);
+    index = i;
+    ldi = ldouble_index(ldelem,index);
+    ldivec.push_back(ldi);
+  }
+  sort(ldivec.begin(),ldivec.end(),lower_ldouble_index());
+  // Load the sorted eigenvalues and eigenvectors
+  eigenvals={};
+  E=V; // Ensures matrix E has correct size, values will be re-arranged in loop below.
+  for(j=0;j<nmat;j++) {
+    jmax = ldivec[j].index; // Index of the next highest eigenvalue
+    eigenvals.push_back(B[jmax][jmax]);
+    for(i=0;i<nmat;i++) {
+      E[i][j] = V[i][jmax];
+    }
+  }
+  return(0);
+}
+
+
+  
+  
+  
+  
+

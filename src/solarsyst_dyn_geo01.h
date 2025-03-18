@@ -356,6 +356,7 @@ struct MakeTrackletsConfig {
   double sigpascale = 1.0;      // Default size in arcseconds used to estimate trail
                                 // PA uncertainty, using sigPA = DEGPRAD*sigpascale/trail_len
   int max_netl = 2;             // maximum non-exclusive tracklet length (all longer tracklets are exclusive).
+  double time_offset = 0.0;     // Offset in seconds to be ADDED to observing times to get UTC, e.g., -37.0 for TAI
   int forcerun = 0; // Pushes through all but the immediately fatal errors.
   int verbose = 0;  // Prints monitoring output
 };
@@ -1809,7 +1810,7 @@ int read_image_file(string inimfile, vector <img_log03> &img_log);
 int read_image_file(string inimfile, vector <hlimage> &img_log);
 int read_image_file2(string inimfile, vector <hlimage> &img_log);
 int load_image_table(vector <img_log03> &img_log, const vector <det_obsmag_indvec> &detvec);
-int load_image_table(vector <hlimage> &img_log, const vector <hldet> &detvec, const vector <observatory> &observatory_list, const vector <double> &Earthmjd, const vector <point3d> &Earthpos, const vector <point3d> &Earthvel);
+int load_image_table(vector <hlimage> &img_log, const vector <hldet> &detvec, double time_offset, const vector <observatory> &observatory_list, const vector <double> &EarthMJD, const vector <point3d> &Earthpos, const vector <point3d> &Earthvel);
 int load_image_indices(vector <hlimage> &img_log, vector <hldet> &detvec, double imagetimetol, int forcerun);
 int load_image_indices2(vector <hlimage> &img_log, vector <hldet> &detvec, double imagetimetol, int forcerun);
 int find_pairs(vector <hldet> &detvec, const vector <hlimage> &img_log, vector <hldet> &pairdets, vector <vector <long>> &indvecs, vector <longpair> &pairvec, double mintime, double maxtime, double imrad, double maxvel, int verbose);
@@ -1904,3 +1905,5 @@ long double orb1Dmin01b(long double oldchi, long double inputstep, long double p
 int arctrace01(int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, const vector <point3LD> &Sunpos, const vector <point3LD> &Sunvel, const vector <point3LD> &observerpos, const vector <long double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, double kepspan, long double minchichange, const point3LD initpos, const point3LD initvel, vector <double> &bestRA, vector <double> &bestDec, vector <double> &bestresid, point3LD &newpos, point3LD &newvel, long double *chisquared, long double *astromrms, int *refpoint);
 int arc6D01(int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, const vector <point3LD> &Sunpos, const vector <point3LD> &Sunvel, const vector <point3LD> &observer_barypos, const vector <long double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, long double minchichange, int planetfile_refpoint, const point3LD initpos, const point3LD initvel, vector <double> &bestRA, vector <double> &bestDec, vector <double> &bestresid, point3LD &newpos, point3LD &newvel, long double *chisquared, long double *astromrms);
 int arctrace02(int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, const vector <point3LD> &Sunpos, const vector <point3LD> &Sunvel, const vector <point3LD> &observerpos, const vector <long double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, double kepspan, long double minchichange, const point3LD initpos, const point3LD initvel, vector <double> &bestRA, vector <double> &bestDec, vector <double> &bestresid, point3LD &newpos, point3LD &newvel, long double *chisquared, long double *astromrms, int *refpoint);
+int eigensolve01(const vector <vector <long double>> &A, vector <vector <long double>> &E, vector <long double> &eigenvals, long double eigenoffmax, long eigenitmax);
+int eigensolve02(const vector <vector <long double>> &A, vector <vector <long double>> &E, vector <long double> &eigenvals, long double eigenoffmax, long eigenitmax);
