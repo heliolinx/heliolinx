@@ -47,6 +47,7 @@ static void show_usage()
   cerr << "-colformat column format file -imrad image radius(deg)/ \n";
   cerr << "-maxtime max inter-image time interval (hr) -mintime min inter-image time interval (hr)/ \n";
   cerr << "-maxGCR maximum GRC -mintrkpts min. num. of tracklet points/ \n";
+  cerr << "-time_offset offset in seconds to be added to observations times to get UTC/ \n";
   cerr << "-minvel minimum angular velocity (deg/day) -maxvel maximum angular velocity (deg/day)/ \n";
   cerr << "-minarc minimum total angular arc (arcsec) -siglenscale fractional trail length matching tolerance/ \n";
   cerr << "-sigpascale trail orientation matching tolerance (arcsec; will be divided by trail length/ \n";
@@ -103,13 +104,13 @@ int main(int argc, char *argv[])
   inimfile_set = outimfile_set = colformatfile_set = 0;
   int pairdetfile_default,trackletfile_default,trk2detfile_default,imagerad_default;
   int maxtime_default,mintime_default,minvel_default,maxvel_default;
-  int maxgcr_default,minarc_default,mintrkpts_default;
+  int maxgcr_default,minarc_default,mintrkpts_default,time_offset_default;
   int exptime_default,siglenscale_default,sigpascale_default;
   MakeTrackletsConfig config;
   
   pairdetfile_default = trackletfile_default = trk2detfile_default = imagerad_default = 1;
   maxtime_default = mintime_default = minvel_default = maxvel_default = 1;
-  maxgcr_default = minarc_default = mintrkpts_default = 1;
+  maxgcr_default = minarc_default = mintrkpts_default = time_offset_default = 1;
   exptime_default = siglenscale_default = sigpascale_default = 1;
   
   if(argc<7)
@@ -387,7 +388,19 @@ int main(int argc, char *argv[])
 	show_usage();
 	return(1);
       }
-    }  else if(string(argv[i]) == "-obscode" || string(argv[i]) == "-obs" || string(argv[i]) == "-oc" || string(argv[i]) == "-obscodes" || string(argv[i]) == "--obscode" || string(argv[i]) == "--obscodes" || string(argv[i]) == "--observatorycodes") {
+    } else if(string(argv[i]) == "-time_offset" || string(argv[i]) == "-offset" || string(argv[i]) == "-timeoffset" || string(argv[i]) == "-timeoff" || string(argv[i]) == "--time_offset" || string(argv[i]) == "--timeoffset" || string(argv[i]) == "--timeoff") {
+      if(i+1 < argc) {
+	//There is still something to read;
+	config.time_offset=stod(argv[++i]);
+	time_offset_default = 0;
+	i++;
+      }
+      else {
+	cerr << "Min. tracklet points keyword supplied with no corresponding argument\n";
+	show_usage();
+	return(1);
+      }
+    } else if(string(argv[i]) == "-obscode" || string(argv[i]) == "-obs" || string(argv[i]) == "-oc" || string(argv[i]) == "-obscodes" || string(argv[i]) == "--obscode" || string(argv[i]) == "--obscodes" || string(argv[i]) == "--observatorycodes") {
       if(i+1 < argc) {
 	//There is still something to read;
 	obscodefile=argv[++i];
@@ -500,6 +513,8 @@ int main(int argc, char *argv[])
   else cout << "Defaulting to maximum angular velocity = " << config.maxvel << " deg/day.\n";
   if(mintrkpts_default == 0) cout << "Minimum number of points per tracklet = " << config.mintrkpts << "\n";
   else cout << "Defaulting to minimum number of points per tracklet = " << config.mintrkpts << "\n";
+  if(time_offset_default == 0) cout << "Time offset to be ADDED to observation times to get UTC = " << config.time_offset << " seconds\n";
+  else cout << "Defaulting to time offset (added to obs times to get UTC) = " << config.time_offset << " seconds\n";
   if(minarc_default == 0) cout << "Minimum tracklet length = " << config.minarc << " arcsec.\n";
   else cout << "Defaulting to minimum tracklet length = " << config.minarc << " arcsec.\n";
   if(maxgcr_default == 0) cout << "Maximum tracklet Great Circle residual = " << config.maxgcr << " arcsec.\n";
@@ -643,7 +658,7 @@ int main(int argc, char *argv[])
   cout << "Finished reading heliocentric ephemeris file " << earthfile << " for the Earth.\n";
 
   if(DEBUGB==1) cout << "Preparing to load the image table\n";
-  status = load_image_table(img_log, detvec, observatory_list, EarthMJD, Earthpos, Earthvel);
+  status = load_image_table(img_log, detvec, config.time_offset, observatory_list, EarthMJD, Earthpos, Earthvel);
   if(DEBUGB==1) cout << "Loaded the image table\n";
   // Replace any invalid exposure times with the default (or user-supplied constant) value.
   long exp_resetnum=0;
@@ -682,8 +697,9 @@ int main(int argc, char *argv[])
 
   make_trailed_tracklets(detvec, img_log, config, pairdets, tracklets, trk2det);
 
+  cout << "Output image catalog " << outimfile << ", with " << img_log.size() << " lines, has been written\n";
   // Write paired detection file
-  cout << "Writing paired detection file with " << pairdets.size() << " lines\n";
+  cout << "Writing paired detection file " << pairdetfile << " with " << pairdets.size() << " lines\n";
   outstream1.open(pairdetfile);
   outstream1 << "#MJD,RA,Dec,mag,trail_len,trail_PA,sigmag,sig_across,sig_along,image,idstring,band,obscode,known_obj,det_qual,origindex\n";
   for(i=0;i<long(pairdets.size());i++) {
@@ -699,7 +715,7 @@ int main(int argc, char *argv[])
   outstream1.close();
 
   // Write tracklet file
-  cout << "Writing tracklet file with " << tracklets.size() << " lines\n";
+  cout << "Writing tracklet file " << trackletfile << " with " << tracklets.size() << " lines\n";
   outstream1.open(trackletfile);
   outstream1 << "#Image1,RA1,Dec1,Image2,RA2,Dec2,npts,trk_ID\n";
   for(i=0;i<long(tracklets.size());i++) {
@@ -710,7 +726,7 @@ int main(int argc, char *argv[])
   outstream1.close();
 
    // Write trk2det file
-  cout << "Writing trk2det file with " << trk2det.size() << " lines\n";
+  cout << "Writing trk2det file " << trk2detfile << " with " << trk2det.size() << " lines\n";
   outstream1.open(trk2detfile);
   outstream1 << "#trk_ID,detnum\n";
   for(i=0;i<long(trk2det.size());i++) {
