@@ -717,9 +717,16 @@ public:
 class early_hldet{
 public:
   inline bool operator() (const hldet& o1, const hldet& o2) {
-    return(o1.MJD < o2.MJD || (fabs(o1.MJD-o2.MJD)<=IMAGETIMETOL/SOLARDAY && stringnmatch01(o1.obscode,o2.obscode,3)==-1) || (fabs(o1.MJD-o2.MJD)<=IMAGETIMETOL/SOLARDAY && stringnmatch01(o1.obscode,o2.obscode,3)==0 && o1.RA<o2.RA));
+    return(o1.MJD < o2.MJD-IMAGETIMETOL/SOLARDAY || (fabs(o1.MJD-o2.MJD)<=IMAGETIMETOL/SOLARDAY && stringnmatch01(o1.obscode,o2.obscode,3)==-1) || (fabs(o1.MJD-o2.MJD)<=IMAGETIMETOL/SOLARDAY && stringnmatch01(o1.obscode,o2.obscode,3)==0 && o1.RA<o2.RA));
   }
 };
+
+//class early_hldet{
+//public:
+//  inline bool operator() (const hldet& o1, const hldet& o2) {
+//    return(o1.MJD < o2.MJD || (fabs(o1.MJD-o2.MJD)<=IMAGETIMETOL/SOLARDAY && stringnmatch01(o1.obscode,o2.obscode,3)==-1) || (fabs(o1.MJD-o2.MJD)<=IMAGETIMETOL/SOLARDAY && stringnmatch01(o1.obscode,o2.obscode,3)==0 && o1.RA<o2.RA));
+//  }
+//};
 
 class early_imlg2{
 public:
@@ -738,9 +745,17 @@ public:
 class early_hlimage{
 public:
   inline bool operator() (const hlimage& i1, const hlimage& i2) {
-    return(i1.MJD < i2.MJD || (i1.MJD == i2.MJD && stringnmatch01(i1.obscode,i2.obscode,3)==-1));
+    return(i1.MJD < i2.MJD-IMAGETIMETOL/SOLARDAY || (fabs(i1.MJD-i2.MJD)<=IMAGETIMETOL/SOLARDAY && stringnmatch01(i1.obscode,i2.obscode,3)==-1) || (fabs(i1.MJD-i2.MJD)<=IMAGETIMETOL/SOLARDAY && stringnmatch01(i1.obscode,i2.obscode,3)==0 && i1.RA<i2.RA));
   }
-};
+}; // Changed on March 21, 2025 to exactly match early_hldet.
+   // Result: images may not be strictly time-ordered, but order of detections and images will be strictly identical.
+
+//class early_hlimage{
+//public:
+//  inline bool operator() (const hlimage& i1, const hlimage& i2) {
+//    return(i1.MJD < i2.MJD || (i1.MJD == i2.MJD && stringnmatch01(i1.obscode,i2.obscode,3)==-1));
+//  }
+//};
 
 class longpair{ // Pair of long integers
 public:
