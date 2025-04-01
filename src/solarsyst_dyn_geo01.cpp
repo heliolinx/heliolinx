@@ -7388,6 +7388,7 @@ int Kepler_univ_vec(const double MGsun, const double mjdstart, const point3d &st
 }
 
 
+
 // Kepler2dyn: May 31, 2022:
 // Given Keplerian orbital parameters and a starting MJD,
 // convert the Keplerian orbital parameters to barycentric
@@ -37245,6 +37246,52 @@ int matXmat(const vector <vector <long double>> &A, const vector <vector <long d
   return(0);
 }
 
+int matXmat(const vector <vector <double>> &A, const vector <vector <double>> &B, vector <vector <double>> &C)
+{
+  long nrowA = A.size();
+  long nrowB = B.size();
+  long i,j,k;
+  i = j = k = 0;
+  long ncolA = A[0].size();
+  long ncolB = B[0].size();
+
+  // Check that number of columns in A is the same as the number
+  // of rows in B
+  if(ncolA != nrowB) {
+    cerr << "ERROR: matXmat called with matrix A of " << ncolA << " rows and matrix B of " << nrowB << " columns.\n";
+    return(1);
+  }
+  // Check that all of the rows in A have the same length.
+  for(i=1;i<nrowA;i++) {
+    if(ncolA != long(A[i].size())) {
+      cerr << "ERROR in matXmat: row " << i << " of matrix A has " << A[i].size() << " columns, while the first row has " << ncolA << "\n";
+      return(2);
+    }
+  }
+   // Check that all of the rows in B have the same length.
+  for(i=1;i<nrowB;i++) {
+    if(ncolB != long(B[i].size())) {
+      cerr << "ERROR in matXmat: row " << i << " of matrix B has " << B[i].size() << " columns, while the first row has " << ncolB << "\n";
+      return(3);
+    }
+  }
+
+  long nrowC = nrowA;
+  long ncolC = ncolB;
+  make_dmat(nrowC, ncolC, C);
+
+  for(i=0;i<nrowC;i++) {
+    for(j=0;j<ncolC;j++) {
+      C[i][j] = 0.0l;
+      for(k=0;k<ncolA;k++){
+	C[i][j] += A[i][k]*B[k][j];
+      }
+    }
+  }
+  return(0);
+}
+
+
 // matXvec: January 31, 2025:
 // Multiply a matrix times a column vector. This is the standard linear
 // format for a linear transformation. The matrix uses the "rows by columns" convention,
@@ -37284,6 +37331,42 @@ int matXvec(const vector <vector <long double>> &A, const vector <long double> &
   }
   return(0);
 }
+
+
+int matXvec(const vector <vector <double>> &A, const vector <double> &invec, vector <double> &outvec)
+{
+  long nrowA = A.size();
+  long ninvec = invec.size();
+  long i,j,k;
+  i = j = k = 0;
+  long ncolA = A[0].size();
+
+  // Check that number of columns in A is the same as the length
+  // of the vector
+  if(ncolA != ninvec) {
+    cerr << "ERROR: matXvec called with matrix A of " << ncolA << " rows and vector of " << ninvec << " elements.\n";
+    return(1);
+  }
+  // Check that all of the rows in A have the same length.
+  for(i=1;i<nrowA;i++) {
+    if(ncolA != long(A[i].size())) {
+      cerr << "ERROR in matXmat: row " << i << " of matrix A has " << A[i].size() << " columns, while the first row has " << ncolA << "\n";
+      return(2);
+    }
+  }
+  outvec={};
+  double ldval=0.0l;
+
+  for(i=0;i<nrowA;i++) {
+    ldval = 0.0l;
+    for(j=0;j<ncolA;j++) {
+      ldval += A[i][j]*invec[j];
+    }
+    outvec.push_back(ldval);
+  }
+  return(0);
+}
+
 
 // vecXmat: January 31, 2025:
 // Multiply a row vector times a matrix. This is NOT the standard
@@ -37327,6 +37410,41 @@ int vecXmat(const vector <long double> &invec, const vector <vector <long double
   return(0);
 }
 
+int vecXmat(const vector <double> &invec, const vector <vector <double>> &A, vector <double> &outvec)
+{
+  long nrowA = A.size();
+  long ninvec = invec.size();
+  long i,j,k;
+  i = j = k = 0;
+  long ncolA = A[0].size();
+
+  // Check that number of rows in A is the same as the length
+  // of the vector
+  if(nrowA != ninvec) {
+    cerr << "ERROR: vecXmat called with matrix A of " << nrowA << " rows and vector of " << ninvec << " elements.\n";
+    return(1);
+  }
+  // Check that all of the rows in A have the same length.
+  for(i=1;i<nrowA;i++) {
+    if(ncolA != long(A[i].size())) {
+      cerr << "ERROR in matXmat: row " << i << " of matrix A has " << A[i].size() << " columns, while the first row has " << ncolA << "\n";
+      return(2);
+    }
+  }
+  outvec={};
+  double ldval=0.0l;
+
+  for(j=0;j<ncolA;j++) {
+    ldval = 0.0l;
+    for(i=0;i<nrowA;i++) {
+      ldval += A[i][j]*invec[i];
+    }
+    outvec.push_back(ldval);
+  }
+  return(0);
+}
+
+
 // matrix_transpose: January 31, 2025:
 // Transpose an input matrix.
 int matrix_transpose(const vector <vector <long double>> &A, vector <vector <long double>> &Atrans)
@@ -37345,6 +37463,30 @@ int matrix_transpose(const vector <vector <long double>> &A, vector <vector <lon
   }
   Atrans={};
   make_LDmat(ncolA, nrowA, Atrans);
+  for(i=1;i<nrowA;i++) {
+    for(j=1;j<ncolA;j++) {
+      Atrans[j][i] = A[i][j];
+    }
+  }
+  return(0);
+}
+
+int matrix_transpose(const vector <vector <double>> &A, vector <vector <double>> &Atrans)
+{
+  long nrowA = A.size();
+  long i,j;
+  i = j = 0;
+  long ncolA = A[0].size();
+
+  // Check that all of the rows in A have the same length.
+  for(i=1;i<nrowA;i++) {
+    if(ncolA != long(A[i].size())) {
+      cerr << "ERROR in matXmat: row " << i << " of matrix A has " << A[i].size() << " columns, while the first row has " << ncolA << "\n";
+      return(2);
+    }
+  }
+  Atrans={};
+  make_dmat(ncolA, nrowA, Atrans);
   for(i=1;i<nrowA;i++) {
     for(j=1;j<ncolA;j++) {
       Atrans[j][i] = A[i][j];
@@ -37372,6 +37514,24 @@ int vector_outerprod(const vector <long double> &u, const vector <long double> &
 
   A={};
   make_LDmat(nrowA, ncolA, A);
+
+  for(i=0;i<nrowA;i++) {
+    for(j=0;j<ncolA;j++) {
+      A[i][j] = u[i]*v[j];
+    }
+  }
+  return(0);
+}
+
+int vector_outerprod(const vector <double> &u, const vector <double> &v, vector <vector <double>> &A)
+{
+  long nrowA = u.size();
+  long ncolA = v.size();
+  long i,j;
+  i = j = 0;
+
+  A={};
+  make_dmat(nrowA, ncolA, A);
 
   for(i=0;i<nrowA;i++) {
     for(j=0;j<ncolA;j++) {
@@ -37482,6 +37642,58 @@ int orbgrad01b(long double oldchi, long double pos_step, long double pvtimescale
   return(0);
 }
 
+// orbgrad01_Kep: February 05, 2025: 
+// Like orbgrad01b, but with 2-body Keplerian orbit-fitting,
+// hence, much faster but not as accurate. Does not use long double precision.
+int orbgrad01_Kep(double oldchi, double pos_step, double pvtimescale, const vector <point3d> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, const point3d startpos, const point3d startvel, double mjdstart, vector <double> &gradient)
+{
+  vector <double> fitRA;
+  vector <double> fitDec;
+  vector <double> resid;
+  point3d testpos = point3d(0,0,0);
+  point3d testvel = point3d(0,0,0);
+  gradient = {};
+  double newchi,semimajor_axis,eccen;
+  
+  // Calculate x position derivative
+  testpos = startpos;
+  testpos.x += pos_step;
+  newchi = orbitchi_univar(testpos, startvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, &semimajor_axis, &eccen);
+  gradient.push_back((oldchi-newchi)/pos_step);
+
+  // Calculate y position derivative
+  testpos = startpos;
+  testpos.y += pos_step;
+  newchi = orbitchi_univar(testpos, startvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, &semimajor_axis, &eccen);
+  gradient.push_back((oldchi-newchi)/pos_step);
+
+  // Calculate z position derivative
+  testpos = startpos;
+  testpos.z += pos_step;
+  newchi = orbitchi_univar(testpos, startvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, &semimajor_axis, &eccen);
+  gradient.push_back((oldchi-newchi)/pos_step);
+    
+  // Calculate x velocity derivative
+  testvel = startvel;
+  testvel.x += pos_step/pvtimescale;
+  newchi = orbitchi_univar(startpos, testvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, &semimajor_axis, &eccen);
+  gradient.push_back((oldchi-newchi)/pos_step);
+    
+  // Calculate y velocity derivative
+  testvel = startvel;
+  testvel.y += pos_step/pvtimescale;
+  newchi = orbitchi_univar(startpos, testvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, &semimajor_axis, &eccen);
+  gradient.push_back((oldchi-newchi)/pos_step);
+
+  // Calculate z velocity derivative
+  testvel = startvel;
+  testvel.z += pos_step/pvtimescale;
+  newchi = orbitchi_univar(startpos, testvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, &semimajor_axis, &eccen);
+  gradient.push_back((oldchi-newchi)/pos_step);
+
+  return(0);
+}
+
 
 long double nvecabs(const vector <long double> &normvec)
 {
@@ -37516,6 +37728,43 @@ long double nvecdotprod(const vector <long double> &vec1, const vector <long dou
   }
   long i=0;
   long double norm=0.0l;
+  for(i=0;i<n;i++) norm += vec1[i]*vec2[i];
+  return(norm);
+}
+
+double nvecabs(const vector <double> &normvec)
+{
+  long n = normvec.size();
+  long i=0;
+  double norm=0.0l;
+  for(i=0;i<n;i++) norm += normvec[i]*normvec[i];
+  norm = sqrt(norm);
+  return(norm);
+}
+
+double nvecnorm(vector <double> &normvec)
+{
+  long n = normvec.size();
+  long i=0;
+  double norm=0.0l;
+  for(i=0;i<n;i++) norm += normvec[i]*normvec[i];
+  norm = sqrt(norm);
+  for(i=0;i<n;i++) normvec[i]/=norm;
+  return(norm);
+}
+
+// nvecdotprod: February 01, 2025: Calculate the dot-produce
+// of two vectors of arbitrary (but equal) length.
+// WARNING: will segfault if vectors are of unequal length.
+double nvecdotprod(const vector <double> &vec1, const vector <double> &vec2)
+{
+  long n = vec1.size();
+  if(long(vec2.size()) > n) {
+    cerr << "WARNING: vectors supplied to nvecdotprod are of unequal lengths, " << n << " and " << vec2.size() << "\n";
+    n = vec2.size(); // Will cause a segfault.
+  }
+  long i=0;
+  double norm=0.0l;
   for(i=0;i<n;i++) norm += vec1[i]*vec2[i];
   return(norm);
 }
@@ -37569,7 +37818,7 @@ long double orb1Dmin01a(long double oldchi, long double inputstep, long double p
     steps[2] = teststep;
     chivals[2] = newchi;
     // Find a middle point
-    while(newchi>oldchi && teststep>MINPOS_STEP) {
+    while(newchi>oldchi && teststep>MINPOS_STEP && itct<ITMAX_1D) {
       teststep/=BRACKETSCALE;
       testpos.x = startpos.x + unitdir[0]*teststep;
       testpos.y = startpos.y + unitdir[1]*teststep;
@@ -37600,7 +37849,7 @@ long double orb1Dmin01a(long double oldchi, long double inputstep, long double p
     steps[1] = teststep;
     chivals[1] = newchi;
     // Find a high point
-    while(newchi<=chivals[1]) {
+    while(newchi<=chivals[1] && itct<ITMAX_1D) {
       teststep*=BRACKETSCALE;
       testpos.x = startpos.x + unitdir[0]*teststep;
       testpos.y = startpos.y + unitdir[1]*teststep;
@@ -37621,7 +37870,7 @@ long double orb1Dmin01a(long double oldchi, long double inputstep, long double p
   lgstep = upperstep = steps[2]-steps[1];
   lowerstep = steps[1]-steps[0];
   if(lowerstep>lgstep) lgstep = lowerstep;
-  while(lgstep>MINPOS_STEP && chichange>minchichange) {
+  while(lgstep>MINPOS_STEP && chichange>minchichange && itct<ITMAX_1D) {
     if(upperstep>=lowerstep) {
       // We are searching the interval between points 1 and 2.
       teststep = steps[1] + GOLDENSCALE*upperstep;
@@ -37745,7 +37994,7 @@ long double orb1Dmin01b(long double oldchi, long double inputstep, long double p
     steps[2] = teststep;
     chivals[2] = newchi;
     // Find a middle point
-    while(newchi>oldchi && teststep>MINPOS_STEP) {
+    while(newchi>oldchi && teststep>MINPOS_STEP && itct<ITMAX_1D) {
       teststep/=BRACKETSCALE;
       testpos.x = startpos.x + unitdir[0]*teststep;
       testpos.y = startpos.y + unitdir[1]*teststep;
@@ -37776,7 +38025,7 @@ long double orb1Dmin01b(long double oldchi, long double inputstep, long double p
     steps[1] = teststep;
     chivals[1] = newchi;
     // Find a high point
-    while(newchi<=chivals[1]) {
+    while(newchi<=chivals[1] && itct<ITMAX_1D) {
       teststep*=BRACKETSCALE;
       testpos.x = startpos.x + unitdir[0]*teststep;
       testpos.y = startpos.y + unitdir[1]*teststep;
@@ -37797,7 +38046,7 @@ long double orb1Dmin01b(long double oldchi, long double inputstep, long double p
   lgstep = upperstep = steps[2]-steps[1];
   lowerstep = steps[1]-steps[0];
   if(lowerstep>lgstep) lgstep = lowerstep;
-  while(lgstep>MINPOS_STEP && chichange>minchichange) {
+  while(lgstep>MINPOS_STEP && chichange>minchichange && itct<ITMAX_1D) {
     if(upperstep>=lowerstep) {
       // We are searching the interval between points 1 and 2.
       teststep = steps[1] + GOLDENSCALE*upperstep;
@@ -37868,6 +38117,181 @@ long double orb1Dmin01b(long double oldchi, long double inputstep, long double p
   *step = teststep;
   return(chivals[1]);
 }
+
+
+// orb1Dmin01_Kep: March 31, 2025:
+// Like orb1Dmin01b, but does Keplerian 2-body integration. Hence,
+// should be much faster but not as accurate. Does not use long double precision.
+double orb1Dmin01_Kep(double oldchi, double inputstep, double pvtimescale, double minchichange, const vector <double> &unitdir, const vector <point3d> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, const point3d startpos, const point3d startvel, double mjdstart, vector <double> &fitRA, vector <double> &fitDec, vector <double> &fitresid, double *step, point3d &newpos, point3d &newvel)
+{
+  vector <double> tempRA;
+  vector <double> tempDec;
+  vector <double> resid;
+  point3d testpos = point3d(0,0,0);
+  point3d testvel = point3d(0,0,0);
+  vector <double> steps;
+  vector <double> chivals;
+  double newchi;
+  double chichange=LARGERR;
+  double teststep = inputstep;
+  double upperstep = inputstep;
+  double lowerstep = inputstep;
+  double lgstep = inputstep;
+  int i;
+  long itct=0;
+  for(i=0;i<=3;i++) {
+    steps.push_back(0.0l);
+    chivals.push_back(0.0l);
+  }
+  double semimajor_axis, eccen;
+  
+  // Bracket the minimum: that is, find three values for the step,
+  // of which the middle one produces the smallest chi-squared value.
+  // First point is a step of zero, and chi=oldchi.
+  steps[0] = 0.0l;
+  chivals[0] = oldchi;
+  
+  // Next use the input step size.
+  testpos.x = startpos.x + unitdir[0]*teststep;
+  testpos.y = startpos.y + unitdir[1]*teststep;
+  testpos.z = startpos.z + unitdir[2]*teststep;
+  testvel.x = startvel.x + unitdir[3]*teststep/pvtimescale;
+  testvel.y = startvel.y + unitdir[4]*teststep/pvtimescale;
+  testvel.z = startvel.z + unitdir[5]*teststep/pvtimescale;
+
+  newchi = orbitchi_univar(testpos, testvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, tempRA, tempDec, resid, &semimajor_axis, &eccen);
+
+  itct++;
+  cout << "1-D iteration " << itct << ": bracketing, chisq = " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << teststep << "\n";
+  if(newchi>oldchi) {
+    // This point will be the high value for the bracket
+    steps[2] = teststep;
+    chivals[2] = newchi;
+    // Find a middle point
+    while(newchi>oldchi && teststep>MINPOS_STEP && itct<ITMAX_1D) {
+      teststep/=BRACKETSCALE;
+      testpos.x = startpos.x + unitdir[0]*teststep;
+      testpos.y = startpos.y + unitdir[1]*teststep;
+      testpos.z = startpos.z + unitdir[2]*teststep;
+      testvel.x = startvel.x + unitdir[3]*teststep/pvtimescale;
+      testvel.y = startvel.y + unitdir[4]*teststep/pvtimescale;
+      testvel.z = startvel.z + unitdir[5]*teststep/pvtimescale;
+      newchi = orbitchi_univar(testpos, testvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, tempRA, tempDec, resid, &semimajor_axis, &eccen);
+      itct++;
+      cout << "1-D iteration " << itct << ": bracketing, chisq = " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << teststep << "\n";
+    }
+    if(newchi>oldchi) {
+      // Bracketing failed
+      cout << "Braketing failed in orb1Dmin01a\n";
+      return(-1.0l);
+    } else {
+      // Bracketing succeeded. Store the middle point.
+      steps[1] = teststep;
+      chivals[1] = newchi;
+      fitRA = tempRA;
+      fitDec = tempDec;
+      fitresid = resid;
+      newpos = testpos;
+      newvel = testvel;
+    }
+  } else {
+    // The first point was better than the starting point. It will be the middle.
+    steps[1] = teststep;
+    chivals[1] = newchi;
+    // Find a high point
+    while(newchi<=chivals[1] && itct<ITMAX_1D) {
+      teststep*=BRACKETSCALE;
+      testpos.x = startpos.x + unitdir[0]*teststep;
+      testpos.y = startpos.y + unitdir[1]*teststep;
+      testpos.z = startpos.z + unitdir[2]*teststep;
+      testvel.x = startvel.x + unitdir[3]*teststep/pvtimescale;
+      testvel.y = startvel.y + unitdir[4]*teststep/pvtimescale;
+      testvel.z = startvel.z + unitdir[5]*teststep/pvtimescale;
+      newchi = orbitchi_univar(testpos, testvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, tempRA, tempDec, resid, &semimajor_axis, &eccen);
+      itct++;
+      cout << "1-D iteration " << itct << ": bracketing, chisq = " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << teststep << "\n";
+    }
+    // If we get here, a higher (worse) point has been identified. Load it
+    steps[2] = teststep;
+    chivals[2] = newchi;
+  }
+  // If we get here, we have successfully bracketed the minimum, meaning that
+  // chivals[1] is less than both chivals[0] and chivals[2].
+  lgstep = upperstep = steps[2]-steps[1];
+  lowerstep = steps[1]-steps[0];
+  if(lowerstep>lgstep) lgstep = lowerstep;
+  while(lgstep>MINPOS_STEP && chichange>minchichange && itct<ITMAX_1D) {
+    if(upperstep>=lowerstep) {
+      // We are searching the interval between points 1 and 2.
+      teststep = steps[1] + GOLDENSCALE*upperstep;
+      testpos.x = startpos.x + unitdir[0]*teststep;
+      testpos.y = startpos.y + unitdir[1]*teststep;
+      testpos.z = startpos.z + unitdir[2]*teststep;
+      testvel.x = startvel.x + unitdir[3]*teststep/pvtimescale;
+      testvel.y = startvel.y + unitdir[4]*teststep/pvtimescale;
+      testvel.z = startvel.z + unitdir[5]*teststep/pvtimescale;
+      newchi = orbitchi_univar(testpos, testvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, tempRA, tempDec, resid, &semimajor_axis, &eccen);
+      itct++;
+      cout << "1-D iteration " << itct << ": searching, chisq = " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << teststep << "\n";
+      if(newchi<chivals[1]) {
+	// We've found a new best point. Change bracket from
+	// 0, 1, 2 into 1, NEW, 2
+	chichange = chivals[1]-newchi;
+	steps[0] = steps[1];
+	chivals[0] = chivals[1];
+	steps[1] = teststep;
+	chivals[1] = newchi;
+	fitRA = tempRA;
+	fitDec = tempDec;
+	fitresid = resid;
+	newpos = testpos;
+	newvel = testvel;
+      } else {
+	// The new point is not better than the previous best, but it
+	// is closer, tightening the bracket. It replaces point 2:
+	steps[2] = teststep;
+	chivals[2] = newchi;
+      }
+    } else {
+      // We are searching the interval between points 0 and 1.
+      teststep = steps[1] - GOLDENSCALE*lowerstep;
+      testpos.x = startpos.x + unitdir[0]*teststep;
+      testpos.y = startpos.y + unitdir[1]*teststep;
+      testpos.z = startpos.z + unitdir[2]*teststep;
+      testvel.x = startvel.x + unitdir[3]*teststep/pvtimescale;
+      testvel.y = startvel.y + unitdir[4]*teststep/pvtimescale;
+      testvel.z = startvel.z + unitdir[5]*teststep/pvtimescale;
+      newchi = orbitchi_univar(testpos, testvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, tempRA, tempDec, resid, &semimajor_axis, &eccen);
+      itct++;
+      cout << "1-D iteration " << itct << ": searching, chisq = " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << teststep << "\n";
+      if(newchi<chivals[1]) {
+	// We've found a new best point. Change bracket from
+	// 0, 1, 2 to 0, NEW, 1.
+	chichange = chivals[1]-newchi;
+	steps[2] = steps[1];
+	chivals[2] = chivals[1];
+	steps[1] = teststep;
+	chivals[1] = newchi;
+	fitRA = tempRA;
+	fitDec = tempDec;
+	fitresid = resid;
+	newpos = testpos;
+	newvel = testvel;
+      } else {
+	// The new point is not better than the previous best, but it
+	// is closer, tightening the bracket. It replaces point 0:
+	steps[0] = teststep;
+	chivals[0] = newchi;
+      }
+    }
+    lgstep = upperstep = steps[2]-steps[1];
+    lowerstep = steps[1]-steps[0];
+    if(lowerstep>lgstep) lgstep = lowerstep;
+  }
+  *step = teststep;
+  return(chivals[1]);
+}
+
 
 // arctrace01: February 06, 2025:
 // Implement the two-stage orbit fitting from arctrace01d.cpp in a single function.
@@ -38276,12 +38700,12 @@ int arctrace01(int polyorder, int planetnum, const vector <long double> &planetm
   return(0);
 }
 
+// arc6D01: February 08, 2025:
+// Implements the full 6-D fit with planetary perturbations, used in
+// arctrace01(), as a standalone function.
 int arc6D01(int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, const vector <point3LD> &Sunpos, const vector <point3LD> &Sunvel, const vector <point3LD> &observer_barypos, const vector <long double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, long double minchichange, int planetfile_refpoint, const point3LD initpos, const point3LD initvel, vector <double> &bestRA, vector <double> &bestDec, vector <double> &bestresid, point3LD &newpos, point3LD &newvel, long double *chisquared, long double *astromrms)
 {
   vector <long double> unitdir;
-  vector <point3LD> orbit05pos;
-  vector <point3LD> orbit05vel;
-  vector <long double> orbit05MJD;
   vector <double> fitRA;
   vector <double> fitDec;
   vector <double> fitresid;
@@ -38499,6 +38923,237 @@ int arc6D01(int polyorder, int planetnum, const vector <long double> &planetmjd,
   return(0);
 }
 
+
+// arc6DKep: February 08, 2025:
+// Indended as an approximately drop-in replacement for
+// arc6D01, but does only a 2-body Keplerian fit (and hence
+// does not require positions for all the planets). Should be
+// much faster than arc6D01, but not as accurate. Could be
+// used to get a better starting point for arc6D01, so that
+// the latter program would converge faster. Note that, unlike
+// arc6D01, observer and target positions must be heliocentric
+// rather than barycentric.
+int arc6DKep(const vector <point3d> &observer_heliopos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, double minchichange, double mjdstart, const point3d initpos, const point3d initvel, vector <double> &bestRA, vector <double> &bestDec, vector <double> &bestresid, point3d &newpos, point3d &newvel, double *chisquared, double *astromrms)
+{
+  vector <double> unitdir;
+  vector <double> fitRA;
+  vector <double> fitDec;
+  vector <double> fitresid;
+  double pvtimescale=PV_TIMESCALE;
+  int obsnum = obsMJD.size();
+  point3d startpos = initpos;
+  point3d startvel = initvel;
+  point3d outpos = point3d(0,0,0);
+  point3d outvel = point3d(0,0,0);
+  point3d tppos = point3d(0,0,0);
+  point3d tpvel = point3d(0,0,0);
+  vector <double> gradient;
+  vector <double> gradunit;
+  double pos_step = POS_STEP;
+  double beststep = 0.0l;
+  double poschange = 0.0l;
+  double ldval = 0.0l;
+  int itct,chifailct,shortstepct,i,j,status,obsct;
+  itct=chifailct=shortstepct=i=j=status=obsct=0;
+  double chichange = 0.001l;
+  vector <vector <double>> H;
+  vector <vector <double>> OP1;
+  vector <vector <double>> OP2;
+  vector <vector <double>> OP3;
+  make_dmat(6, 6, H);
+  vector <double> oldgrad;
+  vector <double> svec;
+  make_dvec(6,svec);
+  vector <double> oldsvec;
+  vector <double> changevec;
+  vector <double> statevecdiff;
+  vector <double> gradientdiff;
+  vector <double> Hgrad;
+  vector <double> u;
+  vector <double> u2;
+  vector <double> thisway;
+  int goodstep=0;
+  double dotprod_gradstate=0.0l;
+  double dotprod_gradHgrad=0.0l;
+  double chisq=0.0l;
+  double newchi=0.0l;
+  double bestchi=0.0l;
+  double semimajor_axis,eccen;
+ 
+  fitDec = fitRA = fitresid = {};
+  chisq = orbitchi_univar(startpos, startvel, mjdstart, observer_heliopos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, fitresid, &semimajor_axis, &eccen);
+  cout << "Chi-square value for input state vector is " << chisq << "\n";
+  bestchi = chisq;
+  bestRA = fitRA;
+  bestDec = fitDec;
+  bestresid = fitresid;
+  outpos = startpos;
+  outvel = startvel;
+
+  // Calculate a timescale for converting velocity to position units.
+  pvtimescale = SOLARDAY*(obsMJD[obsnum-1]-obsMJD[0])/2.0l;  
+  // Load a scaled version of the starting state vectors
+  svec[0] = startpos.x;
+  svec[1] = startpos.y;
+  svec[2] = startpos.z;
+  svec[3] = startvel.x*pvtimescale;
+  svec[4] = startvel.y*pvtimescale;
+  svec[5] = startvel.z*pvtimescale;
+
+  // Intialize the approximate Hessian matrix H to the identity matrix
+  for(i=0;i<6;i++) {
+    for(j=0;j<6;j++) {
+      if(i==j) H[i][j]=1.0l;
+      else H[i][j]=0.0l;
+    }
+  }
+  
+  itct=chifailct=goodstep=0;
+  chichange = LARGERR;
+  while(itct<ITMAX && pos_step>MINPOS_STEP && chifailct<=CHIFAILMAX) {
+    itct+=1;
+    // Calculate the gradient of the chi-squared surface
+    orbgrad01_Kep(chisq, pos_step, pvtimescale, observer_heliopos, obsMJD, obsRA, obsDec, sigastrom, startpos, startvel, mjdstart, gradient);
+    for(i=0;i<6;i++) gradient[i] *= -1.0l; // Now it really is the gradient.
+    // Calculate unit vector corresponding to the gradient
+    gradunit = gradient;
+    ldval = nvecnorm(gradunit);
+    // Take the dot product of the gradient with its own unit vector
+    ldval = nvecdotprod(gradunit,gradient);
+    // This should be the expected change in the chi-square value,
+    // given a one-unit change in the position in the ideal direction.
+    poschange = chisq*CHI_REDFAC/ldval;
+    // This should be the distance we have to go in the ideal direction to
+    // reduce the chi-square value by the factor CHI_REDFAC
+
+    if(goodstep==1) {
+      // BFGS step: add a correction to the Hessian matrix H
+      // Calculate state vector difference
+      statevecdiff={};
+      for(i=0;i<6;i++) statevecdiff.push_back(svec[i] - oldsvec[i]);
+      // Calculate gradient difference
+      gradientdiff={};
+      for(i=0;i<6;i++) gradientdiff.push_back(gradient[i] - oldgrad[i]);
+      // Normalize both difference vectors
+      nvecnorm(statevecdiff);
+      nvecnorm(gradientdiff);
+      
+      // FIRST TERM OF CORRECTION TO THE HESSIAN MATRIX
+      status = vector_outerprod(statevecdiff,statevecdiff,OP1);
+      if(status!=0) {
+	cerr << "Failure in vector_outerprod(statevecdiff,statevecdiff,OP1);\n";
+	return(status);
+      }
+      // Take the dot product of the state vector difference and the gradient difference
+      dotprod_gradstate = nvecdotprod(statevecdiff,gradientdiff);
+      // Divide the matrix OP1 by this factor
+      for(i=0;i<6;i++) {
+	for(j=0;j<6;j++) OP1[i][j]/=dotprod_gradstate;
+      }
+      
+      // SECOND TERM OF CORRECTION TO THE HESSIAN MATRIX
+      // Transform the gradient difference by the old versio of the Hessian
+      status = matXvec(H, gradientdiff, Hgrad);
+      if(status!=0) {
+	cerr << "Failure in matXvec(H, gradientdiff, Hgrad);\n";
+	return(status);
+      }
+      status = vector_outerprod(Hgrad,Hgrad,OP2);
+      if(status!=0) {
+	cerr << "Failure in vector_outerprod(Hgrad,Hgrad,OP2);\n";
+	return(status);
+      }
+      // Take the dot-product of the gradient difference with the new,
+      // scaled version of it that is vec1
+      dotprod_gradHgrad = nvecdotprod(Hgrad,gradientdiff);
+      
+      // Divide the matrix OP2 by this factor
+      for(i=0;i<6;i++) {
+	for(j=0;j<6;j++) OP2[i][j]/=dotprod_gradHgrad;
+      }
+       
+      // THIRD TERM OF CORRECTION TO THE HESSIAN MATRIX
+      // construct first part of u vector
+      u = statevecdiff;
+      for(i=0;i<6;i++) u[i]/=dotprod_gradstate;
+      // Apply correction to produce final u vector
+      for(i=0;i<6;i++) u[i] -= Hgrad[i]/dotprod_gradHgrad;
+      // Calculate outer product
+      status = vector_outerprod(u,u,OP3);
+      if(status!=0) {
+	cerr << "Failure in vector_outerprod(u,u,OP3);\n";
+	return(status);
+      }
+      // Scale the outer product
+      for(i=0;i<6;i++) {
+	for(j=0;j<6;j++) OP3[i][j]*=dotprod_gradHgrad;
+      }
+ 
+      // Add all the terms of the Hessian together
+      for(i=0;i<6;i++) {
+	for(j=0;j<6;j++) H[i][j] += OP1[i][j] - OP2[i][j] + OP3[i][j];
+      }
+    }
+       
+    // BFGS step: multiply the gradient unit vector by the Hessian matrix to get the new direction
+    matXvec(H, gradient, statevecdiff);
+    thisway = statevecdiff;
+    ldval = nvecnorm(thisway); // Renormalize
+    for(i=0;i<6;i++) thisway[i] *= -1.0l; // Sign-flip: we want to go DOWN, not up.
+    cout << "Search vector: " << fixed << setprecision(6) << thisway[0] << " "   << thisway[1] << " "   << thisway[2] << " "   << thisway[3] << " "   << thisway[4] << " "   << thisway[5] << "\n";
+
+    // Perform one-dimensional optimization along the direction defined by
+    // the Hessian-scaled gradient vector thisway
+    newchi = orb1Dmin01_Kep(chisq, poschange, pvtimescale, minchichange, thisway, observer_heliopos, obsMJD, obsRA, obsDec, sigastrom, startpos, startvel, mjdstart, fitRA, fitDec, fitresid, &beststep, tppos, tpvel);
+    
+    cout << "Iteration " << itct << ": chi-square value for input state vector is " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << pos_step  << " motion: " << fixed << setprecision(3) << beststep << ", chichange = " << chichange << "\n";
+
+    if(newchi>0.0l && newchi<chisq) {
+      // The 1-D search succeeded.
+      chichange = chisq-newchi;
+      if(chichange<minchichange) chifailct++;
+      if(beststep<pos_step) {
+	shortstepct++;
+	if(shortstepct>SHORTSTEPMAX) {
+	  shortstepct=0;
+	  pos_step/=2.0l;
+	}
+      }
+      chisq = newchi;
+      startpos = tppos;
+      startvel = tpvel;
+      bestchi = newchi;
+      bestRA = fitRA;
+      bestDec = fitDec;
+      bestresid = fitresid;
+      outpos = startpos;
+      outvel = startvel;
+      goodstep=1;
+      // BFGS stuff starts here
+      oldsvec = svec;
+      oldgrad = gradient;
+      svec[0] = startpos.x;
+      svec[1] = startpos.y;
+      svec[2] = startpos.z;
+      svec[3] = startvel.x*pvtimescale;
+      svec[4] = startvel.y*pvtimescale;
+      svec[5] = startvel.z*pvtimescale;
+    } else {
+      // The 1-D search failed. The gradient must have been bad.
+      // Shorten the scale used for calculating the derivative
+      pos_step/=2.0l;
+      goodstep=0;
+    }
+  }
+  newpos = outpos;
+  newvel = outvel;
+  *chisquared = bestchi;
+  ldval=0.0l;
+  for(obsct=0;obsct<obsnum;obsct++) ldval += bestresid[obsct]*bestresid[obsct];
+  *astromrms = sqrt(ldval/double(obsnum));
+  return(0);
+}
+
 // arctrace02: February 08, 2025:
 // Exactly like arctrace01, but uses a standalone function arc6D01() to perform
 // the 6-D stage of the orbit fit, so that it can be invoked (in other routines) separately
@@ -38507,7 +39162,7 @@ int arc6D01(int polyorder, int planetnum, const vector <long double> &planetmjd,
 // Implement the two-stage orbit fitting from arctrace01d.cpp in a single function.
 // The two stages are, first, a Keplerian fit to a subset of the data, and then
 // a full 6-D fit with planetary perturbations, to the whole data set.
-int arctrace02(int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, const vector <point3LD> &Sunpos, const vector <point3LD> &Sunvel, const vector <point3LD> &observerpos, const vector <long double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, double kepspan, long double minchichange, const point3LD initpos, const point3LD initvel, vector <double> &bestRA, vector <double> &bestDec, vector <double> &bestresid, point3LD &newpos, point3LD &newvel, long double *chisquared, long double *astromrms, int *refpoint)
+int arctrace02(int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, const vector <point3LD> &Sunpos, const vector <point3LD> &Sunvel, const vector <point3LD> &observerpos, const vector <long double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, double kepspan, long double minchichange, vector <double> &bestRA, vector <double> &bestDec, vector <double> &bestresid, point3LD &newpos, point3LD &newvel, long double *chisquared, long double *astromrms, int *refpoint)
 {
   vector <point3d> Kepobserverpos;
   vector <double> KepMJD;
@@ -38525,6 +39180,8 @@ int arctrace02(int polyorder, int planetnum, const vector <long double> &planetm
   i=j=status=0;
   bestpoint=point1=verbose=0;
   simptype=point2=kepnum=kepmax=1;
+  double kepmetric,kepmetbest;
+  kepmetric=kepmetbest=1.0;
   vector <double> orbit;
   int planetfile_refpoint=0;
   long double chisq=0.0l;
@@ -38543,14 +39200,18 @@ int arctrace02(int polyorder, int planetnum, const vector <long double> &planetm
   // Find the time period of length kepspan
   // with the largest number of observations
   bestpoint=kepnum=kepmax=0;
+  kepmetric=kepmetbest=0.0;
   for(i=0;i<obsnum;i++) {
     j=i;
     kepnum=0;
+    kepmetric=0.0;
     while(j<obsnum && obsMJD[j]-obsMJD[i] < kepspan) {
       kepnum++;
       j++;
     }
-    if(kepnum>kepmax) {
+    kepmetric = double(kepnum)*(obsMJD[j-1]-obsMJD[i]); 
+    if(kepmetric>kepmetbest) {
+      kepmetbest=kepmetric;
       kepmax=kepnum;
       bestpoint=i;
     }
@@ -38610,6 +39271,134 @@ int arctrace02(int polyorder, int planetnum, const vector <long double> &planetm
   
   return(0);
 }
+
+
+// arctrace03: March 31, 2025:
+// Like arctrace02, but does a Keplerian 2-body fit to the
+// entire data set prior to the full n-body fit. 
+int arctrace03(int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, const vector <point3LD> &Sunpos, const vector <point3LD> &Sunvel, const vector <point3LD> &observer_heliopos, const vector <long double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, double kepspan, long double minchichange, vector <double> &bestRA, vector <double> &bestDec, vector <double> &bestresid, point3LD &newpos, point3LD &newvel, long double *chisquared, long double *astromrms, int *refpoint)
+{
+  vector <point3d> Kepobserverpos;
+  vector <double> KepMJD;
+  vector <double> KepRA;
+  vector <double> KepDec;
+  vector <double> Kepsig;
+  double geodist1 = 1.0;
+  double geodist2 = 1.1;
+  double ftol = FTOL_HERGET_SIMPLEX;
+  double simplex_scale = SIMPLEX_SCALEFAC;
+  int obsnum = obsMJD.size();
+  int i,j,status;
+  int bestpoint,point1,verbose;
+  int simptype,point2,kepnum,kepmax;
+  i=j=status=0;
+  bestpoint=point1=verbose=0;
+  simptype=point2=kepnum=kepmax=1;
+  double kepmetric,kepmetbest;
+  kepmetric=kepmetbest=1.0;
+  vector <double> orbit;
+  int planetfile_refpoint=0;
+  long double chisq=0.0l;
+  point3d dpos = point3d(0,0,0);
+  point3LD tppos = point3LD(0,0,0);
+  point3LD outpos = point3LD(0,0,0);
+  point3LD outvel = point3LD(0,0,0);
+  vector <point3LD> observer_barypos;
+  vector <double> fitRA;
+  vector <double> fitDec;
+  vector <double> fitresid;
+  point3LD startpos = point3LD(0,0,0);
+  point3LD startvel = point3LD(0,0,0);
+   
+
+  // Find the time period of length kepspan
+  // with the largest number of observations
+  bestpoint=kepnum=kepmax=0;
+  kepmetric=kepmetbest=0.0;
+  for(i=0;i<obsnum;i++) {
+    j=i;
+    kepnum=0;
+    kepmetric=0.0;
+    while(j<obsnum && obsMJD[j]-obsMJD[i] < kepspan) {
+      kepnum++;
+      j++;
+    }
+    kepmetric = double(kepnum)*(obsMJD[j-1]-obsMJD[i]); 
+    if(kepmetric>kepmetbest) {
+      kepmetbest=kepmetric;
+      kepmax=kepnum;
+      bestpoint=i;
+    }
+  }
+  kepnum=kepmax;
+  cout << "Best sequence contains " << kepnum << " points, and runs from obsMJD[" << bestpoint << "]=" << obsMJD[bestpoint] << " to obsMJD[" << bestpoint+kepnum-1 << "]=" << obsMJD[bestpoint+kepnum-1] << "\n";
+  KepMJD = KepRA = KepDec = Kepsig = {};
+  Kepobserverpos = {};
+  for(i=bestpoint;i<bestpoint+kepnum;i++) {
+    KepMJD.push_back(double(obsMJD[i]));
+    dpos = point3d(observer_heliopos[i].x,observer_heliopos[i].y,observer_heliopos[i].z);
+    Kepobserverpos.push_back(dpos);
+    KepRA.push_back(obsRA[i]);
+    KepDec.push_back(obsDec[i]);
+    Kepsig.push_back(sigastrom[i]);
+  }
+  cout << "kepnum = " << kepnum << " " << KepMJD.size() << "\n";
+  for(i=0;i<kepnum;i++) {
+    cout << Kepobserverpos[i].x << " " << Kepobserverpos[i].y << " " << Kepobserverpos[i].z << " " << KepMJD[i] << " " << KepRA[i] << " " << KepDec[i] << "\n";
+  }
+  fitDec = fitRA = fitresid = orbit = {};
+  chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, simptype, ftol, 1, kepnum, Kepobserverpos, KepMJD, KepRA, KepDec, Kepsig, fitRA, fitDec, fitresid, orbit, verbose);
+  cout << "Keplerian fit produced chisq = " << chisq << "\n";
+
+  planetfile_refpoint = -99;
+  j=0;
+  while(j<long(planetmjd.size()) && planetmjd[j]<0.5*(KepMJD[0]+KepMJD[kepnum-1])) j++;
+  planetfile_refpoint = j-1; // This is the last point in planetmjd that is before the midpoint of the Kepler fit.
+
+  // Integrate the Keplerian state vectors from their current reference MJD
+  // to the MJD corresponding to planetfile_refpoint
+  point3d dstartpos=point3d(orbit[3],orbit[4],orbit[5]);
+  point3d dstartvel=point3d(orbit[6],orbit[7],orbit[8]);
+  point3d dendpos=point3d(0,0,0);
+  point3d dendvel=point3d(0,0,0);
+  double dchisq = 0.0;
+  double dastromrms = 0.0;
+  
+  Kepler_univ_int(GMSUN_KM3_SEC2, orbit[2], dstartpos, dstartvel, planetmjd[planetfile_refpoint], dendpos, dendvel);
+
+  Kepobserverpos = {};
+  KepMJD = {};
+  for(i=0;i<long(observer_heliopos.size());i++) {
+    KepMJD.push_back(double(obsMJD[i]));
+    dpos = point3d(observer_heliopos[i].x,observer_heliopos[i].y,observer_heliopos[i].z);
+    Kepobserverpos.push_back(dpos);
+  }
+
+  arc6DKep(Kepobserverpos, KepMJD, obsRA, obsDec, sigastrom, minchichange, planetmjd[planetfile_refpoint], dendpos, dendvel, bestRA, bestDec, bestresid, dendpos, dendvel, &dchisq, &dastromrms);
+  cout << "Full-range Keplerian fit produced chisq = " << dchisq << ", astromrms = " << dastromrms << "\n";
+  
+  // Convert Keplerian state vectors from heliocentric to barycentric coords.
+  startpos.x = dendpos.x + Sunpos[planetfile_refpoint].x;
+  startpos.y = dendpos.y + Sunpos[planetfile_refpoint].y;
+  startpos.z = dendpos.z + Sunpos[planetfile_refpoint].z;
+  startvel.x = dendvel.x + Sunvel[planetfile_refpoint].x;
+  startvel.y = dendvel.y + Sunvel[planetfile_refpoint].y;
+  startvel.z = dendvel.z + Sunvel[planetfile_refpoint].z;
+
+  // Convert observer positions from heliocentric to barycentric coords.
+  observer_barypos = {};
+  for(i=0;i<obsnum;i++) {
+    planetposvel01LD(obsMJD[i], polyorder, planetmjd, Sunpos, Sunvel, outpos, outvel);
+    tppos = point3LD(observer_heliopos[i].x + outpos.x, observer_heliopos[i].y + outpos.y, observer_heliopos[i].z + outpos.z);
+    observer_barypos.push_back(tppos);
+  }
+  arc6D01(polyorder,planetnum,planetmjd,planetmasses,planetpos,Sunpos,Sunvel,observer_barypos,obsMJD,obsRA,obsDec,sigastrom,minchichange,planetfile_refpoint,startpos,startvel,bestRA,bestDec,bestresid,newpos,newvel,chisquared,astromrms);
+  
+  *refpoint = planetfile_refpoint;
+  
+  return(0);
+}
+
 
 // eigensolve01: Given a square matrix of long doubles,
 // find its eigenvectors and eigenvalues. Return the

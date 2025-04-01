@@ -147,6 +147,7 @@ using namespace std;
 #define PV_TIMESCALE 1.0e7l
 #define CHI_REDFAC 0.1l
 #define ITMAX 10000
+#define ITMAX_1D 500
 #define CHIFAILMAX 5
 #define SHORTSTEPMAX 5
 
@@ -717,16 +718,9 @@ public:
 class early_hldet{
 public:
   inline bool operator() (const hldet& o1, const hldet& o2) {
-    return(o1.MJD < o2.MJD-IMAGETIMETOL/SOLARDAY || (fabs(o1.MJD-o2.MJD)<=IMAGETIMETOL/SOLARDAY && stringnmatch01(o1.obscode,o2.obscode,3)==-1) || (fabs(o1.MJD-o2.MJD)<=IMAGETIMETOL/SOLARDAY && stringnmatch01(o1.obscode,o2.obscode,3)==0 && o1.RA<o2.RA));
+    return(o1.MJD < o2.MJD || (fabs(o1.MJD-o2.MJD)<=IMAGETIMETOL/SOLARDAY && stringnmatch01(o1.obscode,o2.obscode,3)==-1) || (fabs(o1.MJD-o2.MJD)<=IMAGETIMETOL/SOLARDAY && stringnmatch01(o1.obscode,o2.obscode,3)==0 && o1.RA<o2.RA));
   }
 };
-
-//class early_hldet{
-//public:
-//  inline bool operator() (const hldet& o1, const hldet& o2) {
-//    return(o1.MJD < o2.MJD || (fabs(o1.MJD-o2.MJD)<=IMAGETIMETOL/SOLARDAY && stringnmatch01(o1.obscode,o2.obscode,3)==-1) || (fabs(o1.MJD-o2.MJD)<=IMAGETIMETOL/SOLARDAY && stringnmatch01(o1.obscode,o2.obscode,3)==0 && o1.RA<o2.RA));
-//  }
-//};
 
 class early_imlg2{
 public:
@@ -745,17 +739,9 @@ public:
 class early_hlimage{
 public:
   inline bool operator() (const hlimage& i1, const hlimage& i2) {
-    return(i1.MJD < i2.MJD-IMAGETIMETOL/SOLARDAY || (fabs(i1.MJD-i2.MJD)<=IMAGETIMETOL/SOLARDAY && stringnmatch01(i1.obscode,i2.obscode,3)==-1) || (fabs(i1.MJD-i2.MJD)<=IMAGETIMETOL/SOLARDAY && stringnmatch01(i1.obscode,i2.obscode,3)==0 && i1.RA<i2.RA));
+    return(i1.MJD < i2.MJD || (i1.MJD == i2.MJD && stringnmatch01(i1.obscode,i2.obscode,3)==-1));
   }
-}; // Changed on March 21, 2025 to exactly match early_hldet.
-   // Result: images may not be strictly time-ordered, but order of detections and images will be strictly identical.
-
-//class early_hlimage{
-//public:
-//  inline bool operator() (const hlimage& i1, const hlimage& i2) {
-//    return(i1.MJD < i2.MJD || (i1.MJD == i2.MJD && stringnmatch01(i1.obscode,i2.obscode,3)==-1));
-//  }
-//};
+};
 
 class longpair{ // Pair of long integers
 public:
@@ -1906,19 +1892,31 @@ int read_orbline(ifstream &instream1, asteroid_orbitLD &oneorb);
 int read_orbline(string lnfromfile, asteroid_orbit &oneorb);
 int zenith_radecLD(long double detmjd, long double lon, long double obscos, long double obssine, long double &RA, long double &Dec);
 int matXmat(const vector <vector <long double>> &A, const vector <vector <long double>> &B, vector <vector <long double>> &C);
+int matXmat(const vector <vector <double>> &A, const vector <vector <double>> &B, vector <vector <double>> &C);
 int matXvec(const vector <vector <long double>> &A, const vector <long double> &invec, vector <long double> &outvec);
+int matXvec(const vector <vector <double>> &A, const vector <double> &invec, vector <double> &outvec);
 int vecXmat(const vector <long double> &invec, const vector <vector <long double>> &A, vector <long double> &outvec);
+int vecXmat(const vector <double> &invec, const vector <vector <double>> &A, vector <double> &outvec);
 int matrix_transpose(const vector <vector <long double>> &A, vector <vector <long double>> &Atrans);
+int matrix_transpose(const vector <vector <double>> &A, vector <vector <double>> &Atrans);
 int vector_outerprod(const vector <long double> &u, const vector <long double> &v, vector <vector <long double>> &A);
+int vector_outerprod(const vector <double> &u, const vector <double> &v, vector <vector <double>> &A);
 int orbgrad01a(long double oldchi, long double pos_step, long double pvtimescale, int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, const vector <point3LD> &observerpos, const vector <long double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, const point3LD startpos, const point3LD startvel, long double mjdstart, vector <long double> &gradient);
 int orbgrad01b(long double oldchi, long double pos_step, long double pvtimescale, int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, const vector <point3LD> &observerpos, const vector <long double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, const point3LD startpos, const point3LD startvel, int planetfile_refpoint, vector <long double> &gradient);
+int orbgrad01_Kep(double oldchi, double pos_step, double pvtimescale, const vector <point3d> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, const point3d startpos, const point3d startvel, double mjdstart, vector <double> &gradient);
 long double nvecabs(const vector <long double> &normvec);
 long double nvecnorm(vector <long double> &normvec);
 long double nvecdotprod(const vector <long double> &vec1, const vector <long double> &vec2);
+double nvecabs(const vector <double> &normvec);
+double nvecnorm(vector <double> &normvec);
+double nvecdotprod(const vector <double> &vec1, const vector <double> &vec2);
 long double orb1Dmin01a(long double oldchi, long double inputstep, long double pvtimescale, long double minchichange, const vector <long double> &unitdir, int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, const vector <point3LD> &observerpos, const vector <long double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, const point3LD startpos, const point3LD startvel, long double mjdstart, vector <double> &fitRA, vector <double> &fitDec, vector <double> &fitresid, long double *step, point3LD &newpos, point3LD &newvel);
 long double orb1Dmin01b(long double oldchi, long double inputstep, long double pvtimescale, long double minchichange, const vector <long double> &unitdir, int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, const vector <point3LD> &observerpos, const vector <long double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, const point3LD startpos, const point3LD startvel, int planetfile_refpoint, vector <double> &fitRA, vector <double> &fitDec, vector <double> &fitresid, long double *step, point3LD &newpos, point3LD &newvel);
+double orb1Dmin01_Kep(double oldchi, double inputstep, double pvtimescale, double minchichange, const vector <double> &unitdir, const vector <point3d> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, const point3d startpos, const point3d startvel, double mjdstart, vector <double> &fitRA, vector <double> &fitDec, vector <double> &fitresid, long double *step, point3d &newpos, point3d &newvel);
 int arctrace01(int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, const vector <point3LD> &Sunpos, const vector <point3LD> &Sunvel, const vector <point3LD> &observerpos, const vector <long double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, double kepspan, long double minchichange, const point3LD initpos, const point3LD initvel, vector <double> &bestRA, vector <double> &bestDec, vector <double> &bestresid, point3LD &newpos, point3LD &newvel, long double *chisquared, long double *astromrms, int *refpoint);
 int arc6D01(int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, const vector <point3LD> &Sunpos, const vector <point3LD> &Sunvel, const vector <point3LD> &observer_barypos, const vector <long double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, long double minchichange, int planetfile_refpoint, const point3LD initpos, const point3LD initvel, vector <double> &bestRA, vector <double> &bestDec, vector <double> &bestresid, point3LD &newpos, point3LD &newvel, long double *chisquared, long double *astromrms);
-int arctrace02(int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, const vector <point3LD> &Sunpos, const vector <point3LD> &Sunvel, const vector <point3LD> &observerpos, const vector <long double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, double kepspan, long double minchichange, const point3LD initpos, const point3LD initvel, vector <double> &bestRA, vector <double> &bestDec, vector <double> &bestresid, point3LD &newpos, point3LD &newvel, long double *chisquared, long double *astromrms, int *refpoint);
+int arc6DKep(const vector <point3d> &observer_heliopos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, double minchichange, double mjdstart, const point3d initpos, const point3d initvel, vector <double> &bestRA, vector <double> &bestDec, vector <double> &bestresid, point3d &newpos, point3d &newvel, double *chisquared, double *astromrms);
+int arctrace02(int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, const vector <point3LD> &Sunpos, const vector <point3LD> &Sunvel, const vector <point3LD> &observerpos, const vector <long double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, double kepspan, long double minchichange, vector <double> &bestRA, vector <double> &bestDec, vector <double> &bestresid, point3LD &newpos, point3LD &newvel, long double *chisquared, long double *astromrms, int *refpoint);
+int arctrace03(int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, const vector <point3LD> &Sunpos, const vector <point3LD> &Sunvel, const vector <point3LD> &observerpos, const vector <long double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, double kepspan, long double minchichange, vector <double> &bestRA, vector <double> &bestDec, vector <double> &bestresid, point3LD &newpos, point3LD &newvel, long double *chisquared, long double *astromrms, int *refpoint);
 int eigensolve01(const vector <vector <long double>> &A, vector <vector <long double>> &E, vector <long double> &eigenvals, long double eigenoffmax, long eigenitmax);
 int eigensolve02(const vector <vector <long double>> &A, vector <vector <long double>> &E, vector <long double> &eigenvals, long double eigenoffmax, long eigenitmax);
