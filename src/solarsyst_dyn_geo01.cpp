@@ -32152,6 +32152,7 @@ int link_purify(const vector <hlimage> &image_log, const vector <hldet> &detvec,
   hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
   vector <long> clustind;
   vector <hldet> clusterdets;
+  vector <hldet> clusterdets2;
   vector <hlclust> holdclust;
   int ptnum,ptct,istimedup,detsused;
   long rejmax,rejnum;
@@ -32232,6 +32233,32 @@ int link_purify(const vector <hlimage> &image_log, const vector <hldet> &detvec,
 	clusterdets[i].index=clustind[i]; // Saves indices, to track later sorting.
       }
       sort(clusterdets.begin(), clusterdets.end(), early_hldet());
+      // Change added on April 15, 2025: remove exact duplicates
+      clusterdets2 = clusterdets;
+      clusterdets={};
+      ptct=0;
+      clusterdets.push_back(clusterdets2[ptct]);
+      for(ptct=1;ptct<ptnum;ptct++) {
+	i=clusterdets.size()-1;
+	int is_identical=0;
+	// Loop back through already-loaded points in clusterdets,
+	// terminating the loop as soon as we either find an identical
+	// line or get out of the regime in the sorted list where
+	// identical lines would be possible.
+	while(i>=0 && fabs(clusterdets[i].MJD-clusterdets2[ptct].MJD)<=IMAGETIMETOL/SOLARDAY && stringnmatch01(clusterdets[i].obscode,clusterdets2[ptct].obscode,3)==0 && clusterdets[i].RA==clusterdets2[ptct].RA && is_identical==0) {
+	  // RA and obscode are already confirmed to be identical; check Dec and MJD to see if point i is truly identical to ptct. 
+	  if(clusterdets[i].MJD==clusterdets2[ptct].MJD && clusterdets[i].Dec==clusterdets2[ptct].Dec) is_identical=1;
+	  i--;
+	}
+	if(is_identical==0) {
+	  // Detection ptct is unique; add it to the operation vector
+	  clusterdets.push_back(clusterdets2[ptct]);
+	}
+      }
+      // Re-define ptnum based on de-duplicated vector
+      ptnum = clusterdets.size();
+      // Finished removing exact duplicates; end new code added April 15.
+      // Check for time duplicates (which now, logically, must differ in RA, Dec, and/or obscode).
       istimedup=0;
       for(ptct=1; ptct<ptnum; ptct++) {
 	if(clusterdets[ptct-1].MJD == clusterdets[ptct].MJD && stringnmatch01(clusterdets[ptct-1].obscode,clusterdets[ptct].obscode,3)==0) istimedup=1;
@@ -32349,7 +32376,34 @@ int link_purify(const vector <hlimage> &image_log, const vector <hldet> &detvec,
 	// CLUSTER IS GOOD
 	if(config.verbose>=1 || inclustct%1000==0) cout << "Writing out good cluster " << inclustct << "\n";
 	// Recalculate clustermetric
-	clustmetric = intpowD(double(onecluster.uniquepoints),config.ptpow)*intpowD(double(onecluster.obsnights),config.nightpow)*intpowD(onecluster.timespan,config.timepow);	  
+	if(config.ptpow>=0 && config.nightpow>=0) {
+	  // Calculate the cluster metric normally
+	  clustmetric = intpowD(double(onecluster.uniquepoints),config.ptpow)*intpowD(double(onecluster.obsnights),config.nightpow)*intpowD(onecluster.timespan,config.timepow);
+	} else {
+	  // New option added April 16, 2025:
+	  // Setting config.ptpow or config.nightpow to any negative value
+	  // triggers a new sort of metric, equal to the products of all
+	  // the observations per night multiplied together.
+	  vector <int> obs_per_night;
+	  int obs_this_night=1;
+	  int first_obs_tonight=0;
+	  for(ptct=1;ptct<ptnum;ptct++) {
+	    if((clusterdets[ptct].MJD-clusterdets[ptct-1].MJD)<NIGHTSTEP && (clusterdets[ptct].MJD-clusterdets[first_obs_tonight].MJD)<1.0) {
+	      // Detection ptct is on the same night as ptct-1. Augment the count of observations for this night.
+	      obs_this_night++;
+	    } else {
+	      // We've transitioned to a new night. Record the number of observations on the last night
+	      obs_per_night.push_back(obs_this_night);
+	      obs_this_night=1;
+	      first_obs_tonight=ptct;
+	    }
+	  }
+	  // Handle a final night
+	  obs_per_night.push_back(obs_this_night);
+	  clustmetric = double(obs_per_night[0]);
+	  for(i=1;i<long(obs_per_night.size());i++) clustmetric*=double(obs_per_night[i]);
+	  clustmetric*=intpowD(onecluster.timespan,config.timepow);
+	}
 	// Include the astrometric RMS value in the cluster metric and the RMS vector
 	onecluster.astromRMS = astromrms; // rmsvec[3]: astrometric rms in arcsec.
 	onecluster.metric = clustmetric/intpowD(astromrms,config.rmspow); // Under the default value rmspow=2, this is equivalent
@@ -32529,7 +32583,34 @@ int link_purify(const vector <hlimage> &image_log, const vector <hldet> &detvec,
 	    onecluster.uniquepoints = ptnum;
 	    onecluster.obsnights = obsnights;
 	    // Recalculate clustermetric
-	    clustmetric = intpowD(double(onecluster.uniquepoints),config.ptpow)*intpowD(double(onecluster.obsnights),config.nightpow)*intpowD(onecluster.timespan,config.timepow);	  
+	    if(config.ptpow>=0 && config.nightpow>=0) {
+	      // Calculate the cluster metric normally
+	      clustmetric = intpowD(double(onecluster.uniquepoints),config.ptpow)*intpowD(double(onecluster.obsnights),config.nightpow)*intpowD(onecluster.timespan,config.timepow);
+	    } else {
+	      // New option added April 16, 2025:
+	      // Setting config.ptpow or config.nightpow to any negative value
+	      // triggers a new sort of metric, equal to the products of all
+	      // the observations per night multiplied together.
+	      vector <int> obs_per_night;
+	      int obs_this_night=1;
+	      int first_obs_tonight=0;
+	      for(ptct=1;ptct<ptnum;ptct++) {
+		if((clusterdets[ptct].MJD-clusterdets[ptct-1].MJD)<NIGHTSTEP && (clusterdets[ptct].MJD-clusterdets[first_obs_tonight].MJD)<1.0) {
+		  // Detection ptct is on the same night as ptct-1. Augment the count of observations for this night.
+		  obs_this_night++;
+		} else {
+		  // We've transitioned to a new night. Record the number of observations on the last night
+		  obs_per_night.push_back(obs_this_night);
+		  obs_this_night=1;
+		  first_obs_tonight=ptct;
+		}
+	      }
+	      // Handle a final night
+	      obs_per_night.push_back(obs_this_night);
+	      clustmetric = double(obs_per_night[0]);
+	      for(i=1;i<long(obs_per_night.size());i++) clustmetric*=double(obs_per_night[i]);
+	      clustmetric*=intpowD(onecluster.timespan,config.timepow);
+	    }
 	    // Include the astrometric RMS value in the cluster metric and the RMS vector
 	    onecluster.astromRMS = astromrms; // rmsvec[3]: astrometric rms in arcsec.
 	    onecluster.metric = clustmetric/intpowD(astromrms,config.rmspow); // Under the default value rmspow=2, this is equivalent
@@ -37966,6 +38047,8 @@ long double orb1Dmin01b(long double oldchi, long double inputstep, long double p
   long double lgstep = inputstep;
   int i;
   long itct=0;
+  int verbose=0;
+  
   for(i=0;i<=3;i++) {
     steps.push_back(0.0l);
     chivals.push_back(0.0l);
@@ -37988,7 +38071,7 @@ long double orb1Dmin01b(long double oldchi, long double inputstep, long double p
   newchi = tortoisechi03(polyorder,planetnum,planetmjd,planetmasses,planetpos,observerpos,obsMJD,obsRA,obsDec,sigastrom,testpos,testvel,planetfile_refpoint,tempRA,tempDec,resid);
 
   itct++;
-  cout << "1-D iteration " << itct << ": bracketing, chisq = " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << teststep << "\n";
+  if(verbose>0) cout << "1-D iteration " << itct << ": bracketing, chisq = " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << teststep << "\n";
   if(newchi>oldchi) {
     // This point will be the high value for the bracket
     steps[2] = teststep;
@@ -38004,7 +38087,7 @@ long double orb1Dmin01b(long double oldchi, long double inputstep, long double p
       testvel.z = startvel.z + unitdir[5]*teststep/pvtimescale;
       newchi = tortoisechi03(polyorder,planetnum,planetmjd,planetmasses,planetpos,observerpos,obsMJD,obsRA,obsDec,sigastrom,testpos,testvel,planetfile_refpoint,tempRA,tempDec,resid);
       itct++;
-      cout << "1-D iteration " << itct << ": bracketing, chisq = " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << teststep << "\n";
+      if(verbose>0) cout << "1-D iteration " << itct << ": bracketing, chisq = " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << teststep << "\n";
     }
     if(newchi>oldchi) {
       // Bracketing failed
@@ -38035,7 +38118,7 @@ long double orb1Dmin01b(long double oldchi, long double inputstep, long double p
       testvel.z = startvel.z + unitdir[5]*teststep/pvtimescale;
       newchi = tortoisechi03(polyorder,planetnum,planetmjd,planetmasses,planetpos,observerpos,obsMJD,obsRA,obsDec,sigastrom,testpos,testvel,planetfile_refpoint,tempRA,tempDec,resid);
       itct++;
-      cout << "1-D iteration " << itct << ": bracketing, chisq = " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << teststep << "\n";
+      if(verbose>0) cout << "1-D iteration " << itct << ": bracketing, chisq = " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << teststep << "\n";
     }
     // If we get here, a higher (worse) point has been identified. Load it
     steps[2] = teststep;
@@ -38058,7 +38141,7 @@ long double orb1Dmin01b(long double oldchi, long double inputstep, long double p
       testvel.z = startvel.z + unitdir[5]*teststep/pvtimescale;
       newchi = tortoisechi03(polyorder,planetnum,planetmjd,planetmasses,planetpos,observerpos,obsMJD,obsRA,obsDec,sigastrom,testpos,testvel,planetfile_refpoint,tempRA,tempDec,resid);
       itct++;
-      cout << "1-D iteration " << itct << ": searching, chisq = " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << teststep << "\n";
+      if(verbose>0) cout << "1-D iteration " << itct << ": searching, chisq = " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << teststep << "\n";
       if(newchi<chivals[1]) {
 	// We've found a new best point. Change bracket from
 	// 0, 1, 2 into 1, NEW, 2
@@ -38089,7 +38172,7 @@ long double orb1Dmin01b(long double oldchi, long double inputstep, long double p
       testvel.z = startvel.z + unitdir[5]*teststep/pvtimescale;
       newchi = tortoisechi03(polyorder,planetnum,planetmjd,planetmasses,planetpos,observerpos,obsMJD,obsRA,obsDec,sigastrom,testpos,testvel,planetfile_refpoint,tempRA,tempDec,resid);
       itct++;
-      cout << "1-D iteration " << itct << ": searching, chisq = " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << teststep << "\n";
+      if(verbose>0) cout << "1-D iteration " << itct << ": searching, chisq = " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << teststep << "\n";
       if(newchi<chivals[1]) {
 	// We've found a new best point. Change bracket from
 	// 0, 1, 2 to 0, NEW, 1.
@@ -38144,6 +38227,7 @@ double orb1Dmin01_Kep(double oldchi, double inputstep, double pvtimescale, doubl
     chivals.push_back(0.0l);
   }
   double semimajor_axis, eccen;
+  int verbose=0;
   
   // Bracket the minimum: that is, find three values for the step,
   // of which the middle one produces the smallest chi-squared value.
@@ -38162,7 +38246,7 @@ double orb1Dmin01_Kep(double oldchi, double inputstep, double pvtimescale, doubl
   newchi = orbitchi_univar(testpos, testvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, tempRA, tempDec, resid, &semimajor_axis, &eccen);
 
   itct++;
-  cout << "1-D iteration " << itct << ": bracketing, chisq = " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << teststep << "\n";
+  if(verbose>0) cout << "1-D iteration " << itct << ": bracketing, chisq = " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << teststep << "\n";
   if(newchi>oldchi) {
     // This point will be the high value for the bracket
     steps[2] = teststep;
@@ -38178,7 +38262,7 @@ double orb1Dmin01_Kep(double oldchi, double inputstep, double pvtimescale, doubl
       testvel.z = startvel.z + unitdir[5]*teststep/pvtimescale;
       newchi = orbitchi_univar(testpos, testvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, tempRA, tempDec, resid, &semimajor_axis, &eccen);
       itct++;
-      cout << "1-D iteration " << itct << ": bracketing, chisq = " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << teststep << "\n";
+      if(verbose>0) cout << "1-D iteration " << itct << ": bracketing, chisq = " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << teststep << "\n";
     }
     if(newchi>oldchi) {
       // Bracketing failed
@@ -38209,7 +38293,7 @@ double orb1Dmin01_Kep(double oldchi, double inputstep, double pvtimescale, doubl
       testvel.z = startvel.z + unitdir[5]*teststep/pvtimescale;
       newchi = orbitchi_univar(testpos, testvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, tempRA, tempDec, resid, &semimajor_axis, &eccen);
       itct++;
-      cout << "1-D iteration " << itct << ": bracketing, chisq = " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << teststep << "\n";
+      if(verbose>0) cout << "1-D iteration " << itct << ": bracketing, chisq = " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << teststep << "\n";
     }
     // If we get here, a higher (worse) point has been identified. Load it
     steps[2] = teststep;
@@ -38232,7 +38316,7 @@ double orb1Dmin01_Kep(double oldchi, double inputstep, double pvtimescale, doubl
       testvel.z = startvel.z + unitdir[5]*teststep/pvtimescale;
       newchi = orbitchi_univar(testpos, testvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, tempRA, tempDec, resid, &semimajor_axis, &eccen);
       itct++;
-      cout << "1-D iteration " << itct << ": searching, chisq = " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << teststep << "\n";
+      if(verbose>0) cout << "1-D iteration " << itct << ": searching, chisq = " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << teststep << "\n";
       if(newchi<chivals[1]) {
 	// We've found a new best point. Change bracket from
 	// 0, 1, 2 into 1, NEW, 2
@@ -38263,7 +38347,7 @@ double orb1Dmin01_Kep(double oldchi, double inputstep, double pvtimescale, doubl
       testvel.z = startvel.z + unitdir[5]*teststep/pvtimescale;
       newchi = orbitchi_univar(testpos, testvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, tempRA, tempDec, resid, &semimajor_axis, &eccen);
       itct++;
-      cout << "1-D iteration " << itct << ": searching, chisq = " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << teststep << "\n";
+      if(verbose>0) cout << "1-D iteration " << itct << ": searching, chisq = " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << teststep << "\n";
       if(newchi<chivals[1]) {
 	// We've found a new best point. Change bracket from
 	// 0, 1, 2 to 0, NEW, 1.
@@ -38748,7 +38832,8 @@ int arc6D01(int polyorder, int planetnum, const vector <long double> &planetmjd,
   long double chisq=0.0l;
   long double newchi=0.0l;
   long double bestchi=0.0l;
- 
+  int verbose=0;
+  
   fitDec = fitRA = fitresid = {};
   chisq = tortoisechi03(polyorder,planetnum,planetmjd,planetmasses,planetpos,observer_barypos,obsMJD,obsRA,obsDec,sigastrom,startpos,startvel,planetfile_refpoint,fitRA,fitDec,fitresid);
   cout << "Chi-square value for input state vector is " << chisq << "\n";
@@ -38869,13 +38954,13 @@ int arc6D01(int polyorder, int planetnum, const vector <long double> &planetmjd,
     thisway = statevecdiff;
     ldval = nvecnorm(thisway); // Renormalize
     for(i=0;i<6;i++) thisway[i] *= -1.0l; // Sign-flip: we want to go DOWN, not up.
-    cout << "Search vector: " << fixed << setprecision(6) << thisway[0] << " "   << thisway[1] << " "   << thisway[2] << " "   << thisway[3] << " "   << thisway[4] << " "   << thisway[5] << "\n";
+    if(verbose>0) cout << "Search vector: " << fixed << setprecision(6) << thisway[0] << " "   << thisway[1] << " "   << thisway[2] << " "   << thisway[3] << " "   << thisway[4] << " "   << thisway[5] << "\n";
 
     // Perform one-dimensional optimization along the direction defined by
     // the Hessian-scaled gradient vector thisway
     newchi = orb1Dmin01b(chisq, poschange, pvtimescale, minchichange, thisway, polyorder, planetnum, planetmjd, planetmasses, planetpos, observer_barypos, obsMJD, obsRA, obsDec, sigastrom, startpos, startvel, planetfile_refpoint, fitRA, fitDec, fitresid, &beststep, tppos, tpvel);
     
-    cout << "Iteration " << itct << ": chi-square value for input state vector is " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << pos_step  << " motion: " << fixed << setprecision(3) << beststep << ", chichange = " << chichange << "\n";
+    if(verbose>0) cout << "Iteration " << itct << ": chi-square value for input state vector is " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << pos_step  << " motion: " << fixed << setprecision(3) << beststep << ", chichange = " << chichange << "\n";
 
     if(newchi>0.0l && newchi<chisq) {
       // The 1-D search succeeded.
@@ -38979,6 +39064,7 @@ int arc6DKep(const vector <point3d> &observer_heliopos, const vector <double> &o
   double newchi=0.0l;
   double bestchi=0.0l;
   double semimajor_axis,eccen;
+  int verbose=0;
  
   fitDec = fitRA = fitresid = {};
   chisq = orbitchi_univar(startpos, startvel, mjdstart, observer_heliopos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, fitresid, &semimajor_axis, &eccen);
@@ -39100,13 +39186,13 @@ int arc6DKep(const vector <point3d> &observer_heliopos, const vector <double> &o
     thisway = statevecdiff;
     ldval = nvecnorm(thisway); // Renormalize
     for(i=0;i<6;i++) thisway[i] *= -1.0l; // Sign-flip: we want to go DOWN, not up.
-    cout << "Search vector: " << fixed << setprecision(6) << thisway[0] << " "   << thisway[1] << " "   << thisway[2] << " "   << thisway[3] << " "   << thisway[4] << " "   << thisway[5] << "\n";
+    if(verbose>0) cout << "Search vector: " << fixed << setprecision(6) << thisway[0] << " "   << thisway[1] << " "   << thisway[2] << " "   << thisway[3] << " "   << thisway[4] << " "   << thisway[5] << "\n";
 
     // Perform one-dimensional optimization along the direction defined by
     // the Hessian-scaled gradient vector thisway
     newchi = orb1Dmin01_Kep(chisq, poschange, pvtimescale, minchichange, thisway, observer_heliopos, obsMJD, obsRA, obsDec, sigastrom, startpos, startvel, mjdstart, fitRA, fitDec, fitresid, &beststep, tppos, tpvel);
     
-    cout << "Iteration " << itct << ": chi-square value for input state vector is " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << pos_step  << " motion: " << fixed << setprecision(3) << beststep << ", chichange = " << chichange << "\n";
+    if(verbose>0) cout << "Iteration " << itct << ": chi-square value for input state vector is " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << pos_step  << " motion: " << fixed << setprecision(3) << beststep << ", chichange = " << chichange << "\n";
 
     if(newchi>0.0l && newchi<chisq) {
       // The 1-D search succeeded.
@@ -39343,9 +39429,9 @@ int arctrace03(int polyorder, int planetnum, const vector <long double> &planetm
     Kepsig.push_back(sigastrom[i]);
   }
   cout << "kepnum = " << kepnum << " " << KepMJD.size() << "\n";
-  for(i=0;i<kepnum;i++) {
-    cout << Kepobserverpos[i].x << " " << Kepobserverpos[i].y << " " << Kepobserverpos[i].z << " " << KepMJD[i] << " " << KepRA[i] << " " << KepDec[i] << "\n";
-  }
+  //for(i=0;i<kepnum;i++) {
+  //  cout << Kepobserverpos[i].x << " " << Kepobserverpos[i].y << " " << Kepobserverpos[i].z << " " << KepMJD[i] << " " << KepRA[i] << " " << KepDec[i] << "\n";
+  //}
   fitDec = fitRA = fitresid = orbit = {};
   chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, simptype, ftol, 1, kepnum, Kepobserverpos, KepMJD, KepRA, KepDec, Kepsig, fitRA, fitDec, fitresid, orbit, verbose);
   cout << "Keplerian fit produced chisq = " << chisq << "\n";
