@@ -4,6 +4,4 @@ pybind11
 numpy
 setuptools_scm
 twine
-build
-auditwheel
-patchelf
+conda-build
