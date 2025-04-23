@@ -32179,6 +32179,7 @@ int link_purify(const vector <hlimage> &image_log, const vector <hldet> &detvec,
   longpair c2d = longpair(0,0);
   char rating[SHORTSTRINGLEN];
   int status=1;
+  int is_identical=0;
   
   make_ivec(detnum, detusedvec); // All the entries are guaranteed to be 0.
 
@@ -32236,11 +32237,13 @@ int link_purify(const vector <hlimage> &image_log, const vector <hldet> &detvec,
       // Change added on April 15, 2025: remove exact duplicates
       clusterdets2 = clusterdets;
       clusterdets={};
+      clustind = {};
       ptct=0;
       clusterdets.push_back(clusterdets2[ptct]);
+      clustind.push_back(clusterdets2[ptct].index);
       for(ptct=1;ptct<ptnum;ptct++) {
 	i=clusterdets.size()-1;
-	int is_identical=0;
+	is_identical=0;
 	// Loop back through already-loaded points in clusterdets,
 	// terminating the loop as soon as we either find an identical
 	// line or get out of the regime in the sorted list where
@@ -32253,10 +32256,12 @@ int link_purify(const vector <hlimage> &image_log, const vector <hldet> &detvec,
 	if(is_identical==0) {
 	  // Detection ptct is unique; add it to the operation vector
 	  clusterdets.push_back(clusterdets2[ptct]);
+	  clustind.push_back(clusterdets2[ptct].index);
 	}
       }
       // Re-define ptnum based on de-duplicated vector
       ptnum = clusterdets.size();
+      onecluster.uniquepoints = ptnum;
       // Finished removing exact duplicates; end new code added April 15.
       // Check for time duplicates (which now, logically, must differ in RA, Dec, and/or obscode).
       istimedup=0;
