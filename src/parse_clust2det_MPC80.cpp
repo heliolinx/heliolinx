@@ -196,7 +196,7 @@ int main(int argc, char *argv[])
     return(status);
   }
   detnum = cluster_detvec.size();
-  cout << "Wrote cluster detection vector with " << detnum << "entries\n";
+  cout << "Wrote cluster detection vector with " << detnum << " entries\n";
   
   outstream1.open(outfile);
   cout << "Writing " << inclustvec.size() << " clusters to output file " << outfile << "\n";

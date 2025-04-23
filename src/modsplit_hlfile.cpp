@@ -126,7 +126,7 @@ int main(int argc, char *argv[])
 
   cout << "input summary file " << sumfile << "\n";
   cout << "input cluster-to-detection file " << clust2detfile << "\n";
-  cout << "Files will be split into " << splitnum << "parts\n";
+  cout << "Files will be split into " << splitnum << " parts\n";
   cout << "Root name for output lists: " << rootname << "\n";
 
   charnum = sumfile.size();
