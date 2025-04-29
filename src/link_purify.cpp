@@ -349,7 +349,7 @@ int main(int argc, char *argv[])
   } else {
     cout << "Because the cluster-metric exponent for the number of unique points (which is set to " << config.ptpow << ") and/or\n";
     cout << "the corresponding exponent for the number of unique nights (which is set to " << config.nightpow << ") is negative,\n";
-    cout << "a special (and recommneded) case is triggered in which the cluster metric\n";
+    cout << "a special (and recommended) case is triggered in which the cluster metric\n";
     cout << "will be the product of the numbers of unique detections on every night that had some detections.\n";
     cout << "E.g., an object observed twice per night on three nights would get a metric of 2*2*2 = 8.\n";
   }
