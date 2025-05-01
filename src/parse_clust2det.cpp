@@ -51,6 +51,12 @@ int main(int argc, char *argv[])
   double avg_det_qual=0.0l;
   double magrange,magmean,magrms,minGCR,maxGCR;
   magrange = magmean = magrms = minGCR = maxGCR = 0.0l;
+  double crossquad,alongquad,GCRA,GCDec,meantime;
+  crossquad = alongquad = GCRA = GCDec = meantime = 0.0;
+  vector <double> crossvec;
+  vector <double> alongvec;
+  vector <double> timevec;
+  vector <double> quadfitvec;
   
   if(argc<9) {
     show_usage();
@@ -225,6 +231,44 @@ int main(int argc, char *argv[])
 	if(clustvec[i].mag>0.0l) magvec.push_back(clustvec[i].mag);
       }
       avg_det_qual/=double(clustvec.size());
+      // New steps added April 30, 2025: perform global Great Circle fit,
+      // and calculate the quadratic divergence.
+      greatcircfit(clustvec, poleRA, poleDec, angvel, PA, crosstrack, alongtrack);
+      meantime = 0.0;
+      for(i=0; i<long(clustvec.size()); i++) meantime+=clustvec[i].MJD/double(clustvec.size());
+      crossvec = alongvec = timevec = {};
+      for(i=0; i<long(clustvec.size()); i++) {
+	poleswitch02(clustvec[i].RA, clustvec[i].Dec, poleRA, poleDec, 90.0, GCRA, GCDec);
+	alongvec.push_back(GCRA);
+	crossvec.push_back(GCDec);
+	timevec.push_back(clustvec[i].MJD-meantime);
+      }
+      // Unwrap alongvec, if necessary
+      double unwrapping = 0.0l;
+      for(i=1; i<long(clustvec.size()); i++) {
+	if(alongvec[i] > alongvec[i-1]+180.0) {
+	  // We were going downward and wrapped across zero
+	  // into values just slightly less than 360 degrees
+	  unwrapping = -360.0l;
+	}
+	else if(alongvec[i] < alongvec[i-1]-180.0) {
+	  // We were going upward and wrapped across zero
+	  // into values just slightly greater than zero
+	  unwrapping = +360.0l;
+	}
+	alongvec[i] += unwrapping;
+      }
+      // Perform quadratic fit to along-track deviations from Great Circle
+      quadfitvec={};
+      polyfit01(alongvec, timevec, int(clustvec.size()), 2, quadfitvec);
+      cout << "Parameters of along-track fit: " << quadfitvec[0] << " " << quadfitvec[1] << " " << quadfitvec[2] << "\n";
+      alongquad = quadfitvec[2];
+      // Perform quadratic fit to cross-track deviations from Great Circle
+      quadfitvec={};
+      polyfit01(crossvec, timevec, int(clustvec.size()), 2, quadfitvec);
+      cout << "Parameters of cross-track fit: " << quadfitvec[0] << " " << quadfitvec[1] << " " << quadfitvec[2] << "\n";
+      crossquad = quadfitvec[2];
+      
       // Loop over clustvec to extract individual tracklets
       trackvec={};
       nightstepvec={};
@@ -336,7 +380,7 @@ int main(int argc, char *argv[])
       }
       magvec={};
       
-      outstream1 << "\n#clusternum,posRMS,velRMS,totRMS,astromRMS,timespan,uniquepoints,obsnights,metric,orbit_a,orbit_e,orbit_MJD,orbitX,orbitY,orbitZ,orbitVX,orbitVY,orbitVZ,orbit_eval_count,avg_det_qual,max_known_obj,minvel,maxvel,minGCR,maxGCR,minpa,maxpa,mintimespan,maxtimespan,minarc,maxarc,stringID,min_nightstep,max_nightstep,magmean,magrms,magrange,rating\n";
+      outstream1 << "\n#clusternum,posRMS,velRMS,totRMS,astromRMS,timespan,uniquepoints,obsnights,metric,orbit_a,orbit_e,orbit_MJD,orbitX,orbitY,orbitZ,orbitVX,orbitVY,orbitVZ,orbit_eval_count,avg_det_qual,max_known_obj,minvel,maxvel,minGCR,maxGCR,minpa,maxpa,mintimespan,maxtimespan,minarc,maxarc,stringID,min_nightstep,max_nightstep,magmean,magrms,magrange,rating,crossaccel,alongaccel,totalaccel\n";
       outstream1 << fixed << setprecision(3) << inclustvec[clustct].clusternum << "," << inclustvec[clustct].posRMS << "," << inclustvec[clustct].velRMS << "," << inclustvec[clustct].totRMS << ",";
       outstream1 << fixed << setprecision(4) << inclustvec[clustct].astromRMS << ",";
       outstream1 << fixed << setprecision(6) << inclustvec[clustct].timespan << "," << inclustvec[clustct].uniquepoints << "," << inclustvec[clustct].obsnights << "," << inclustvec[clustct].metric << ",";
@@ -344,7 +388,7 @@ int main(int argc, char *argv[])
       outstream1 << fixed << setprecision(1) << inclustvec[clustct].orbitX << "," << inclustvec[clustct].orbitY << "," << inclustvec[clustct].orbitZ << ",";
       outstream1 << fixed << setprecision(4) << inclustvec[clustct].orbitVX << "," << inclustvec[clustct].orbitVY << "," << inclustvec[clustct].orbitVZ << "," << inclustvec[clustct].orbit_eval_count << ",";
       outstream1 << fixed << setprecision(1) << avg_det_qual << "," << max_known_obj << ",";
-      outstream1 << fixed << setprecision(6) << angvelvec[0] << "," << angvelvec[tracknum-1] << "," << minGCR << "," << maxGCR << "," << PAvec[0] << "," << PAvec[tracknum-1] << "," << timespanvec[0] << "," << timespanvec[tracknum-1] << "," << arcvec[0] << "," << arcvec[tracknum-1] << "," << clustvec[0].idstring << "," << min_nightstep << "," << max_nightstep << "," << magmean << "," << magrms << "," << magrange << "," << inclustvec[clustct].rating << "\n";
+      outstream1 << fixed << setprecision(6) << angvelvec[0] << "," << angvelvec[tracknum-1] << "," << minGCR << "," << maxGCR << "," << PAvec[0] << "," << PAvec[tracknum-1] << "," << timespanvec[0] << "," << timespanvec[tracknum-1] << "," << arcvec[0] << "," << arcvec[tracknum-1] << "," << clustvec[0].idstring << "," << min_nightstep << "," << max_nightstep << "," << magmean << "," << magrms << "," << magrange << "," << inclustvec[clustct].rating << "," << crossquad << "," << alongquad << "," << sqrt(crossquad*crossquad + alongquad*alongquad) << "\n";
 	
       // Write this data to the output file
       outstream1 << "#MJD,RA,Dec,mag,trail_len,trail_PA,sigmag,sig_across,sig_along,image,idstring,band,obscode,known_obj,det_qual,clusternum\n";

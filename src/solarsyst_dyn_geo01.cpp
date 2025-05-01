@@ -9346,17 +9346,13 @@ int linfit01(const vector <double> &x, const vector <double> &y, const vector <d
 // yvec (length pnum) as a linear combination of fitnum other
 // vectors supplied in the matrix xmat (size fitnum x pnum). The
 // vector of best-fit coefficients for xmat is given in avec.
-// NOTE: there is an weighted-fit function of the same name, which
-// allocates arrays ahead of time instead of using vector push_back,
-// as here. I think the current function and its sisters below is
-// probably better in C++.
 int multilinfit01(const vector <double> &yvec, const vector <vector <double>> &xmat, int pnum, int fitnum, vector <double> &avec, int verbose)
 {
   double fitpar=0l;
   vector <double> fitvec;
   vector <vector <double>> fitmat;
   int pct,fitct,k,status;
-  
+
   // Load fitmat for input into solvematrix01
   for(fitct=0;fitct<fitnum;fitct++)
     {
@@ -9378,6 +9374,31 @@ int multilinfit01(const vector <double> &yvec, const vector <vector <double>> &x
   status=solvematrix01(fitmat,fitnum,avec,verbose);
   return(status);
 }
+
+// polyfit01: April 30, 2025
+// Finds the unweighted least-squares fit modeling the input vector
+// yvec (length pnum) as a polynomial of order polyorder in the
+// input vector xvec (length pnum), and outputs the coefficients
+// in order from constant to highest-order in the vector avec.
+int polyfit01(const vector <double> &yvec, const vector <double> &xvec, int pnum, int polyorder, vector <double> &avec)
+{
+  vector <vector <double>> xmat;
+  int pct,fitct,verbose;
+  pct = fitct = verbose = 0;
+  avec = {};
+  make_dvec(polyorder+1,avec);
+  make_dmat(polyorder+1,pnum,xmat);
+  
+  for(pct=0; pct<pnum; pct++) {
+    xmat[0][pct] = 1.0;
+    for(fitct=1; fitct<=polyorder; fitct++) {
+      xmat[fitct][pct] = intpowD(xvec[pct],fitct);
+    }
+  }
+  multilinfit01(yvec, xmat, pnum, polyorder+1, avec, verbose);
+  return(0);
+}
+
 
 // multilinfit02: June 10, 2022, translated from C on Jan 03, 2023
 // Finds the WEIGHTED least-squares fit modeling the input vector
@@ -9417,6 +9438,31 @@ int multilinfit02(const vector <double> &yvec, const vector <double> &sigvec, co
 
   return(0);
 }
+
+// polyfit02: April 30, 2025
+// Finds the WEIGHTED least-squares fit modeling the input vector
+// yvec (length pnum) as a polynomial of order polyorder in the
+// input vector xvec (length pnum), and outputs the coefficients
+// in order from constant to highest-order in the vector avec.
+int polyfit02(const vector <double> &yvec, const vector <double> &sigvec, const vector <double> &xvec, int pnum, int polyorder, vector <double> &avec)
+{
+  vector <vector <double>> xmat;
+  int pct,fitct,verbose;
+  pct = fitct = verbose = 0;
+  avec = {};
+  make_dvec(polyorder+1,avec);
+  make_dmat(polyorder+1,pnum,xmat);
+  
+  for(pct=0; pct<pnum; pct++) {
+    xmat[0][pct] = 1.0;
+    for(fitct=1; fitct<=polyorder; fitct++) {
+      xmat[fitct][pct] = intpowD(xvec[pct],fitct);
+    }
+  }
+  multilinfit02(yvec, sigvec, xmat, pnum, polyorder+1, avec, verbose);
+  return(0);
+}
+
 
 // multilinfit02b: January 20, 2023, supposed to be a faster version
 // of multilinfit02, because it does not re-calculate redundant
@@ -12663,73 +12709,6 @@ double gaussian_deviate_mt(mt19937_64 &generator)
   } while(rsq>=1.0L || rsq<=0.0L);
   g1 = sqrt(-2.0l*log(rsq)/rsq);
   return(x*g1);
-}
-
-// multilinfit01: June 24, 2022
-// Finds the WEIGHTED least-squares fit modeling the input vector
-// yvec (length pnum) as a linear combination of fitnum other
-// vectors supplied in the matrix xmat (size fitnum x pnum). The
-// vector of best-fit coefficients for xmat is given in avec.
-// NOTE: there is an unweighted fit function of the same name,
-// the first of a family that includes weighted-fit functions
-// multilinfit02() and multilinfit02b(), all of which use
-// vector push_back instead of allocating arrays ahead of time,
-// as here. I think the others are probably faster in C++.
-// Hence, I believe the current function should be DEPRECATED.
-int multilinfit01(const vector <double> &yvec, const vector <double> &sigvec, const vector <vector <double>> &xmat, int pnum, int fitnum, vector <double> &avec)
-{
-  vector <vector <double>> fitmat;
-  int pct,fitct,k;
-  int verbose=0;
-  fflush(stdout);
-
-  make_dmat(fitnum,fitnum+1,fitmat);
-  avec={};
-  make_dvec(fitnum,avec);
-  
-  // Load fitmat for input into solvematrix01
-  for(fitct=0;fitct<fitnum;fitct++) {
-    // First the constant term -- that is, the term that does not
-    // multiply any of the fitting coefficients -- which is also
-    // the only term that involves yvec
-    fitmat[fitct][0]=0.0;
-    for(pct=0;pct<pnum;pct++) {
-      if(isnormal(sigvec[pct])) fitmat[fitct][0] -= yvec[pct]*xmat[fitct][pct]/DSQUARE(sigvec[pct]);
-    }
-    /*Now the actual coefficients*/
-    for(k=0;k<fitnum;k++) {
-      fitmat[fitct][k+1] = 0.0;
-      for(pct=0;pct<pnum;pct++) {
-	if(isnormal(sigvec[pct])) fitmat[fitct][k+1] += xmat[fitct][pct]*xmat[k][pct]/DSQUARE(sigvec[pct]);
-      }
-    }
-  }
-  solvematrix01(fitmat,fitnum,avec,verbose);
-  return(0);
-}
-
-// polyfit01: June 24, 2022:
-// Finds the WEIGHTED least-squares fit modeling the input vector
-// yvec (length pnum) as a polynomial of order polyorder in the
-// input vector xvec (length pnum), and outputs the coefficients
-// in order from constant to highest-order in the vector avec.
-// vectors supplied in the matrix xmat (size fitnum x pnum). The
-// vector of best-fit coefficients for xmat is given in avec.*/
-int polyfit01(const vector <double> &yvec, const vector <double> &sigvec, const vector <double> &xvec, int pnum, int polyorder, vector <double> &avec)
-{
-  vector <vector <double>> xmat;
-  int pct,fitct;
-  avec = {};
-  make_dmat(polyorder+1,pnum,xmat);
-  
-  for(pct=0; pct<pnum; pct++) {
-    xmat[0][pct] = 1.0;
-    for(fitct=1; fitct<=polyorder; fitct++) {
-      xmat[fitct][pct] = intpowD(xvec[pct],fitct);
-    }
-  }
-  multilinfit01(yvec, sigvec, xmat, pnum, polyorder+1, avec);
-  return(0);
 }
 
 // vaneproj01LD: Given a unit vector unitbary giving the direction

@@ -1723,7 +1723,9 @@ long double weight_posvel_rms(const vector <point3LD> &poscluster,const vector <
 int linfituw01(const vector <double> &x, const vector <double> &y, double &slope, double &intercept);
 int linfit01(const vector <double> &x, const vector <double> &y, const vector <double> &yerr, double &slope, double &intercept);
 int multilinfit01(const vector <double> &yvec, const vector <vector <double>> &xmat, int pnum, int fitnum, vector <double> &avec, int verbose);
+int polyfit01(const vector <double> &yvec, const vector <double> &xvec, int pnum, int polyorder, vector <double> &avec);
 int multilinfit02(const vector <double> &yvec, const vector <double> &sigvec, const vector <vector <double>> &xmat, int pnum, int fitnum, vector <double> &avec, int verbose);
+int polyfit02(const vector <double> &yvec, const vector <double> &sigvec, const vector <double> &xvec, int pnum, int polyorder, vector <double> &avec);
 int multilinfit02b(const vector <double> &yvec, const vector <double> &varvec, const vector <vector <double>> &xmat, int pnum, int fitnum, vector <double> &avec, int verbose);
 int arc2cel01(double racenter,double deccenter,double dist,double pa,double &outra,double &outdec);
 int obscode_lookup(const vector <observatory> &observatory_list, const char* obscode, double &obslon, double &plxcos,double &plxsin);
@@ -1749,8 +1751,6 @@ double gaussian_deviate();
 int uvw_to_galcoord(const double &u, const double &v, const double &w, double &RA, double &Dec);
 long double unitvar(mt19937_64 &generator);
 double gaussian_deviate_mt(mt19937_64 &generator);
-int multilinfit01(const vector <double> &yvec, const vector <double> &sigvec, const vector <vector <double>> &xmat, int pnum, int fitnum, vector <double> &avec);
-int polyfit01(const vector <double> &yvec, const vector <double> &sigvec, const vector <double> &xvec, int pnum, int polyorder, vector <double> &avec);
 int vaneproj01LD(point3LD unitbary, point3LD obsbary, long double ecliplon, long double &geodist, point3LD &projbary);
 int vaneproj01d(point3d unitbary, point3d obsbary, double ecliplon, double min_proj_sine, double &geodist, point3d &projbary);
 double Twopoint_KepQ(double x);
