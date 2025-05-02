@@ -5950,7 +5950,6 @@ int observer_baryvel01(double detmjd, int polyorder, double lon, double obscos, 
   celestial_to_statevec(velRA,velDec,cvel,vel_from_geocen);
   // cvel is the Earth's rotation velocity at the latitude of
   // the observer, in km/sec.
-
   planetposvel01(detmjd,polyorder,earthpos,geocen_from_barycen,vel_from_barycen);
 
   outpos.x = geocen_from_barycen.x + obs_from_geocen.x;
