@@ -6,16 +6,19 @@
 from setuptools import setup, Extension
 import pybind11
 import numpy
+import sys, os
 from pybind11.setup_helpers import Pybind11Extension, build_ext
 
 # select OpenMP build flags depending on the architecture
-import sys
-if sys.platform == 'darwin':
-    extra_link = ['-lomp']
-    extra_compile = ['-std=c++17', '-fopenmp']
-else:
-    extra_link = ['-lgomp']
-    extra_compile = []
+extra_link = []
+extra_compile = []
+if os.environ.get("HELIOLINX_NO_OPENMP", "0") != "1":
+    if sys.platform == 'darwin':
+        extra_link += ['-lomp']
+        extra_compile += ['-std=c++17', '-fopenmp']
+    else:
+        extra_link += ['-lgomp']
+        extra_compile += []
 
 # Define the extension module
 heliolinx = Pybind11Extension(
