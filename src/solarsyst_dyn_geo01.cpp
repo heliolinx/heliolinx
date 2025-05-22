@@ -5798,6 +5798,89 @@ int observer_baryvel01(double detmjd, int polyorder, double lon, double obscos, 
   return(0);
 }
 
+// observer_baryvel01LD: May 12, 2025:
+// Exactly like observer_baryvel01, but uses long double precision.
+// Note that the handling of Earth's rotation assumes that the
+// input MJD is UT1, while the ephemeris vectors posmjd
+// and planetpos are in dynamical TT. Hence, after calculating
+// aspects related to Earth's rotation with detmjd as input,
+// planetpos01 is called which internally converts the input
+// UT1 into TT.
+int observer_baryvel01LD(long double detmjd, int polyorder, long double lon, long double obscos, long double obssine, const vector <long double> &posmjd, const vector <point3LD> &planetpos, const vector <point3LD> &planetvel, point3LD &outpos, point3LD &outvel)
+{
+  long double gmst=0;
+  long double djdoff = detmjd-51544.5l;
+  long double zenithRA=0.0l;
+  long double zenithDec=0.0l;
+  long double velRA=0.0l; // RA of the observer's geocentric velocity vector
+  long double velDec=0.0l; // Dec of the observer's geocentric velocity vector, always 0.
+  long double junkRA=0.0l;
+  long double junkDec=0.0l;
+  long double crad = sqrt(obscos*obscos + obssine*obssine)*EARTHEQUATRAD;
+  long double cvel = 2.0l*M_PI*obscos*EARTHEQUATRAD/SIDEREALDAY;
+  point3LD obs_from_geocen = point3LD(0,0,0);
+  point3LD vel_from_geocen = point3LD(0,0,0);
+  point3LD geocen_from_barycen = point3LD(0,0,0);
+  point3LD vel_from_barycen = point3LD(0,0,0);
+
+  gmst = 18.697374558l + 24.06570982441908l*djdoff;
+  // Add the longitude, converted to hours.
+  // Note: at this point it stops being gmst.
+  gmst += lon/15.0l;
+  // Get a value between 0 and 24.0.
+  while(gmst>=24.0l) gmst-=24.0l;
+  while(gmst<0.0l) gmst+=24.0l;
+  // Convert to degrees
+  zenithRA = gmst * 15.0l;
+  // Get zenithDec    
+  if(obscos!=0.0l) {
+    zenithDec = atan(obssine/obscos)*DEGPRAD;
+  } else if(obssine>=0.0l) {
+    zenithDec = 90.0l;
+  } else {
+    zenithDec=-90.0l;
+  }
+  // Calculate RA and Dec of the observer's geocentric velocity vector.
+  velRA = zenithRA+90.0l;
+  if(velRA >= 360.0l) velRA -= 360.0l;
+  velDec = 0.0l;
+  
+  // Now zenithRA and zenithDec are epoch-of-date coordinates.
+  // If you want them in J2000.0, this is the place to convert them.
+  int precesscon=-1; //Precess epoch-of-date to J2000.0
+  junkRA = zenithRA/DEGPRAD;
+  junkDec = zenithDec/DEGPRAD;
+  precess01aLD(junkRA,junkDec,detmjd,&zenithRA,&zenithDec,precesscon);
+  zenithRA*=DEGPRAD;
+  zenithDec*=DEGPRAD;
+  celestial_to_statevecLD(zenithRA,zenithDec,crad,obs_from_geocen);
+  // crad is the distance from the geocenter to the observer, in AU.
+  // Now velRA and velDec are also epoch-of-date coordinates,
+  // and hence should be converted to J2000.0.
+  junkRA = velRA/DEGPRAD;
+  junkDec = velDec/DEGPRAD;
+  precess01aLD(junkRA,junkDec,detmjd,&velRA,&velDec,precesscon);
+  velRA*=DEGPRAD;
+  velDec*=DEGPRAD;
+  celestial_to_statevecLD(velRA,velDec,cvel,vel_from_geocen);
+  // cvel is the Earth's rotation velocity at the latitude of
+  // the observer, in km/sec.
+
+  planetposvel01LD(detmjd,polyorder,posmjd,planetpos,planetvel,geocen_from_barycen,vel_from_barycen);
+
+  outpos.x = geocen_from_barycen.x + obs_from_geocen.x;
+  outpos.y = geocen_from_barycen.y + obs_from_geocen.y;
+  outpos.z = geocen_from_barycen.z + obs_from_geocen.z;
+  outvel.x = vel_from_barycen.x + vel_from_geocen.x;
+  outvel.y = vel_from_barycen.y + vel_from_geocen.y;
+  outvel.z = vel_from_barycen.z + vel_from_geocen.z;
+ 
+  //cout << "spinvel: " << vel_from_geocen.x << " " << vel_from_geocen.y << " " << vel_from_geocen.z << "\n";
+  //cout << "orbvel: " << vel_from_barycen.x << " " << vel_from_barycen.y << " " << vel_from_barycen.z << "\n";
+  //cout << "total: " << outvel.x << " " << outvel.y << " " << outvel.z << "\n";
+  return(0);
+}
+
 // observer_baryvel01: April 19, 2023:
 // Like overloaded fuction just above, but takes as input a
 // single vector of type EarthState, rather than three separate
@@ -21423,7 +21506,7 @@ int merge_pairs(const vector <hldet> &pairdets, vector <vector <long>> &indvecs,
 
 
 //merge_pairs2: March 25, 2024: Note date one year and one day after previous vesion.
-// This one differs in that it seeks to choose, from different ovelapping
+// This one differs in that it seeks to choose, from different overlapping
 // tracklets of the same length, the one with the smallest Great Circle Residual
 // (GCR). By contrast, the previous code would effectively pick from the
 // equal-length tracklets at random (specifically, I believe it would choose
@@ -23860,9 +23943,6 @@ int make_tracklets3(vector <hldet> &detvec, vector <hlimage> &image_log, MakeTra
 }
 
 
-
-
-
 // make_trailed_tracklets: February 14, 2024: like make_tracklets,
 // but makes use of trail information through the new function
 // find_trailpairs.
@@ -23936,6 +24016,153 @@ int make_trailed_tracklets(vector <hldet> &detvec, vector <hlimage> &image_log, 
     cerr << "ERROR: merge_pairs reports failure status " << status << "\n";
     return(status);
   } else cout << "merge_pairs finished OK\n";
+  return(0);
+}
+
+// make_trailed_tracklets2: May 14, 2025: like make_trailed_tracklets,
+// but outputs a culled paired detection file like make_tracklets3.
+int make_trailed_tracklets2(vector <hldet> &detvec, vector <hlimage> &image_log, MakeTrackletsConfig config, vector <hldet> &pairdets,vector <tracklet> &tracklets, vector <longpair> &trk2det)
+{
+ 
+  long i=0;
+  std::vector <longpair> pairvec;
+  std::vector <vector <long>> indvecs;
+  
+  // Echo config struct
+  cout << "Configuration parameters for new make_tracklets:\n";
+  cout << "Min. number of tracklet points: " << config.mintrkpts << "\n";
+  cout << "Time-tolerance for matching detections on the same image: " << config.imagetimetol << " days (" << config.imagetimetol*SOLARDAY << " seconds)\n";
+  cout << "Maximum angular velocity: " << config.maxvel << " deg/day\n";
+  cout << "Minimum angular velocity: " << config.minvel << " deg/day\n";
+  cout << "Minimum angular arc: " << config.minarc << " arcsec\n";
+  cout << "Maximum inter-image time interval: " << config.maxtime << " days (" << config.maxtime*1440.0 << " minutes)\n";
+  cout << "Minimum inter-image time interval: " << config.mintime << " days (" << config.mintime*1440.0 << " minutes)\n";
+  cout << "Image radius: " << config.imagerad << " degrees\n";
+  cout << "Maximum Great Circle Residual for tracklets with more than two points: " << config.maxgcr << " arcsec\n";
+  if(config.forcerun) {
+    cout << "forcerun has been invoked: execution will attempt to push through\n";
+    cout << "any errors that are not immediately fatal, including those that\n";
+    cout << "could produce inaccurate final results.\n";
+  }
+  if(config.verbose) cout << "Verbose output has been requested\n";
+  
+  int status = load_image_indices(image_log, detvec, config.imagetimetol, config.forcerun);
+  if(status!=0) {
+    cerr << "ERROR: failed to load_image_indices from detection vector\n";
+    return(status);
+  }
+  
+  // Echo detection vector
+  //for(i=0;i<detvec.size();i++) {
+  //  cout << "det " << i << " " << detvec[i].MJD << " " << detvec[i].RA << " " << detvec[i].Dec << " " << detvec[i].mag  << " " << detvec[i].obscode << " " << detvec[i].image << "\n";
+  //}
+  if(config.verbose) {
+    // Echo image log
+    for(i=0;i<long(image_log.size());i++) {
+      cout << "image " << i << " " << image_log[i].MJD << " " << image_log[i].RA << " " << image_log[i].Dec << " " << image_log[i].X << " " << image_log[i].obscode  << " " << image_log[i].startind  << " " << image_log[i].endind << "\n";
+    }
+  }
+
+  if(config.mintrkpts==2) {
+    // Simply output to main pairdets vector:
+    // there will be no need to revise pairdets afterwards.
+    
+    // Create pairs, output a vector pairdets of type hldet; a vector indvecs of type vector <long>,
+    // with the same length as pairdets, giving the indices of all the detections paired with a given detection;
+    // and the vector pairvec of type longpair, giving all the pairs of detections.
+    status = find_trailpairs(detvec, image_log, pairdets, indvecs, pairvec, config.mintime, config.maxtime, config.imagerad, config.maxvel, config.siglenscale, config.sigpascale, config.verbose);
+
+    if(status!=0) {
+      cerr << "ERROR: find_trailpairs reports failure status " << status << "\n";
+      return(status);
+    }
+
+    // Sanity-check indvecs
+    cout << "make_trailed_tracklets is sanity-checking indvecs\n";
+    long detnum = indvecs.size();
+    long detct=0;
+    for(detct=0; detct<detnum; detct++) {
+      for(i=0; i<long(indvecs[detct].size()); i++) {
+	if(indvecs[detct][i]<0 || indvecs[detct][i]>=detnum) {
+	  cerr << "ERROR: indvecs[" << detct << "][" << i << "] out of range: " << indvecs[detct][i] << "\n";
+	  cerr << "Acceptable range is 0 to " << detnum << "\n";
+	  return(9);
+	}
+      }
+    }
+    cout << "Sanity-check finished\n";
+   
+    status = merge_trailpairs(pairdets, indvecs, pairvec, tracklets, trk2det, config.mintrkpts, config.maxgcr, config.minarc, config.minvel, config.maxvel, config.verbose);
+    if(status!=0) {
+      cerr << "ERROR: merge_trailpairs reports failure status " << status << "\n";
+      return(status);
+    } else cout << "merge_trailpairs finished OK\n";
+  } else {
+    // The minimum number of tracklet points is more than two, so pairdets will
+    // need to be culled after its initial construction, to eliminate detections
+    // that didn't contribute to a tracklet with more than two points. Hence, we
+    // load a temporary version of pairdets, which must be culled afterwards.
+    
+    vector <hldet> pairdets_temp;
+    
+    // Create pairs, output a vector pairdets of type hldet; a vector indvecs of type vector <long>,
+    // with the same length as pairdets, giving the indices of all the detections paired with a given detection;
+    // and the vector pairvec of type longpair, giving all the pairs of detections.
+    status = find_trailpairs(detvec, image_log, pairdets_temp, indvecs, pairvec, config.mintime, config.maxtime, config.imagerad, config.maxvel, config.siglenscale, config.sigpascale, config.verbose);
+
+    if(status!=0) {
+      cerr << "ERROR: find_trailpairs reports failure status " << status << "\n";
+      return(status);
+    }
+
+    // Sanity-check indvecs
+    cout << "make_trailed_tracklets is sanity-checking indvecs\n";
+    long detnum = indvecs.size();
+    long detct=0;
+    for(detct=0; detct<detnum; detct++) {
+      for(i=0; i<long(indvecs[detct].size()); i++) {
+	if(indvecs[detct][i]<0 || indvecs[detct][i]>=detnum) {
+	  cerr << "ERROR: indvecs[" << detct << "][" << i << "] out of range: " << indvecs[detct][i] << "\n";
+	  cerr << "Acceptable range is 0 to " << detnum << "\n";
+	  return(9);
+	}
+      }
+    }
+    cout << "Sanity-check finished\n";
+   
+    status = merge_trailpairs(pairdets_temp, indvecs, pairvec, tracklets, trk2det, config.mintrkpts, config.maxgcr, config.minarc, config.minvel, config.maxvel, config.verbose);
+    if(status!=0) {
+      cerr << "ERROR: merge_trailpairs reports failure status " << status << "\n";
+      return(status);
+    } else cout << "merge_trailpairs finished OK\n";
+    // Load culled version of pairdets_temp into the final pairdets vector,
+    // and re-write the indices of the trk2det vector accordingly
+    
+    // Create a vector of -1s, of the same length as pairdets_temp.
+    vector <long> detloaded;
+    for(i=0; i<long(pairdets_temp.size()); i++) detloaded.push_back(-1);
+    if(detloaded.size() != pairdets_temp.size()) {
+      cerr << "ERROR: length mismatch between detloaded and pairdets_temp!\n";
+      return(5);
+    }
+    pairdets={};
+    for(i=0; i<long(trk2det.size()); i++) {
+      long thisdet = trk2det[i].i2;
+      if(detloaded[thisdet]==-1) {
+	// This detection has not yet been loaded. Load it now.
+	pairdets.push_back(pairdets_temp[thisdet]);
+	// Re-assign the trk2det index appropriately
+	trk2det[i].i2 = long(pairdets.size()-1);
+	// Mark it as loaded.
+	detloaded[thisdet] = trk2det[i].i2;
+      } else {
+	// This detection has already been loaded to the pairdets vector.
+	// Re-assign the trk2det index appropriately.
+	trk2det[i].i2 = detloaded[thisdet];
+      }
+    }
+  }
+
   return(0);
 }
 
