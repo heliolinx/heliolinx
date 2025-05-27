@@ -300,6 +300,38 @@ std::tuple<py::array, py::array, py::array> makeTracklets(
   return(std::make_tuple(py_detout1, py_detout2, py_detout3));
 }
 
+// makeTrailedTracklets: May 27, 2025:
+// Minimalist wrapper, only handles the python <-> C++ translations.
+// All the interesting algorithmic stuff happens in functions called from solarsyst_dyn_geo01.
+
+std::tuple<py::array, py::array, py::array> makeTrailedTracklets(
+    MakeTrackletsConfig config,
+    py::array_t<hldet> py_detvec,
+    py::array_t<hlimage> py_imglog
+  ) {
+  cout << "C++ wrapper for make_trailed_tracklets, now fully functional\n";
+  
+  std::vector <hldet> detvec = ndarray_to_vec(py_detvec);
+  std::vector <hlimage> image_log = ndarray_to_vec(py_imglog);
+  std::vector <hldet> pairdets;
+  std::vector <tracklet> tracklets;
+  std::vector <longpair> trk2det;  
+
+  // Note: make_trailed_tracklets2 is an advance over make_trailed_tracklets
+  // in that it culls the ouput 'pairdets' array down to only those
+  // detections (sources) that were actually included in a tracklet.
+  make_trailed_tracklets2(detvec,image_log,config,pairdets,tracklets,trk2det);
+  
+  auto py_detout1 = vec_to_ndarray<hldet>(pairdets);
+  cout << "loaded pairdets\n";
+  auto py_detout2 = vec_to_ndarray<tracklet>(tracklets);
+  cout << "loaded tracklets\n";
+  auto py_detout3 = vec_to_ndarray<longpair>(trk2det);
+  cout << "loaded trk2det\n";
+
+  return(std::make_tuple(py_detout1, py_detout2, py_detout3));
+}
+
 // heliolinc: April 11, 2023:
 // Minimalist wrapper, only handles the python <-> C++ translations.
 // All the interesting algorithmic stuff happens in functions called from solarsyst_dyn_geo01.
