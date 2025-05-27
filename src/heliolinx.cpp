@@ -135,6 +135,10 @@ void fill_struct(point3d_index & out, point3d_index const& in) {
 
 template<typename T>
 std::vector<T> ndarray_to_vec(py::array_t<T> py_vec) {
+    py::dtype expected_dtype = py::dtype::of<T>();
+    if (!py_vec.dtype().is(expected_dtype)) {
+	throw std::runtime_error("Array dtype does not match expected type 'foo'. See mjuric@astro.washington.edu for more details");
+    }
     std::vector<T> vec = {};
 
     // Get a reference to the py_array data
@@ -222,7 +226,7 @@ py::array observer_coords(double detmjd, double lon, double obscos, double obssi
 
 py::array observer_vel(double detmjd, double lon, double obscos, double obssine, py::array_t<EarthState> earthin)
 {
-  
+
   std::vector <EarthState> earthpos = ndarray_to_vec(earthin);
   int polyorder=5;
   std::vector <double> posmjd;
@@ -244,7 +248,7 @@ py::array observer_vel(double detmjd, double lon, double obscos, double obssine,
     planetpos.push_back(earthnow);
     earthvel = point3d(earthpos[i].vx, earthpos[i].vy, earthpos[i].vz);
     planetvel.push_back(earthvel);
-  }  
+  } 
   observer_baryvel01(detmjd, polyorder, lon, obscos, obssine, posmjd, planetpos, planetvel, earthnow, earthvel);
 
   outvec={};
@@ -284,7 +288,7 @@ std::tuple<py::array, py::array, py::array> makeTracklets(
   std::vector <tracklet> tracklets;
   std::vector <longpair> trk2det;  
   
-  make_tracklets(detvec,image_log,config,pairdets,tracklets,trk2det);
+  make_tracklets3(detvec,image_log,config,pairdets,tracklets,trk2det);
   
   auto py_detout1 = vec_to_ndarray<hldet>(pairdets);
   cout << "loaded pairdets\n";
@@ -321,7 +325,7 @@ std::tuple<py::array, py::array>heliolinc(
   std::vector <hlclust> outclust;
   std::vector <longpair> clust2det;
      
-  status = heliolinc_alg_kd(image_log, detvec, tracklets, trk2det, radhyp, earthpos, config, outclust, clust2det);
+  status = heliolinc_alg_all(image_log, detvec, tracklets, trk2det, radhyp, earthpos, config, outclust, clust2det);
   if(status!=0) {
     cerr << "ERROR: heliolinc returned failure status " << status << "\n";
     auto py_clustout = vec_to_ndarray<hlclust>({});
