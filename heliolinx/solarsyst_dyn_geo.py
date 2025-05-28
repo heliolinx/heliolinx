@@ -270,10 +270,13 @@ def image_add_observerpos(image, obsarr, earthpos, **kwargs):
     
     b=np.empty((len(image),),dtype=hlimage) #new
     for i in range(len(image)) :
+        observatory=0
+        for j in range(len(obsarr)) :
+            if(image[i][3].decode('utf-8') == obsarr[j][0]) : observatory = obsarr[j]
         mjd = float(image[i][0])
-        Long = float(obsarr[0])
-        pcos = float(obsarr[1])
-        psin = float(obsarr[2])
+        Long = float(observatory[1])
+        pcos = float(observatory[2])
+        psin = float(observatory[3])
         obsx = hl.observer_vel(mjd,Long,pcos,psin,earthpos)
         a1 = 1
         b['MJD'][i] = image[i][0] #new
@@ -288,5 +291,6 @@ def image_add_observerpos(image, obsarr, earthpos, **kwargs):
         b['VZ'][i] = obsx[5]
         b['startind'][i]=0;
         b['endind'][i]=0;
+        b['exptime'][i] = image[i][12]
 
     return(b)
