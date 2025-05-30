@@ -34,12 +34,12 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools_scm]
-write_to = "heliolinx/_version.py"
+write_to = "python/heliolinx/_version.py"
 
 # without this, setuptools searches for the build .so module in
 # src/heliolinx (?!)
-[tool.setuptools.packages]
-find = {}
+[tool.setuptools.packages.find]
+where = ["python"]
 
 [tool.setuptools.package-data]
 "heliolinx" = ["obsCodes.txt"]
