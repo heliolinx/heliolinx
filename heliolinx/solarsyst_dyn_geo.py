@@ -3,7 +3,7 @@ import numpy.lib.recfunctions as rfn
 import sys
 
 sys.path.insert(1, '/home/aheinze/CppCode')
-import heliolinx.heliolinx as hl
+import heliolinx as hl
 
 SSHORT = 'S20'
 SMIN = 'S5'
@@ -206,6 +206,10 @@ def read_ObsCodes(obscode_file, **kwargs):
     """ Read an observatory code file from MPC, and return it as an array with obscode, Longitude, cos(lat), sin(lat) """
     file1 = open(obscode_file, 'r')
     lines = file1.readlines()
+    return(parse_ObsCodes(lines))
+
+def parse_ObsCodes(lines, **kwargs):
+    """ Read an observatory code file from MPC, and return it as an array with obscode, Longitude, cos(lat), sin(lat) """
     c = []
     for i in range(len(lines)-1) :
         a = list((lines[i+1][0:3], lines[i+1][4:13], lines[i+1][13:21], lines[i+1][21:30]))
