@@ -40,3 +40,6 @@ write_to = "heliolinx/_version.py"
 # src/heliolinx (?!)
 [tool.setuptools.packages]
 find = {}
+
+[tool.setuptools.package-data]
+"heliolinx" = ["obsCodes.txt"]
