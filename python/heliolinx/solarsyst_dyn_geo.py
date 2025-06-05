@@ -2,13 +2,12 @@ import numpy as np
 import numpy.lib.recfunctions as rfn
 import sys
 
-sys.path.insert(1, '/home/aheinze/CppCode')
-import heliolinx.heliolinx as hl
+import heliolinx as hl
 
 SSHORT = 'S20'
 SMIN = 'S5'
 
-__all__ = ["celeproj", "celedeproj", "make_image_table", "read_ObsCodes", "load_earth_ephemerides", "image_add_observerpos"]
+__all__ = ["celeproj", "celedeproj", "make_image_table", "read_ObsCodes", "parse_ObsCodes", "load_earth_ephemerides", "image_add_observerpos"]
 
 intype = np.dtype(list(dict(
     MJD=float,
@@ -206,6 +205,10 @@ def read_ObsCodes(obscode_file, **kwargs):
     """ Read an observatory code file from MPC, and return it as an array with obscode, Longitude, cos(lat), sin(lat) """
     file1 = open(obscode_file, 'r')
     lines = file1.readlines()
+    return(parse_ObsCodes(lines))
+
+def parse_ObsCodes(lines, **kwargs):
+    """ Read an observatory code file from MPC, and return it as an array with obscode, Longitude, cos(lat), sin(lat) """
     c = []
     for i in range(len(lines)-1) :
         a = list((lines[i+1][0:3], lines[i+1][4:13], lines[i+1][13:21], lines[i+1][21:30]))
@@ -270,10 +273,13 @@ def image_add_observerpos(image, obsarr, earthpos, **kwargs):
     
     b=np.empty((len(image),),dtype=hlimage) #new
     for i in range(len(image)) :
+        observatory=0
+        for j in range(len(obsarr)) :
+            if(image[i][3] == obsarr[j][0]) : observatory = obsarr[j]
         mjd = float(image[i][0])
-        Long = float(obsarr[0])
-        pcos = float(obsarr[1])
-        psin = float(obsarr[2])
+        Long = float(observatory[1])
+        pcos = float(observatory[2])
+        psin = float(observatory[3])
         obsx = hl.observer_vel(mjd,Long,pcos,psin,earthpos)
         a1 = 1
         b['MJD'][i] = image[i][0] #new
@@ -288,5 +294,6 @@ def image_add_observerpos(image, obsarr, earthpos, **kwargs):
         b['VZ'][i] = obsx[5]
         b['startind'][i]=0;
         b['endind'][i]=0;
+        b['exptime'][i] = image[i][4]
 
     return(b)

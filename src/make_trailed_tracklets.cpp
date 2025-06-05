@@ -661,16 +661,6 @@ int main(int argc, char *argv[])
   if(DEBUGB==1) cout << "Preparing to load the image table\n";
   status = load_image_table(img_log, detvec, config.time_offset, observatory_list, EarthMJD, Earthpos, Earthvel);
   if(DEBUGB==1) cout << "Loaded the image table\n";
-  // Replace any invalid exposure times with the default (or user-supplied constant) value.
-  long exp_resetnum=0;
-  for(i=0;i<long(img_log.size());i++) {
-    if(img_log[i].exptime<=0.0l) {
-      cout << "Correcting exposure time on image " << i << ": " << img_log[i].MJD << " " << img_log[i].RA << " " << img_log[i].Dec << " " << img_log[i].obscode << ", exptime was " << img_log[i].exptime << "\n";
-      img_log[i].exptime = config.exptime;
-      exp_resetnum++;
-    }
-  }
-  cout << "Exposure time was corrected for " << exp_resetnum << " out of " << img_log.size() << " images\n";
 
   if(DEBUG>=2) {
     // Test: print out time-sorted detection table.
@@ -681,17 +671,27 @@ int main(int argc, char *argv[])
     outstream1.close();
   }
   
+  // Replace any invalid exposure times with the default (or user-supplied constant) value.
+  long exp_resetnum=0;
+  for(i=0;i<long(img_log.size());i++) {
+    if(img_log[i].exptime<=0.0l) {
+      cout << "Correcting exposure time on image " << i << ": " << img_log[i].MJD << " " << img_log[i].RA << " " << img_log[i].Dec << " " << img_log[i].obscode << ", exptime was " << img_log[i].exptime << "\n";
+      img_log[i].exptime = config.exptime;
+      exp_resetnum++;
+    }
+  }
+  cout << "In main, exposure time was corrected for " << exp_resetnum << " out of " << img_log.size() << " images\n";
+  
   // Write and print image log table
   cout << "Writing output image catalog " << outimfile << " with " << img_log.size() << " lines\n";
   outstream1.open(outimfile);
-  for(imct=0;imct<long(img_log.size());imct++)
-    {
-      outstream1 << fixed << setprecision(8) << img_log[imct].MJD << " " << img_log[imct].RA;
-      outstream1 << fixed << setprecision(8) << " " << img_log[imct].Dec << " " << img_log[imct].obscode << " ";
-      outstream1 << fixed << setprecision(1) << img_log[imct].X << " " << img_log[imct].Y << " " << img_log[imct].Z << " ";
-      outstream1 << fixed << setprecision(4) << img_log[imct].VX << " " << img_log[imct].VY << " " << img_log[imct].VZ << " ";
-      outstream1 << img_log[imct].startind << " " << img_log[imct].endind << "\n";
-    }
+  for(imct=0;imct<long(img_log.size());imct++) {
+    outstream1 << fixed << setprecision(8) << img_log[imct].MJD << " " << img_log[imct].RA;
+    outstream1 << fixed << setprecision(8) << " " << img_log[imct].Dec << " " << img_log[imct].obscode << " ";
+    outstream1 << fixed << setprecision(1) << img_log[imct].X << " " << img_log[imct].Y << " " << img_log[imct].Z << " ";
+    outstream1 << fixed << setprecision(4) << img_log[imct].VX << " " << img_log[imct].VY << " " << img_log[imct].VZ << " ";
+    outstream1 << img_log[imct].startind << " " << img_log[imct].endind << " " << img_log[imct].exptime << "\n";
+  }
   outstream1.close();
 
   make_trailed_tracklets2(detvec, img_log, config, pairdets, tracklets, trk2det);

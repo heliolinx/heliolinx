@@ -5950,6 +5950,7 @@ int observer_baryvel01(double detmjd, int polyorder, double lon, double obscos, 
   celestial_to_statevec(velRA,velDec,cvel,vel_from_geocen);
   // cvel is the Earth's rotation velocity at the latitude of
   // the observer, in km/sec.
+
   planetposvel01(detmjd,polyorder,earthpos,geocen_from_barycen,vel_from_barycen);
 
   outpos.x = geocen_from_barycen.x + obs_from_geocen.x;
@@ -23970,6 +23971,17 @@ int make_trailed_tracklets(vector <hldet> &detvec, vector <hlimage> &image_log, 
   }
   if(config.verbose) cout << "Verbose output has been requested\n";
   
+  // Replace any invalid exposure times with the default (or user-supplied constant) value.
+  long exp_resetnum=0;
+  for(i=0;i<long(image_log.size());i++) {
+    if(image_log[i].exptime<=0.0l) {
+      cout << "Correcting exposure time on image " << i << ": " << image_log[i].MJD << " " << image_log[i].RA << " " << image_log[i].Dec << " " << image_log[i].obscode << ", exptime was " << image_log[i].exptime << "\n";
+      image_log[i].exptime = config.exptime;
+      exp_resetnum++;
+    }
+  }
+  cout << "In make_trailed_tracklets(), exposure time was corrected for " << exp_resetnum << " out of " << image_log.size() << " images\n";
+  
   int status = load_image_indices(image_log, detvec, config.imagetimetol, config.forcerun);
   if(status!=0) {
     cerr << "ERROR: failed to load_image_indices from detection vector\n";
@@ -24038,19 +24050,35 @@ int make_trailed_tracklets2(vector <hldet> &detvec, vector <hlimage> &image_log,
   cout << "Minimum inter-image time interval: " << config.mintime << " days (" << config.mintime*1440.0 << " minutes)\n";
   cout << "Image radius: " << config.imagerad << " degrees\n";
   cout << "Maximum Great Circle Residual for tracklets with more than two points: " << config.maxgcr << " arcsec\n";
+  cout << "Exposure time: " << config.exptime << " seconds\n";
+  cout << "Scaling from trail length to its uncertainty: " << config.siglenscale << "\n";
+  cout << "Length used to estimate trail PA uncertainty: " << config.sigpascale << " arcsec\n";
+  cout << "Maximum non-exclusive tracklet length: " << config.max_netl << "\n";
+  cout << "Offset to be ADDED to observing times to get UTC: " << config.time_offset << " seconds\n";
   if(config.forcerun) {
     cout << "forcerun has been invoked: execution will attempt to push through\n";
     cout << "any errors that are not immediately fatal, including those that\n";
     cout << "could produce inaccurate final results.\n";
   }
   if(config.verbose) cout << "Verbose output has been requested\n";
-  
+
+  // Replace any invalid exposure times with the default (or user-supplied constant) value.
+  long exp_resetnum=0;
+  for(i=0;i<long(image_log.size());i++) {
+    if(image_log[i].exptime<=0.0l) {
+      cout << "Correcting exposure time on image " << i << ": " << image_log[i].MJD << " " << image_log[i].RA << " " << image_log[i].Dec << " " << image_log[i].obscode << ", exptime was " << image_log[i].exptime << "\n";
+      image_log[i].exptime = config.exptime;
+      exp_resetnum++;
+    }
+  }
+  cout << "In make_trailed_tracklets2(), exposure time was corrected for " << exp_resetnum << " out of " << image_log.size() << " images\n";
+
   int status = load_image_indices(image_log, detvec, config.imagetimetol, config.forcerun);
   if(status!=0) {
     cerr << "ERROR: failed to load_image_indices from detection vector\n";
     return(status);
   }
-  
+
   // Echo detection vector
   //for(i=0;i<detvec.size();i++) {
   //  cout << "det " << i << " " << detvec[i].MJD << " " << detvec[i].RA << " " << detvec[i].Dec << " " << detvec[i].mag  << " " << detvec[i].obscode << " " << detvec[i].image << "\n";
