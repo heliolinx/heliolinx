@@ -2,13 +2,12 @@ import numpy as np
 import numpy.lib.recfunctions as rfn
 import sys
 
-sys.path.insert(1, '/home/aheinze/CppCode')
 import heliolinx as hl
 
 SSHORT = 'S20'
 SMIN = 'S5'
 
-__all__ = ["celeproj", "celedeproj", "make_image_table", "read_ObsCodes", "load_earth_ephemerides", "image_add_observerpos"]
+__all__ = ["celeproj", "celedeproj", "make_image_table", "read_ObsCodes", "parse_ObsCodes", "load_earth_ephemerides", "image_add_observerpos"]
 
 intype = np.dtype(list(dict(
     MJD=float,
@@ -276,7 +275,7 @@ def image_add_observerpos(image, obsarr, earthpos, **kwargs):
     for i in range(len(image)) :
         observatory=0
         for j in range(len(obsarr)) :
-            if(image[i][3].decode('utf-8') == obsarr[j][0]) : observatory = obsarr[j]
+            if(image[i][3] == obsarr[j][0]) : observatory = obsarr[j]
         mjd = float(image[i][0])
         Long = float(observatory[1])
         pcos = float(observatory[2])
@@ -295,6 +294,6 @@ def image_add_observerpos(image, obsarr, earthpos, **kwargs):
         b['VZ'][i] = obsx[5]
         b['startind'][i]=0;
         b['endind'][i]=0;
-        b['exptime'][i] = image[i][12]
+        b['exptime'][i] = image[i][4]
 
     return(b)
