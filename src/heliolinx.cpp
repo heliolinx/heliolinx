@@ -599,6 +599,7 @@ PYBIND11_MODULE(heliolinx, m) {
       .def_readwrite("siglenscale", &MakeTrackletsConfig::siglenscale)
       .def_readwrite("sigpascale", &MakeTrackletsConfig::sigpascale)
       .def_readwrite("max_netl", &MakeTrackletsConfig::max_netl)
+      .def_readwrite("time_offset", &MakeTrackletsConfig::time_offset)
       .def_readwrite("forcerun", &MakeTrackletsConfig::forcerun)
       .def_readwrite("verbose", &MakeTrackletsConfig::verbose);
 
@@ -669,6 +670,7 @@ PYBIND11_MODULE(heliolinx, m) {
     m.def("observer_coords", &observer_coords, "calculate position of an observer on Earth");
     m.def("observer_vel", &observer_vel, "calculate velocity of an observer on Earth");
     m.def("makeTracklets", &makeTracklets,  "Make tracklets from set of detections.");
+    m.def("makeTrailedTracklets", &makeTrailedTracklets,  "Make tracklets from set of trailed detections.");
     m.def("heliolinc", &heliolinc,  "Link input tracklets into candidate discoveries.");
     m.def("linkRefineHerget", &linkRefineHerget, "Refine linkages, eliminating duplicates and preserving the best candidates.");
     m.def("linkPurify", &linkPurify, "Purify linkages, eliminating duplicates, and rejecting astrometric outliers.");
