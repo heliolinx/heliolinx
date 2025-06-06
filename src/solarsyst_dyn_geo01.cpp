@@ -40055,9 +40055,68 @@ int eigensolve02(const vector <vector <long double>> &A, vector <vector <long do
   return(0);
 }
 
+// anglevec_meanrms: May 29, 2025: Given a vector of angles and a period
+// (e.g., 180.0 or 360.0), handle all relevant complexities
+// about wrapping the angles to an effective range in the
+// half-open interval [0,period), and calculate the RMS scatter.
+int anglevec_meanrms(const vector <double> &angles, double period, double *median, double *mean, double *rms)
+{
+  vector <double> angles2, angdiff, x, y;
+  long i=0;
+  double angmean,dval,diffneg,diff0,diffpos;
+  angmean = dval = diffneg = diff0 = diffpos = 0.0;
 
-  
-  
-  
-  
+  if(period<=0.0) {
+    cerr << "WARNING: anglevecmean called with period = " << period << ", and\n";
+    cerr << "negative or zero values of the period are not allowed\n";
+    return(2);
+  }
 
+  if(angles.size()<=0) {
+    cerr << "ERROR: anglevecmean called with empty vector\n";
+    *mean = 0.0;
+    *rms = -1.0;
+    return(1);
+  } else if(angles.size()==1) {
+    cerr << "WARNING: anglevecmean called with empty vector;\n";
+    cerr << "cannot calculate the RMS\n";
+    *mean = angles[0];
+    *rms = -1.0;
+    return(0);
+  }
+  
+  // Unwrap all angles to lie in the range [0,period)
+  for(i=0;i<long(angles.size());i++) {
+    dval = angles[i];
+    while(dval<0.0) dval+=period;
+    while(dval>=period) dval-=period;
+    angles2.push_back(dval);
+    x.push_back(cos(2.0*M_PI*dval/period));
+    y.push_back(sin(2.0*M_PI*dval/period));
+  }
+  //Find mean x and y positions
+  double xmean = dmean01(x);
+  double ymean = dmean01(y);
+  // Convert to an angle in the range 0-2pi
+  angmean = atan2(ymean,xmean);
+  if(angmean<0.0) angmean += 2.0*M_PI;
+  // Convert to whatever units period is in
+  angmean *= period/(2.0*M_PI);
+  // Load angdiff, paying attention to all possible wrapping cases
+  for(i=0;i<long(angles.size());i++) {
+    // Case with no wrapping
+    diff0 = fabs(angmean-angles2[i]);
+    // Case where angmean is large, and angles2[i] wraps upward past period
+    diffneg = fabs(angmean-period-angles2[i]);
+    // Case where angmean is small, and angles2[i] wraps downward past zero
+    diffpos = fabs(angmean+period-angles2[i]);
+    if(diff0<=diffneg && diff0<=diffpos) dval=angmean-angles2[i];
+    else if(diffneg<diffpos) dval=angmean-period-angles2[i];
+    else dval=angmean+period-angles2[i];
+    angdiff.push_back(dval);
+  }
+  *rms = drms01(angdiff);
+  *median = angmean - dmedian(angdiff);
+  *mean = angmean;
+  return(0);
+}
