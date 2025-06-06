@@ -468,17 +468,18 @@ struct LinkRefineConfig {
 };
 
 struct LinkPurifyConfig {
-  int useorbMJD = 0;           // Use the MJD of the orbit epoch for each linkage, rather than the
+  int useorbMJD = 1;           // Use the MJD of the orbit epoch for each linkage, rather than the
                                // overall reference MJD. Operative only for recursive usage of
                                // link_purify or link_planarity: otherwise, no prior orbit fit
                                // exists and the code falls back on the reference MJD.
-  int simptype = 0;            // Defines how Herget_simplex_int constructs the starting simplex
+  int simptype = 1;            // Defines how Herget_simplex_int constructs the starting simplex
                                //   in the 2-D parameter space of geocentric distance at first detection
                                //   (geodist1) and geocentric distance at last detection (geodist2)
                                //   simptype=0 uses multiplicative scaling to create an approximately isoceles right triangle:
                                //   simptype=1 creates a simplex elongated along the direction defined by geodist1=geodist2
                                //   simptype=2 uses subtraction to create a precise isoceles right triangle
-  int ptpow = 1;               // Power to which we raise the number of unique detections, when calculating the cluster quality metric.
+  int ptpow = -1;              // Power to which we raise the number of unique detections, when calculating the cluster quality metric.
+                               // Note: negative value triggers a special mode with superior performance 
   int nightpow = 1;            // Power to which we raise the number of distinct observing nights, when calculating the cluster quality metric.
   int timepow = 0;             // Power to which we raise the total temporal span of the linkage, when calculating the cluster quality metric.
   int rmspow = 2;              // Power to which we raise the RMS astrometric residual when calculating the cluster quality metric.
