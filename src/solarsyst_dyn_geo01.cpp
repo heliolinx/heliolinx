@@ -7189,7 +7189,7 @@ int Kepler_fg_func_vec(const double MGsun, const double mjdstart, const point3d 
 // Integrate an orbit assuming we have a Keplerian 2-body problem
 // with all the mass in the Sun, and the input position and velocity
 // are relative to the Sun.
-int Kepler_univ_int(const double MGsun, const double mjdstart, const point3d &startpos, const point3d &startvel, const double mjdend, point3d &endpos, point3d &endvel)
+int Kepler_univ_int(const double MGsun, const double mjdstart, const point3d &startpos, const point3d &startvel, const double mjdend, point3d &endpos, point3d &endvel,int verbose)
 {
   if(mjdend==mjdstart) {
     endpos = startpos;
@@ -7292,7 +7292,7 @@ int Kepler_univ_int(const double MGsun, const double mjdstart, const point3d &st
     f = r0*s*c1 + u*s*s*c2 + MGsun*s*s*s*c3 - deltat;
     itct++;
   }
-  if(fabs(f/fp)>HYPTRANSTOL) {
+  if(fabs(f/fp)>HYPTRANSTOL && verbose>=1) {
     cerr << "WARNING: Kepler_univ_int() failed to converge by iteration " << itct << ", f/fp = " << f/fp << " vs tolerance of " << HYPTRANSTOL << "\n";
   }
 
@@ -17230,14 +17230,14 @@ int wrap_Hergetfit_vstar(double simplex_scale, int simptype, double ftol, const 
       startvel.z *= ESCAPE_SCALE*v_escape/v_helio;
     }
     // Calculate position at first observation
-    Kepler_univ_int(GMSUN_KM3_SEC2, MJDref, startpos, startvel, obsMJD[clusterct][0], endpos, endvel);
+    Kepler_univ_int(GMSUN_KM3_SEC2, MJDref, startpos, startvel, obsMJD[clusterct][0], endpos, endvel, verbose);
     // Find vector relative to the observer by subtracting off the observer's position.
     endpos.x -= observerpos[clusterct][0].x;
     endpos.y -= observerpos[clusterct][0].y;
     endpos.z -= observerpos[clusterct][0].z;
     geodist1 = vecabs3d(endpos)/AU_KM;
     // Calculate position at last observation
-    Kepler_univ_int(GMSUN_KM3_SEC2, MJDref, startpos, startvel, obsMJD[clusterct][ptnum-1], endpos, endvel);
+    Kepler_univ_int(GMSUN_KM3_SEC2, MJDref, startpos, startvel, obsMJD[clusterct][ptnum-1], endpos, endvel, verbose);
     endpos.x -= observerpos[clusterct][ptnum-1].x;
     endpos.y -= observerpos[clusterct][ptnum-1].y;
     endpos.z -= observerpos[clusterct][ptnum-1].z;
@@ -25127,7 +25127,7 @@ int trk2statevec_clusterprobe_innea(const vector <hlimage> &image_log, const vec
 
 
 // trk2statevec_univar: September 05, 2023
-int trk2statevec_univar(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double max_v_inf, int NotKepler)
+int trk2statevec_univar(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double max_v_inf, int NotKepler, int verbose)
 {
   allstatevecs={};
   long imnum = image_log.size();
@@ -25209,7 +25209,7 @@ int trk2statevec_univar(const vector <hlimage> &image_log, const vector <trackle
     point3d endvel = point3d(0l,0l,0l);
     for(imct=0;imct<imnum;imct++) {
       // Integrate the orbit to find the heliocentric distance as a function of time.
-      status1 = Kepler_univ_int(GMSUN_KM3_SEC2, mjdref, startpos, startvel, image_log[imct].MJD, endpos, endvel);
+      status1 = Kepler_univ_int(GMSUN_KM3_SEC2, mjdref, startpos, startvel, image_log[imct].MJD, endpos, endvel, verbose);
       if(status1!=0) {
 	cerr << "ERROR: Keplerian integration failed for r(t) hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << ", at MJD = " << image_log[imct].MJD << "\n";
 	return(status1);
@@ -25331,7 +25331,7 @@ int trk2statevec_univar(const vector <hlimage> &image_log, const vector <trackle
       
 	  // Integrate orbit to the reference time.
 	  mjdavg = 0.5l*image_log[i1].MJD + 0.5l*image_log[i2].MJD;
-	  status1 = Kepler_univ_int(GMSUN_KM3_SEC2,mjdavg,targpos1,targvel1,mjdref,targpos2,targvel2);
+	  status1 = Kepler_univ_int(GMSUN_KM3_SEC2,mjdavg,targpos1,targvel1,mjdref,targpos2,targvel2,verbose);
 	  if(status1 == 0 && badpoint==0) {
 	    statevec1 = point6dx2(targpos2.x,targpos2.y,targpos2.z,chartimescale*targvel2.x,chartimescale*targvel2.y,chartimescale*targvel2.z,pairct,0);
 	    // Note that the multiplication by chartimescale converts velocities in km/sec
@@ -25361,7 +25361,7 @@ int trk2statevec_univar(const vector <hlimage> &image_log, const vector <trackle
 // except that it uses the univeral variable formulation of the Kepler problem,
 // which enables it to handle unbound (aka hyperbolic, aka interstellar) orbits,
 // something trk2statevec_fgfuncRR is not able to do.
-int trk2statevec_univarRR(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double max_v_inf, int NotKepler)
+int trk2statevec_univarRR(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double max_v_inf, int NotKepler, int verbose)
 {
   allstatevecs={};
   long imnum = image_log.size();
@@ -25448,7 +25448,7 @@ int trk2statevec_univarRR(const vector <hlimage> &image_log, const vector <track
     point3d endvel = point3d(0l,0l,0l);
     for(imct=0;imct<imnum;imct++) {
       // Integrate the orbit to find the heliocentric distance as a function of time.
-      status1 = Kepler_univ_int(GMSUN_KM3_SEC2, mjdref, startpos, startvel, image_log[imct].MJD, endpos, endvel);
+      status1 = Kepler_univ_int(GMSUN_KM3_SEC2, mjdref, startpos, startvel, image_log[imct].MJD, endpos, endvel, verbose);
       if(status1!=0) {
 	cerr << "ERROR: Keplerian integration failed for r(t) hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << ", at MJD = " << image_log[imct].MJD << "\n";
 	return(status1);
@@ -25794,7 +25794,7 @@ int trk2statevane_fgfunc(const vector <hlimage> &image_log, const vector <trackl
 // because they are better handled by the radial hypotheses
 // of heliolinc. After all, heliovane is a niche solution
 // for the cases where heliolinc fails.
-int trk2statevane_univar(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double lambda0, double lambda_dot, double lambda_ddot, double chartimescale, double minsunelong, double maxsunelong, double min_proj_sine, double maxheliodist, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double max_v_inf)
+int trk2statevane_univar(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double lambda0, double lambda_dot, double lambda_ddot, double chartimescale, double minsunelong, double maxsunelong, double min_proj_sine, double maxheliodist, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double max_v_inf, int verbose)
 {
   allstatevecs={};
   long imnum = image_log.size();
@@ -25952,7 +25952,7 @@ int trk2statevane_univar(const vector <hlimage> &image_log, const vector <trackl
       if(!glob_warning) {
 	// Integrate orbit to the reference time.
 	mjdavg = 0.5l*image_log[i1].MJD + 0.5l*image_log[i2].MJD;
-	status1 = Kepler_univ_int(GMSUN_KM3_SEC2,mjdavg,targposmean,targvel1,mjdref,targpos2,targvel2);
+	status1 = Kepler_univ_int(GMSUN_KM3_SEC2,mjdavg,targposmean,targvel1,mjdref,targpos2,targvel2,verbose);
 	if(status1 == 0 && badpoint==0) {
 	  statevec1 = point6dx2(targpos2.x,targpos2.y,targpos2.z,chartimescale*targvel2.x,chartimescale*targvel2.y,chartimescale*targvel2.z,pairct,0);
 	  // Note that the multiplication by chartimescale converts velocities in km/sec
@@ -28782,7 +28782,7 @@ int form_clusters_RR(const vector <point6ix2> &allstatevecs, const vector <hldet
 	  // Calculate the velocity at the first time, which is reference_MJD-chartimescale/SOLARDAY.
 	  Twopoint_Kepler_vstar(GMSUN_KM3_SEC2, startpos, endpos, deltat, startvel, KVSTAR_ITMAX);
 	  // Integrate forward to reference_MJD.
-	  Kepler_univ_int(GMSUN_KM3_SEC2, reference_MJD-chartimescale/SOLARDAY, startpos, startvel, reference_MJD, endpos, endvel);
+	  Kepler_univ_int(GMSUN_KM3_SEC2, reference_MJD-chartimescale/SOLARDAY, startpos, startvel, reference_MJD, endpos, endvel, verbose);
 	  // Note: this is less efficient than Ben Engebreth's code, because I am
 	  // trying to preserve the API for the post-processing codes. It would be
 	  // more efficient to redefine the API, feed the mean positions startpos and endpos
@@ -29128,7 +29128,7 @@ int form_clusters_RR_lowmem(const vector <point6ix2> &allstatevecs, const vector
 	  // Calculate the velocity at the first time, which is reference_MJD-chartimescale/SOLARDAY.
 	  Twopoint_Kepler_vstar(GMSUN_KM3_SEC2, startpos, endpos, deltat, startvel, KVSTAR_ITMAX);
 	  // Integrate forward to reference_MJD.
-	  Kepler_univ_int(GMSUN_KM3_SEC2, reference_MJD-chartimescale/SOLARDAY, startpos, startvel, reference_MJD, endpos, endvel);
+	  Kepler_univ_int(GMSUN_KM3_SEC2, reference_MJD-chartimescale/SOLARDAY, startpos, startvel, reference_MJD, endpos, endvel, verbose);
 	  // Note: this is less efficient than Ben Engebreth's code, because I am
 	  // trying to preserve the API for the post-processing codes. It would be
 	  // more efficient to redefine the API, feed the mean positions startpos and endpos
@@ -30200,7 +30200,7 @@ int heliolinc_alg_univar(const vector <hlimage> &image_log, const vector <hldet>
     
     // Covert all tracklets into state vectors at the reference time, under
     // the assumption that the heliocentric distance hypothesis is correct.
-    status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0);
+    status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0, config.verbose);
     
     if(status==1) {
       cerr << "WARNING: hypothesis " << accelct << ": " << radhyp[accelct].HelioRad << " " << radhyp[accelct].R_dot << " " << radhyp[accelct].R_dubdot << " led to\nnegative heliocentric distance or other invalid result: SKIPPING\n";
@@ -30309,7 +30309,7 @@ int heliolinc_alg_danby(const vector <hlimage> &image_log, const vector <hldet> 
     // Covert all tracklets into state vectors at the reference time, under
     // the assumption that the heliocentric distance hypothesis is correct.
     if(config.use_univar >= 1) {
-      status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0);
+      status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0, config.verbose);
     } else {
       status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf,0);
     }
@@ -30443,7 +30443,7 @@ int heliovane_alg_danby(const vector <hlimage> &image_log, const vector <hldet> 
     // Covert all tracklets into state vectors at the reference time, under
     // the assumption that the heliocentric distance hypothesis is correct.
     if(config.use_univar >= 1) {
-      status = trk2statevane_univar(image_log, tracklets, lambda[lambdact], lambda_dot[lambdact], lambda_ddot[lambdact], chartimescale, config.minsunelong, config.maxsunelong, min_proj_sine, config.maxheliodist, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
+      status = trk2statevane_univar(image_log, tracklets, lambda[lambdact], lambda_dot[lambdact], lambda_ddot[lambdact], chartimescale, config.minsunelong, config.maxsunelong, min_proj_sine, config.maxheliodist, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.verbose);
     } else {
       status = trk2statevane_fgfunc(image_log, tracklets, lambda[lambdact], lambda_dot[lambdact], lambda_ddot[lambdact], chartimescale, config.minsunelong, config.maxsunelong, min_proj_sine, config.maxheliodist, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
     }
@@ -30604,7 +30604,7 @@ int heliovane_alg_all(const vector <hlimage> &image_log, const vector <hldet> &d
     if(config.use_univar==1 || config.use_univar==3) {
       // Use the universal variable formulation of the Kepler problem for orbit propagation.
       // This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
-      status = trk2statevane_univar(image_log, tracklets, lambda[lambdact], lambda_dot[lambdact], lambda_ddot[lambdact], chartimescale, config.minsunelong, config.maxsunelong, min_proj_sine, config.maxheliodist, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
+      status = trk2statevane_univar(image_log, tracklets, lambda[lambdact], lambda_dot[lambdact], lambda_ddot[lambdact], chartimescale, config.minsunelong, config.maxsunelong, min_proj_sine, config.maxheliodist, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.verbose);
     } else {
       // Use the Kepler f and g functions for orbit propagation
       // This is faster than the universal variable formulation, but cannot handle hyperbolic
@@ -31165,7 +31165,7 @@ int heliolinc_alg_ompdanby(const vector <hlimage> &image_log, const vector <hlde
       // Covert all tracklets into state vectors at the reference time, under
       // the assumption that the heliocentric distance hypothesis is correct.
       if(config.use_univar >= 1) {
-	status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0);
+	status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0, config.verbose);
       } else {
 	status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf,0);
       }
@@ -31333,7 +31333,7 @@ int heliolinc_alg_ompkd(const vector <hlimage> &image_log, const vector <hldet> 
       // Covert all tracklets into state vectors at the reference time, under
       // the assumption that the heliocentric distance hypothesis is correct.
       if(config.use_univar >= 1) {
-	status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0);
+	status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0, config.verbose);
       } else {
 	status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf,0);
       }
@@ -31503,7 +31503,7 @@ int heliolinc_alg_ompkd3(const vector <hlimage> &image_log, const vector <hldet>
       // Covert all tracklets into state vectors at the reference time, under
       // the assumption that the heliocentric distance hypothesis is correct.
       if(config.use_univar >= 1) {
-	status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0);
+	status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0, config.verbose);
       } else {
 	status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf,0);
       }
@@ -32148,7 +32148,7 @@ int heliolinc_alg_ompkd4(const vector <hlimage> &image_log, const vector <hldet>
       // Covert all tracklets into state vectors at the reference time, under
       // the assumption that the heliocentric distance hypothesis is correct.
       if(config.use_univar >= 1) {
-	status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0);
+	status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0, config.verbose);
       } else {
 	status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf,0);
       }
@@ -32292,7 +32292,7 @@ int heliolinc_alg_kd(const vector <hlimage> &image_log, const vector <hldet> &de
     // Covert all tracklets into state vectors at the reference time, under
     // the assumption that the heliocentric distance hypothesis is correct.
     if(config.use_univar >= 1) {
-      status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0);
+      status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0, config.verbose);
     } else {
       status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf,0);
     }
@@ -32416,7 +32416,7 @@ int heliolinc_alg_RR(const vector <hlimage> &image_log, const vector <hldet> &de
     // Covert all tracklets into state vectors at the reference time, under
     // the assumption that the heliocentric distance hypothesis is correct.
     if(config.use_univar >= 1) {
-      status = trk2statevec_univarRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0);
+      status = trk2statevec_univarRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0, config.verbose);
     } else {
       status = trk2statevec_fgfuncRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0);
     }
@@ -32540,7 +32540,7 @@ int heliolinc_alg_R(const vector <hlimage> &image_log, const vector <hldet> &det
     // Covert all tracklets into state vectors at the reference time, under
     // the assumption that the heliocentric distance hypothesis is correct.
     if(config.use_univar >= 1) {
-      status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0);
+      status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0, config.verbose);
     } else {
       status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf,0);
     }
@@ -32693,7 +32693,7 @@ int heliolinc_alg_all(const vector <hlimage> &image_log, const vector <hldet> &d
       // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
       // Use the universal variable formulation of the Kepler problem for orbit propagation.
       // This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
-      status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler);
+      status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler, config.verbose);
     } else if(use_univar == 2) {
       // Integrate to perform clustering in the parameter space of Ben Engebreth's 
       // heliolinc_RR algorithm, which uses position vectors at two different
@@ -32707,7 +32707,7 @@ int heliolinc_alg_all(const vector <hlimage> &image_log, const vector <hldet> &d
       // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
       // Use the universal variable formulation of the Kepler problem for orbit propagation.
       // This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
-      status = trk2statevec_univarRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler);
+      status = trk2statevec_univarRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler, config.verbose);
     } else {
       // Integrate to perform clustering in the standard heliolinc3d parameter space
       // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
@@ -32925,7 +32925,7 @@ int heliolinc_omp_all(const vector <hlimage> &image_log, const vector <hldet> &d
 	// of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
 	// Use the universal variable formulation of the Kepler problem for orbit propagation.
 	// This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
-	status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler);
+	status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler, config.verbose);
 	if(status==1) {
 	  cerr << "FAILURE IN THREAD " << ithread << ": ";
 	  cerr << "hypothesis " << accelct << ": " << radhyp[accelct].HelioRad << " " << radhyp[accelct].R_dot << " " << radhyp[accelct].R_dubdot << " led to\nnegative heliocentric distance or other invalid result: SKIPPING\n";
@@ -32955,7 +32955,7 @@ int heliolinc_omp_all(const vector <hlimage> &image_log, const vector <hldet> &d
 	// reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
 	// Use the universal variable formulation of the Kepler problem for orbit propagation.
 	// This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
-	status = trk2statevec_univarRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler);
+	status = trk2statevec_univarRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler, config.verbose);
 	if(status==1) {
 	  cerr << "FAILURE IN THREAD " << ithread << ": ";
 	  cerr << "hypothesis " << accelct << ": " << radhyp[accelct].HelioRad << " " << radhyp[accelct].R_dot << " " << radhyp[accelct].R_dubdot << " led to\nnegative heliocentric distance or other invalid result: SKIPPING\n";
@@ -33184,7 +33184,7 @@ int heliolinc_alg_lowmem(const vector <hlimage> &image_log, const vector <hldet>
       // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
       // Use the universal variable formulation of the Kepler problem for orbit propagation.
       // This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
-      status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler);
+      status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler, config.verbose);
     } else if(use_univar == 2) {
       // Integrate to perform clustering in the parameter space of Ben Engebreth's 
       // heliolinc_RR algorithm, which uses position vectors at two different
@@ -33198,7 +33198,7 @@ int heliolinc_alg_lowmem(const vector <hlimage> &image_log, const vector <hldet>
       // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
       // Use the universal variable formulation of the Kepler problem for orbit propagation.
       // This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
-      status = trk2statevec_univarRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler);
+      status = trk2statevec_univarRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler, config.verbose);
     } else {
       // Integrate to perform clustering in the standard heliolinc3d parameter space
       // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
@@ -33469,7 +33469,7 @@ int heliovane_alg_ompdanby(const vector <hlimage> &image_log, const vector <hlde
       // Covert all tracklets into state vectors at the reference time, under
       // the assumption that the heliocentric distance hypothesis is correct.
       if(config.use_univar >= 1) {
-	status = trk2statevane_univar(image_log, tracklets, lambda[lambdact], lambda_dot[lambdact], lambda_ddot[lambdact], chartimescale, config.minsunelong, config.maxsunelong, min_proj_sine, config.maxheliodist, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
+	status = trk2statevane_univar(image_log, tracklets, lambda[lambdact], lambda_dot[lambdact], lambda_ddot[lambdact], chartimescale, config.minsunelong, config.maxsunelong, min_proj_sine, config.maxheliodist, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.verbose);
       } else {
 	status = trk2statevane_fgfunc(image_log, tracklets, lambda[lambdact], lambda_dot[lambdact], lambda_ddot[lambdact], chartimescale, config.minsunelong, config.maxsunelong, min_proj_sine, config.maxheliodist, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
       }
@@ -33804,7 +33804,7 @@ int link_refine_Herget(const vector <hlimage> &image_log, const vector <hldet> &
 
 // link_refine_Herget_univar: September 06, 2023:
 // Algorithmic portion to be called by wrappers.
-int link_refine_Herget_univar(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <hlclust> &inclust, const vector  <longpair> &inclust2det, LinkRefineConfig config, vector <hlclust> &outclust, vector <longpair> &outclust2det)
+int link_refine_Herget_univar(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <hlclust> &inclust, const vector  <longpair> &inclust2det, LinkRefineConfig config, vector <hlclust> &outclust, vector <longpair> &outclust2det, int verbose)
 {
   long i=0;
   long imnum = image_log.size();
@@ -33942,14 +33942,14 @@ int link_refine_Herget_univar(const vector <hlimage> &image_log, const vector <h
 	// both bound and unbound orbits.
 
 	// Calculate position at first observation
-	Kepler_univ_int(GMSUN_KM3_SEC2, config.MJDref, startpos, startvel, obsMJD[0], endpos, endvel);
+	Kepler_univ_int(GMSUN_KM3_SEC2, config.MJDref, startpos, startvel, obsMJD[0], endpos, endvel, verbose);
 	// Find vector relative to the observer by subtracting off the observer's position.
 	endpos.x -= observerpos[0].x;
 	endpos.y -= observerpos[0].y;
 	endpos.z -= observerpos[0].z;
 	geodist1 = vecabs3d(endpos)/AU_KM;
 	// Calculate position at last observation
-	Kepler_univ_int(GMSUN_KM3_SEC2, config.MJDref, startpos, startvel, obsMJD[ptnum-1], endpos, endvel);
+	Kepler_univ_int(GMSUN_KM3_SEC2, config.MJDref, startpos, startvel, obsMJD[ptnum-1], endpos, endvel, verbose);
 	endpos.x -= observerpos[ptnum-1].x;
 	endpos.y -= observerpos[ptnum-1].y;
 	endpos.z -= observerpos[ptnum-1].z;
@@ -34516,7 +34516,7 @@ int link_purify(const vector <hlimage> &image_log, const vector <hldet> &detvec,
 	startvel.z = onecluster.orbitVZ;
 	// Use the MJD at the orbit epoch as the reference MJD.
 	// Calculate position at first observation
-	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, obsMJD[0], endpos, endvel);
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, obsMJD[0], endpos, endvel, config.verbose);
       } else {
 	// Use mean state vectors to estimate positions
 	startpos.x = onecluster.posX;
@@ -34529,7 +34529,7 @@ int link_purify(const vector <hlimage> &image_log, const vector <hldet> &detvec,
 	// but it isn't needed since we are using the universal variables
 	// formulation, able to handle unbound as well as bound orbits.
 	// Calculate position at first observation
-	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, obsMJD[0], endpos, endvel);
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, obsMJD[0], endpos, endvel, config.verbose);
       }
       
       // Find vector relative to the observer by subtracting off the observer's position.
@@ -34539,10 +34539,10 @@ int link_purify(const vector <hlimage> &image_log, const vector <hldet> &detvec,
       geodist1 = vecabs3d(endpos)/AU_KM;
       if(config.useorbMJD>0 && onecluster.orbit_MJD>0.0) {
 	// Calculate position at last observation
-	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, obsMJD[ptnum-1], endpos, endvel);
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, obsMJD[ptnum-1], endpos, endvel, config.verbose);
       } else {
 	// Calculate position at last observation
-	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, obsMJD[ptnum-1], endpos, endvel);
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, obsMJD[ptnum-1], endpos, endvel, config.verbose);
       }
       endpos.x -= observerpos[ptnum-1].x;
       endpos.y -= observerpos[ptnum-1].y;
@@ -34738,14 +34738,14 @@ int link_purify(const vector <hlimage> &image_log, const vector <hldet> &detvec,
 	  startvel.z = orbit[8];
 	  // Note that orbit[2] is MJD at the epoch.
 	  // Calculate position at first observation
-	  Kepler_univ_int(GMSUN_KM3_SEC2, orbit[2], startpos, startvel, obsMJD[0], endpos, endvel);
+	  Kepler_univ_int(GMSUN_KM3_SEC2, orbit[2], startpos, startvel, obsMJD[0], endpos, endvel, config.verbose);
 	  // Find vector relative to the observer by subtracting off the observer's position.
 	  endpos.x -= observerpos[0].x;
 	  endpos.y -= observerpos[0].y;
 	  endpos.z -= observerpos[0].z;
 	  geodist1 = vecabs3d(endpos)/AU_KM;
 	  // Calculate position at last observation
-	  Kepler_univ_int(GMSUN_KM3_SEC2, orbit[2], startpos, startvel, obsMJD[ptnum-1], endpos, endvel);
+	  Kepler_univ_int(GMSUN_KM3_SEC2, orbit[2], startpos, startvel, obsMJD[ptnum-1], endpos, endvel, config.verbose);
 	  endpos.x -= observerpos[ptnum-1].x;
 	  endpos.y -= observerpos[ptnum-1].y;
 	  endpos.z -= observerpos[ptnum-1].z;
@@ -35089,7 +35089,7 @@ int link_purify2(const vector <hlimage> &image_log, const vector <hldet> &detvec
 	startvel.z = onecluster.orbitVZ;
 	// Use the MJD at the orbit epoch as the reference MJD.
 	// Calculate position at first observation
-	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, obsMJD[0], endpos, endvel);
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, obsMJD[0], endpos, endvel, config.verbose);
       } else {
 	// Use mean state vectors to estimate positions
 	startpos.x = onecluster.posX;
@@ -35102,7 +35102,7 @@ int link_purify2(const vector <hlimage> &image_log, const vector <hldet> &detvec
 	// but it isn't needed since we are using the universal variables
 	// formulation, able to handle unbound as well as bound orbits.
 	// Calculate position at first observation
-	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, obsMJD[0], endpos, endvel);
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, obsMJD[0], endpos, endvel, config.verbose);
       }
       // Find vector relative to the observer by subtracting off the observer's position.
       endpos.x -= observerpos[0].x;
@@ -35112,10 +35112,10 @@ int link_purify2(const vector <hlimage> &image_log, const vector <hldet> &detvec
       // Calculate position at last observation
       if(config.useorbMJD>0 && onecluster.orbit_MJD>0.0) {
 	// Calculate position at last observation
-	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, obsMJD[ptnum-1], endpos, endvel);
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, obsMJD[ptnum-1], endpos, endvel, config.verbose);
       } else {
 	// Calculate position at last observation
-	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, obsMJD[ptnum-1], endpos, endvel);
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, obsMJD[ptnum-1], endpos, endvel, config.verbose);
       }
       endpos.x -= observerpos[ptnum-1].x;
       endpos.y -= observerpos[ptnum-1].y;
@@ -35281,14 +35281,14 @@ int link_purify2(const vector <hlimage> &image_log, const vector <hldet> &detvec
 	  startvel.z = orbit[8];
 	  // Note that orbit[2] is MJD at the epoch.
 	  // Calculate position at first observation
-	  Kepler_univ_int(GMSUN_KM3_SEC2, orbit[2], startpos, startvel, obsMJD[0], endpos, endvel);
+	  Kepler_univ_int(GMSUN_KM3_SEC2, orbit[2], startpos, startvel, obsMJD[0], endpos, endvel, config.verbose);
 	  // Find vector relative to the observer by subtracting off the observer's position.
 	  endpos.x -= observerpos[0].x;
 	  endpos.y -= observerpos[0].y;
 	  endpos.z -= observerpos[0].z;
 	  geodist1 = vecabs3d(endpos)/AU_KM;
 	  // Calculate position at last observation
-	  Kepler_univ_int(GMSUN_KM3_SEC2, orbit[2], startpos, startvel, obsMJD[ptnum-1], endpos, endvel);
+	  Kepler_univ_int(GMSUN_KM3_SEC2, orbit[2], startpos, startvel, obsMJD[ptnum-1], endpos, endvel, config.verbose);
 	  endpos.x -= observerpos[ptnum-1].x;
 	  endpos.y -= observerpos[ptnum-1].y;
 	  endpos.z -= observerpos[ptnum-1].z;
@@ -35588,7 +35588,7 @@ int link_purify_graddec(const vector <hlimage> &image_log, const vector <hldet> 
 	startvel.z = onecluster.orbitVZ;
 	// Use the MJD at the orbit epoch as the reference MJD.
 	// Calculate position at first observation
-	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, obsMJD[0], endpos, endvel);
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, obsMJD[0], endpos, endvel, config.verbose);
       } else {
 	// Use mean state vectors to estimate positions
 	startpos.x = onecluster.posX;
@@ -35601,7 +35601,7 @@ int link_purify_graddec(const vector <hlimage> &image_log, const vector <hldet> 
 	// but it isn't needed since we are using the universal variables
 	// formulation, able to handle unbound as well as bound orbits.
 	// Calculate position at first observation
-	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, obsMJD[0], endpos, endvel);
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, obsMJD[0], endpos, endvel, config.verbose);
       }
       
       // Find vector relative to the observer by subtracting off the observer's position.
@@ -35611,10 +35611,10 @@ int link_purify_graddec(const vector <hlimage> &image_log, const vector <hldet> 
       geodist1 = vecabs3d(endpos)/AU_KM;
       if(config.useorbMJD>0 && onecluster.orbit_MJD>0.0) {
 	// Calculate position at last observation
-	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, obsMJD[ptnum-1], endpos, endvel);
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, obsMJD[ptnum-1], endpos, endvel, config.verbose);
       } else {
 	// Calculate position at last observation
-	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, obsMJD[ptnum-1], endpos, endvel);
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, obsMJD[ptnum-1], endpos, endvel, config.verbose);
       }
       endpos.x -= observerpos[ptnum-1].x;
       endpos.y -= observerpos[ptnum-1].y;
@@ -35779,14 +35779,14 @@ int link_purify_graddec(const vector <hlimage> &image_log, const vector <hldet> 
 	  startvel.z = orbit[8];
 	  // Note that orbit[2] is MJD at the epoch.
 	  // Calculate position at first observation
-	  Kepler_univ_int(GMSUN_KM3_SEC2, orbit[2], startpos, startvel, obsMJD[0], endpos, endvel);
+	  Kepler_univ_int(GMSUN_KM3_SEC2, orbit[2], startpos, startvel, obsMJD[0], endpos, endvel, config.verbose);
 	  // Find vector relative to the observer by subtracting off the observer's position.
 	  endpos.x -= observerpos[0].x;
 	  endpos.y -= observerpos[0].y;
 	  endpos.z -= observerpos[0].z;
 	  geodist1 = vecabs3d(endpos)/AU_KM;
 	  // Calculate position at last observation
-	  Kepler_univ_int(GMSUN_KM3_SEC2, orbit[2], startpos, startvel, obsMJD[ptnum-1], endpos, endvel);
+	  Kepler_univ_int(GMSUN_KM3_SEC2, orbit[2], startpos, startvel, obsMJD[ptnum-1], endpos, endvel, config.verbose);
 	  endpos.x -= observerpos[ptnum-1].x;
 	  endpos.y -= observerpos[ptnum-1].y;
 	  endpos.z -= observerpos[ptnum-1].z;
@@ -35934,6 +35934,7 @@ int link_purify_graddec(const vector <hlimage> &image_log, const vector <hldet> 
   }
   return(0);
 }
+
 // link_purify_quad1: May 14, 2024
 // Like link_purify, but uses Hergetfit_quad1() rather than Hergetfit_vstar()
 // Based on link_refine_Herget_univar, this function is the first
@@ -36093,7 +36094,7 @@ int link_purify_quad1(const vector <hlimage> &image_log, const vector <hldet> &d
 	startvel.z = onecluster.orbitVZ;
 	// Use the MJD at the orbit epoch as the reference MJD.
 	// Calculate position at first observation
-	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, obsMJD[0], endpos, endvel);
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, obsMJD[0], endpos, endvel, config.verbose);
       } else {
 	// Use mean state vectors to estimate positions
 	startpos.x = onecluster.posX;
@@ -36106,7 +36107,7 @@ int link_purify_quad1(const vector <hlimage> &image_log, const vector <hldet> &d
 	// but it isn't needed since we are using the universal variables
 	// formulation, able to handle unbound as well as bound orbits.
 	// Calculate position at first observation
-	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, obsMJD[0], endpos, endvel);
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, obsMJD[0], endpos, endvel, config.verbose);
       }
       
       // Find vector relative to the observer by subtracting off the observer's position.
@@ -36116,10 +36117,10 @@ int link_purify_quad1(const vector <hlimage> &image_log, const vector <hldet> &d
       geodist1 = vecabs3d(endpos)/AU_KM;
       if(config.useorbMJD>0 && onecluster.orbit_MJD>0.0) {
 	// Calculate position at last observation
-	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, obsMJD[ptnum-1], endpos, endvel);
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, obsMJD[ptnum-1], endpos, endvel, config.verbose);
       } else {
 	// Calculate position at last observation
-	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, obsMJD[ptnum-1], endpos, endvel);
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, obsMJD[ptnum-1], endpos, endvel, config.verbose);
       }
       endpos.x -= observerpos[ptnum-1].x;
       endpos.y -= observerpos[ptnum-1].y;
@@ -36286,14 +36287,14 @@ int link_purify_quad1(const vector <hlimage> &image_log, const vector <hldet> &d
 	  startvel.z = orbit[8];
 	  // Note that orbit[2] is MJD at the epoch.
 	  // Calculate position at first observation
-	  Kepler_univ_int(GMSUN_KM3_SEC2, orbit[2], startpos, startvel, obsMJD[0], endpos, endvel);
+	  Kepler_univ_int(GMSUN_KM3_SEC2, orbit[2], startpos, startvel, obsMJD[0], endpos, endvel, config.verbose);
 	  // Find vector relative to the observer by subtracting off the observer's position.
 	  endpos.x -= observerpos[0].x;
 	  endpos.y -= observerpos[0].y;
 	  endpos.z -= observerpos[0].z;
 	  geodist1 = vecabs3d(endpos)/AU_KM;
 	  // Calculate position at last observation
-	  Kepler_univ_int(GMSUN_KM3_SEC2, orbit[2], startpos, startvel, obsMJD[ptnum-1], endpos, endvel);
+	  Kepler_univ_int(GMSUN_KM3_SEC2, orbit[2], startpos, startvel, obsMJD[ptnum-1], endpos, endvel, config.verbose);
 	  endpos.x -= observerpos[ptnum-1].x;
 	  endpos.y -= observerpos[ptnum-1].y;
 	  endpos.z -= observerpos[ptnum-1].z;
@@ -36660,7 +36661,7 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
 	endvel = point3d(0l,0l,0l);
 	for(ptct=0; ptct<ptnum; ptct++) {
 	  // Integrate the orbit to find the heliocentric distance as a function of time.
-	  status1 = Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, clusterdets[ptct].MJD, endpos, endvel);
+	  status1 = Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, clusterdets[ptct].MJD, endpos, endvel, config.verbose);
 	  if(status1!=0) {
 	    cerr << "ERROR: Keplerian integration failed for r(t) hypothesis point " <<  heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << ", at MJD = " << clusterdets[ptct].MJD << "\n";
 	    return(status1);
@@ -36696,7 +36697,7 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
 	endvel = point3d(0l,0l,0l);
 	for(ptct=0; ptct<ptnum; ptct++) {
 	  // Integrate the orbit to find the heliocentric distance as a function of time.
-	  status1 = Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, clusterdets[ptct].MJD, endpos, endvel);
+	  status1 = Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, clusterdets[ptct].MJD, endpos, endvel, config.verbose);
 	  if(status1!=0) {
 	    cerr << "ERROR: Keplerian integration failed for r(t) hypothesis point " <<  heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << ", at MJD = " << clusterdets[ptct].MJD << "\n";
 	    return(status1);
@@ -37046,7 +37047,7 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
       startvel.y = onecluster.orbitVY;
       startvel.z = onecluster.orbitVZ;
       // Use the MJD at the orbit epoch as the reference MJD.
-      Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, obsMJD[0], endpos, endvel);
+      Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, obsMJD[0], endpos, endvel, config.verbose);
     } else {
       // Use mean state vectors to estimate positions
       startpos.x = onecluster.posX;
@@ -37058,7 +37059,7 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
       // There used to be a check against solar escape velocity here,
       // but it isn't needed since we are using the universal variables
       // formulation, able to handle unbound as well as bound orbits.
-      Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, obsMJD[0], endpos, endvel);
+      Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, obsMJD[0], endpos, endvel, config.verbose);
     }
     // Find vector relative to the observer by subtracting off the observer's position.
     endpos.x -= observerpos[0].x;
@@ -37067,9 +37068,9 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
     geodist1 = vecabs3d(endpos)/AU_KM;
     // Calculate position at last observation
     if(config.useorbMJD>0 && onecluster.orbit_MJD>0.0) {
-      Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, obsMJD[ptnum-1], endpos, endvel);
+      Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, obsMJD[ptnum-1], endpos, endvel, config.verbose);
     } else {
-      Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, obsMJD[ptnum-1], endpos, endvel);
+      Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, obsMJD[ptnum-1], endpos, endvel, config.verbose);
     }
     endpos.x -= observerpos[ptnum-1].x;
     endpos.y -= observerpos[ptnum-1].y;
@@ -37241,14 +37242,14 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
 	startvel.z = orbit[8];
 	// Note that orbit[2] is MJD at the epoch.
 	// Calculate position at first observation
-	Kepler_univ_int(GMSUN_KM3_SEC2, orbit[2], startpos, startvel, obsMJD[0], endpos, endvel);
+	Kepler_univ_int(GMSUN_KM3_SEC2, orbit[2], startpos, startvel, obsMJD[0], endpos, endvel, config.verbose);
 	// Find vector relative to the observer by subtracting off the observer's position.
 	endpos.x -= observerpos[0].x;
 	endpos.y -= observerpos[0].y;
 	endpos.z -= observerpos[0].z;
 	geodist1 = vecabs3d(endpos)/AU_KM;
 	// Calculate position at last observation
-	Kepler_univ_int(GMSUN_KM3_SEC2, orbit[2], startpos, startvel, obsMJD[ptnum-1], endpos, endvel);
+	 Kepler_univ_int(GMSUN_KM3_SEC2, orbit[2], startpos, startvel, obsMJD[ptnum-1], endpos, endvel, config.verbose);
 	endpos.x -= observerpos[ptnum-1].x;
 	endpos.y -= observerpos[ptnum-1].y;
 	endpos.z -= observerpos[ptnum-1].z;
@@ -40727,7 +40728,7 @@ int arctrace01(int polyorder, int planetnum, const vector <long double> &planetm
   point3d dendpos=point3d(0,0,0);
   point3d dendvel=point3d(0,0,0);
   
-  Kepler_univ_int(GMSUN_KM3_SEC2, orbit[2], dstartpos, dstartvel, planetmjd[planetfile_refpoint], dendpos, dendvel);
+  Kepler_univ_int(GMSUN_KM3_SEC2, orbit[2], dstartpos, dstartvel, planetmjd[planetfile_refpoint], dendpos, dendvel, verbose);
   
   // Convert Keplerian state vectors from heliocentric to barycentric coords.
   startpos.x = dendpos.x + Sunpos[planetfile_refpoint].x;
@@ -41535,7 +41536,7 @@ int arctrace02(int polyorder, int planetnum, const vector <long double> &planetm
   point3d dendpos=point3d(0,0,0);
   point3d dendvel=point3d(0,0,0);
   
-  Kepler_univ_int(GMSUN_KM3_SEC2, orbit[2], dstartpos, dstartvel, planetmjd[planetfile_refpoint], dendpos, dendvel);
+  Kepler_univ_int(GMSUN_KM3_SEC2, orbit[2], dstartpos, dstartvel, planetmjd[planetfile_refpoint], dendpos, dendvel, verbose);
   
   // Convert Keplerian state vectors from heliocentric to barycentric coords.
   startpos.x = dendpos.x + Sunpos[planetfile_refpoint].x;
@@ -41651,7 +41652,7 @@ int arctrace03(int polyorder, int planetnum, const vector <long double> &planetm
   double dchisq = 0.0;
   double dastromrms = 0.0;
   
-  Kepler_univ_int(GMSUN_KM3_SEC2, orbit[2], dstartpos, dstartvel, planetmjd[planetfile_refpoint], dendpos, dendvel);
+  Kepler_univ_int(GMSUN_KM3_SEC2, orbit[2], dstartpos, dstartvel, planetmjd[planetfile_refpoint], dendpos, dendvel, verbose);
 
   Kepobserverpos = {};
   KepMJD = {};
