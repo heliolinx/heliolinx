@@ -3,7 +3,6 @@
 #include "solarsyst_dyn_geo01.h"
 #include "cmath"
 
-
 static void show_usage()
 {
   cerr << "Usage: parse_trk2det -pairdet pairdet_file -trk2det input tracklet-to-detection file -out output file\n";
@@ -29,6 +28,7 @@ int main(int argc, char *argv[])
   long detnum=0;
   long detct=0;
   long trkct=0;
+  long tracklet_num=0;
   long i=0;
   int verbose=0;
   long max_known_obj=0;
@@ -138,19 +138,21 @@ int main(int argc, char *argv[])
     cerr << "read_longpair_file returned status = " << status << ".\n";
     return(1);
   }
-  cout << "Read " << intrk2det.size() << " data lines from tracklet-to-detection file " << trk2detfile << "\n";
+  tracklet_num = intrk2det.size();
+  cout << "Read " << tracklet_num << " data lines from tracklet-to-detection file " << trk2detfile << "\n";
 
   outstream1.open(outfile);
   detct=0;
   trkct=0;
   // Load tracklet-specific detection vector for this cluster
   trackvec={};
-  for(i=0 ; i<long(intrk2det.size()); i++) {
+  for(i=0 ; i<tracklet_num; i++) {
     detct = intrk2det[i].i2;
     cout << "i=" << i << ", trk2det: " << intrk2det[i].i1 << "," << intrk2det[i].i2 << " trkct=" << trkct << ", detct=" << detct << ", detnum=" << detnum << "\n";
     if(detct>=0 && detct<detnum && trkct==intrk2det[i].i1) {
       trackvec.push_back(detvec[detct]);
-    } if(trkct!=intrk2det[i].i1 || i>=long(intrk2det.size()-1)) {
+    }
+    if(trkct!=intrk2det[i].i1 || i>=tracklet_num-1) {
       // We just finished a tracklet. Write it out
       cout << trackvec.size() << " points found for tracklet " << trkct << "\n";
       if(trackvec.size()>0) {

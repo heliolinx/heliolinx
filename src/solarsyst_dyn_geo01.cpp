@@ -923,6 +923,203 @@ int kdrange01(const vector <kdpoint> &kdvec,double x,double y,double range,vecto
   return(0);
 }
 
+// kdnearest01: July 21, 2025:
+// Given a k-d tree vector kdvec created by kdtree01,
+// find the point of the k-d tree that is nearest to x,y.
+// Return the index to this point.
+// NOTE THAT THIS IS FOR 2-D KD trees.
+long kdnearest01(const vector <kdpoint> &kdvec,double x,double y)
+{
+  int notdone=1;
+  int dim=1;
+  long currentpoint=0;
+  long leftpoint=0;
+  long rightpoint=0;
+  int goleft=0;
+  int goright=0;
+  double xdiff = kdvec[currentpoint].point.x - x;
+  double ydiff = kdvec[currentpoint].point.y - y;
+  vector <long> checkit={};
+  long unsigned int checknum=0;
+  double dist = sqrt(xdiff*xdiff + ydiff*ydiff);
+  double mindist = dist;
+  long bestpoint=currentpoint;
+
+  while(notdone>0) {
+    // Climb to the top of the k-d tree, keeping track
+    // of potentially interesting unexplored branches
+    // in the vector checkit.
+    while(leftpoint>=0 || rightpoint>=0) {
+      // Previous step did not end on a leaf.
+      leftpoint = kdvec[currentpoint].left;
+      rightpoint = kdvec[currentpoint].right;
+      dim = kdvec[currentpoint].dim;
+      if(dim%2==1) {
+	goright = (xdiff <= mindist); // possible hits lie to the left;
+	goleft = (xdiff >= -mindist); // possible hits lie to the right;
+	if(goleft && goright) {
+	  if(leftpoint>=0) {
+	    // Explore leftward first.
+	    currentpoint = leftpoint;
+	    xdiff = kdvec[currentpoint].point.x - x;
+	    ydiff = kdvec[currentpoint].point.y - y;
+	    dist = sqrt(xdiff*xdiff + ydiff*ydiff);
+	    if(dist < mindist) {
+	      mindist = dist;
+	      bestpoint=currentpoint;
+	    }
+	    if(rightpoint>=0) {
+	      // Rightward branch will also be explored later
+	      checknum++;
+	      if(checknum>checkit.size()) {
+		checkit.push_back(rightpoint);
+	      }
+	      else {
+		checkit[checknum-1] = rightpoint;
+	      }
+	    }
+	  } else if(rightpoint>=0) {
+	    // Leftward branch is a dead end: explore rightward branch
+	    currentpoint = rightpoint;
+	    xdiff = kdvec[currentpoint].point.x - x;
+	    ydiff = kdvec[currentpoint].point.y - y;
+	    dist = sqrt(xdiff*xdiff + ydiff*ydiff);
+	    if(dist < mindist) {
+	      mindist = dist;
+	      bestpoint=currentpoint;
+	    }
+	  }
+	} else if(goleft) {
+	  // Do not explore the rightward branch, which leads only to
+	  // more distant points. Explore exclusively toward the left.
+	  if(leftpoint>=0) {
+	    currentpoint = leftpoint;
+	    xdiff = kdvec[currentpoint].point.x - x;
+	    ydiff = kdvec[currentpoint].point.y - y;
+	    dist = sqrt(xdiff*xdiff + ydiff*ydiff);
+	    if(dist < mindist) {
+	      mindist = dist;
+	      bestpoint=currentpoint;
+	    }
+	  } else rightpoint=-1; // Dead end, make sure while-loop exits.
+	} else if(goright) {
+	  // Do not explore the leftward branch, which leads only to
+	  // more distant points. Explore exclusively toward the right.
+	  if(rightpoint>=0) {
+	    currentpoint = rightpoint;
+	    xdiff = kdvec[currentpoint].point.x - x;
+	    ydiff = kdvec[currentpoint].point.y - y;
+	    dist = sqrt(xdiff*xdiff + ydiff*ydiff);
+	    if(dist < mindist) {
+	      mindist = dist;
+	      bestpoint=currentpoint;
+	    }
+	  } else leftpoint=-1;  // Dead end, make sure while-loop exits.
+	} else {
+	  // Nearer points cannot be found either to the left or
+	  // to the right. Exit the while loop.
+	  leftpoint=rightpoint=-1;
+	}
+	// Close x-dimension case
+      } else if(dim%2==0) {
+	goright = (ydiff <= mindist); // possible hits lie to the left;
+	goleft = (ydiff >= -mindist); // possible hits lie to the right;
+	if(goleft && goright) {
+	  if(leftpoint>=0) {
+	    // Explore leftward first.
+	    currentpoint = leftpoint;
+	    xdiff = kdvec[currentpoint].point.x - x;
+	    ydiff = kdvec[currentpoint].point.y - y;
+	    dist = sqrt(xdiff*xdiff + ydiff*ydiff);
+	    if(dist < mindist) {
+	      mindist = dist;
+	      bestpoint=currentpoint;
+	    }
+	    if(rightpoint>=0) {
+	      // Rightward branch will also be explored later
+	      checknum++;
+	      if(checknum>checkit.size()) {
+		checkit.push_back(rightpoint);
+	      } else {
+		checkit[checknum-1] = rightpoint;
+	      }
+	    }
+	  } else if(rightpoint>=0) {
+	    // Leftward branch is a dead end: explore rightward branch
+	    currentpoint = rightpoint;
+	    xdiff = kdvec[currentpoint].point.x - x;
+	    ydiff = kdvec[currentpoint].point.y - y;
+	    dist = sqrt(xdiff*xdiff + ydiff*ydiff);
+	    if(dist < mindist) {
+	      mindist = dist;
+	      bestpoint=currentpoint;
+	    }
+	  }
+	} else if(goleft) {
+	  // Do not explore the rightward branch, which leads only to
+	  // more distant points. Explore exclusively toward the left.
+	  if(leftpoint>=0) {
+	    currentpoint = leftpoint;
+	    xdiff = kdvec[currentpoint].point.x - x;
+	    ydiff = kdvec[currentpoint].point.y - y;
+	    dist = sqrt(xdiff*xdiff + ydiff*ydiff);
+	    if(dist < mindist) {
+	      mindist = dist;
+	      bestpoint=currentpoint;
+	    }
+	  } else rightpoint = -1; // Dead end, make sure while loop exits.
+	} else if(goright) {
+	  // Do not explore the leftward branch, which leads only to
+	  // more distant points. Explore exclusively toward the right.
+	  if(rightpoint>=0) {
+	    currentpoint = rightpoint;
+	    xdiff = kdvec[currentpoint].point.x - x;
+	    ydiff = kdvec[currentpoint].point.y - y;
+	    dist = sqrt(xdiff*xdiff + ydiff*ydiff);
+	    if(dist < mindist) {
+	      mindist = dist;
+	      bestpoint=currentpoint;
+	    }
+	  } else leftpoint=-1;  // Dead end, make sure while loop exits.
+	} else {
+	  // Nearer points cannot be found either to the left or
+	  // to the right. Exit the while loop.
+	  leftpoint=rightpoint=-1;
+	}
+	// Note that we do not need to worry about the possiblity
+	// that current point will get set to -1: i.e., we were
+	// at a leaf or a one-sided branch. Such cases will
+	// be caught by the while statement.
+	// Close y-dimension case
+      }
+      // Close while-loop checking if we've hit a leaf.
+    }
+    // We have climbed up the tree to a leaf. Go backwards through
+    // the checkit vector and see if there is anything to check.
+    checknum=checkit.size();
+    while(checknum>=1 && checkit[checknum-1]<0) checknum--;
+    if(checknum<=0) {
+      //There were no valid entries to check: we're done.
+      notdone=0;
+    } else {
+      //Set currentpoint to the last valid entry in checkit
+      currentpoint = checkit[checknum-1];
+      xdiff = kdvec[currentpoint].point.x - x;
+      ydiff = kdvec[currentpoint].point.y - y;
+      dist = sqrt(xdiff*xdiff + ydiff*ydiff);
+      if(dist < mindist) {
+	mindist = dist;
+	bestpoint=currentpoint;
+      }
+      //Mark this point as used.
+      checkit[checknum-1]=-1;
+      leftpoint=rightpoint=0;
+    }
+  }
+  return(bestpoint);
+}
+
+
 // medind_3d_index: January 31, 2023: Calculate the median of
 // a vector of points of type point3d_index in x (dim=1), y (dim=2), or z (dim=3)
 long medind_3d_index(const vector <point3d_index> &pointvec, int dim)
@@ -7236,9 +7433,9 @@ int Kepler_univ_int(const double MGsun, const double mjdstart, const point3d &st
     s = deltaF/sqrt(-alpha);
   }
   if(!isnormal(s) && s!=0.0l) {
-    cerr << "WARNING: initial guess with alpha = " << alpha << " produced non-normal s = " << s << "\n";
+    if(verbose>0) cerr << "WARNING: initial guess with alpha = " << alpha << " produced non-normal s = " << s << "\n";
     s=deltat/r0;
-    cerr << "Re-assigning rescue value s = " << s << "\n";
+    if(verbose>0) cerr << "Re-assigning rescue value s = " << s << "\n";
   }
 
   double f,fp,ds,c0,c1,c2,c3,fold,fpold;
@@ -7262,11 +7459,11 @@ int Kepler_univ_int(const double MGsun, const double mjdstart, const point3d &st
     fpold=fp;
     fp = r0*c0 + u*s*c1 + MGsun*s*s*c2;
     if(!isnormal(f) || !isnormal(fp)) {
-      cerr << "ERROR: universal variable minimization function f, fp = " << f << "," << fp << "\n";
-      cerr << "c0,c1,c2,c3: " << c0 << "," << c1 << "," << c2 << "," << c3 << "\n";
-      cerr << "alpha = " << alpha << ", s = " << s << ", alpha*s^2 = " << alpha*s*s << ", fold,fpold = " << fold << "," << fpold << "\n";
+      if(verbose>0) cerr << "ERROR: universal variable minimization function f, fp = " << f << "," << fp << "\n";
+      if(verbose>0) cerr << "c0,c1,c2,c3: " << c0 << "," << c1 << "," << c2 << "," << c3 << "\n";
+      if(verbose>0) cerr << "alpha = " << alpha << ", s = " << s << ", alpha*s^2 = " << alpha*s*s << ", fold,fpold = " << fold << "," << fpold << "\n";
       s=deltat/r0;
-      cerr << "Re-assigning rescue value s = " << s << "\n";
+      if(verbose>0) cerr << "Re-assigning rescue value s = " << s << "\n";
       status = Stumpff_func(alpha*s*s, &c0, &c1, &c2, &c3);
       if(status!=0) {
 	cerr << "ERROR: Stumpff_func() failed in rescue, with status " << status << ".\n";
@@ -7325,7 +7522,7 @@ int Kepler_univ_int(const double MGsun, const double mjdstart, const point3d &st
 // Integrate an orbit assuming we have a Keplerian 2-body problem
 // with all the mass in the Sun, and the input position and velocity
 // are relative to the Sun.
-int Kepler_univ_vec(const double MGsun, const double mjdstart, const point3d &startpos, const point3d &startvel, const vector <double> &mjdvec, vector <point3d> &outpos, vector <point3d> &outvel)
+int Kepler_univ_vec(const double MGsun, const double mjdstart, const point3d &startpos, const point3d &startvel, const vector <double> &mjdvec, vector <point3d> &outpos, vector <point3d> &outvel, int verbose)
 {
   double r0 = vecabs3d(startpos);
   double v0 = vecabs3d(startvel);
@@ -7373,9 +7570,9 @@ int Kepler_univ_vec(const double MGsun, const double mjdstart, const point3d &st
 	}
 	s = x/sqrt(alpha);
 	if(!isnormal(s) && s!=0.0l) {
-	  cerr << "WARNING: initial guess with alpha = " << alpha << " produced non-normal s = " << s << "\n";
+	  if(verbose>0) cerr << "WARNING: initial guess with alpha = " << alpha << " produced non-normal s = " << s << "\n";
 	  s=deltat/r0;
-	  cerr << "Re-assigning rescue value s = " << s << "\n";
+	  if(verbose>0) cerr << "Re-assigning rescue value s = " << s << "\n";
 	}
       } else if(alpha<0.0l) {
 	// Use the formulation for an unbound, hyperbolic (e.g., insterstellar) orbit
@@ -7388,9 +7585,9 @@ int Kepler_univ_vec(const double MGsun, const double mjdstart, const point3d &st
 	else if(deltaM<0) deltaF = -log((-2.0l*deltaM + DANBYK_6935*e)/(CH-SH));
 	s = deltaF/sqrt(-alpha);
 	if(!isnormal(s) && s!=0.0l) {
-	  cerr << "WARNING: initial guess with alpha = " << alpha << " produced non-normal s = " << s << "\n";
+	  if(verbose>0) cerr << "WARNING: initial guess with alpha = " << alpha << " produced non-normal s = " << s << "\n";
 	  s=deltat/r0;
-	  cerr << "Re-assigning rescue value s = " << s << "\n";
+	  if(verbose>0) cerr << "Re-assigning rescue value s = " << s << "\n";
 	}
       } else if(alpha==0.0l || !isnormal(alpha)) {
 	cerr << "ERROR: Kepler_univ_vec found alpha = " << alpha << ": unable to proceed\n";
@@ -7414,11 +7611,11 @@ int Kepler_univ_vec(const double MGsun, const double mjdstart, const point3d &st
 	fpold=fp;
 	fp = r0*c0 + u*s*c1 + MGsun*s*s*c2;
 	if(!isnormal(f) || !isnormal(fp)) {
-	  cerr << "ERROR: universal variable minimization function f, fp = " << f << "," << fp << "\n";
-	  cerr << "c0,c1,c2,c3: " << c0 << "," << c1 << "," << c2 << "," << c3 << "\n";
-	  cerr << "alpha = " << alpha << ", s = " << s << ", alpha*s^2 = " << alpha*s*s << ", fold,fpold = " << fold << "," << fpold << "\n";
+	  if(verbose>0) cerr << "ERROR: universal variable minimization function f, fp = " << f << "," << fp << "\n";
+	  if(verbose>0) cerr << "c0,c1,c2,c3: " << c0 << "," << c1 << "," << c2 << "," << c3 << "\n";
+	  if(verbose>0) cerr << "alpha = " << alpha << ", s = " << s << ", alpha*s^2 = " << alpha*s*s << ", fold,fpold = " << fold << "," << fpold << "\n";
 	  s=deltat/r0;
-	  cerr << "Re-assigning rescue value s = " << s << "\n";
+	  if(verbose>0) cerr << "Re-assigning rescue value s = " << s << "\n";
 	  status = Stumpff_func(alpha*s*s, &c0, &c1, &c2, &c3);
 	  if(status!=0) {
 	    cerr << "ERROR: Stumpff_func() failed in rescue, with status " << status << ".\n";
@@ -13789,7 +13986,7 @@ int Keplerint_multipoint_fgfunc(const double MGsun, const double mjdstart, const
 // Integrate an orbit assuming we have a Keplerian 2-body problem
 // with all the mass in the Sun, and the input position and velocity
 // are relative to the Sun.
-int Keplerint_multipoint_univar(const double MGsun, const double mjdstart, const vector <double> &obsMJD, const point3d &startpos, const point3d &startvel, vector <point3d> &obspos, vector <point3d> &obsvel, double *semimajor_axis, double *eccen)
+int Keplerint_multipoint_univar(const double MGsun, const double mjdstart, const vector <double> &obsMJD, const point3d &startpos, const point3d &startvel, vector <point3d> &obspos, vector <point3d> &obsvel, double *semimajor_axis, double *eccen, int verbose)
 {
   double r0 = vecabs3d(startpos);
   double v0 = vecabs3d(startvel);
@@ -13862,9 +14059,9 @@ int Keplerint_multipoint_univar(const double MGsun, const double mjdstart, const
 	s = deltaF/sqrt(-alpha);
       }
       if(!isnormal(s) && s!=0.0l) {
-	cerr << "WARNING: initial guess with alpha = " << alpha << " produced non-normal s = " << s << "\n";
+	if(verbose>0) cerr << "WARNING: initial guess with alpha = " << alpha << " produced non-normal s = " << s << "\n";
 	s=deltat/r0;
-	cerr << "Re-assigning rescue value s = " << s << "\n";
+	if(verbose>0) cerr << "Re-assigning rescue value s = " << s << "\n";
       }
 
       double f,fp,ds,c0,c1,c2,c3,fold,fpold;
@@ -13889,11 +14086,11 @@ int Keplerint_multipoint_univar(const double MGsun, const double mjdstart, const
 	fpold=fp;
 	fp = r0*c0 + u*s*c1 + MGsun*s*s*c2;
 	if(!isnormal(f) || !isnormal(fp)) {
-	  cerr << "WARNING: universal variable minimization function f, fp = " << f << "," << fp << "\n";
-	  cerr << "c0,c1,c2,c3: " << c0 << "," << c1 << "," << c2 << "," << c3 << "\n";
-	  cerr << "alpha = " << alpha << ", s = " << s << ", alpha*s^2 = " << alpha*s*s << ", fold,fpold = " << fold << "," << fpold << "\n";
+	  if(verbose>0) cerr << "WARNING: universal variable minimization function f, fp = " << f << "," << fp << "\n";
+	  if(verbose>0) cerr << "c0,c1,c2,c3: " << c0 << "," << c1 << "," << c2 << "," << c3 << "\n";
+	  if(verbose>0) cerr << "alpha = " << alpha << ", s = " << s << ", alpha*s^2 = " << alpha*s*s << ", fold,fpold = " << fold << "," << fpold << "\n";
 	  s=deltat/r0;
-	  cerr << "Re-assigning rescue value s = " << s << "\n";
+	  if(verbose>0) cerr << "Re-assigning rescue value s = " << s << "\n";
 	  status = Stumpff_func(alpha*s*s, &c0, &c1, &c2, &c3);
 	  if(status!=0) {
 	    cerr << "WARNING: Stumpff_func() failed in rescue, with status " << status << ".\n";
@@ -13920,7 +14117,7 @@ int Keplerint_multipoint_univar(const double MGsun, const double mjdstart, const
 	f = r0*s*c1 + u*s*s*c2 + MGsun*s*s*s*c3 - deltat;
 	itct++;
       }
-      if(fabs(f/fp)>HYPTRANSTOL) {
+      if(fabs(f/fp)>HYPTRANSTOL && verbose>=1) {
 	cerr << "Warning: Kepler_univ_int() failed to converge by iteration " << itct << ", f/fp = " << f/fp << " vs tolerance of " << HYPTRANSTOL << "\n";
       }
 
@@ -14251,7 +14448,7 @@ double orbitchi_fgfunc(const point3d &objectpos, const point3d &objectvel, const
 // as being faster and more robust than orbitchi02.
 // Unlike orbitchi02(), it does not calculate angperi,
 // the angle from perihelion.
-double orbitchi_univar(const point3d &objectpos, const point3d &objectvel, const double mjdstart, const vector <point3d> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid, double *semimajor_axis, double *eccen)
+double orbitchi_univar(const point3d &objectpos, const point3d &objectvel, const double mjdstart, const vector <point3d> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid, double *semimajor_axis, double *eccen, int verbose)
 {
   vector <point3d> obspos;
   vector <point3d> obsvel;
@@ -14270,7 +14467,7 @@ double orbitchi_univar(const point3d &objectpos, const point3d &objectvel, const
   
   // Integrate orbit.
   status=0;
-  status = Keplerint_multipoint_univar(GMSUN_KM3_SEC2,mjdstart,obsMJD,objectpos,objectvel,obspos,obsvel,semimajor_axis,eccen);
+  status = Keplerint_multipoint_univar(GMSUN_KM3_SEC2,mjdstart,obsMJD,objectpos,objectvel,obspos,obsvel,semimajor_axis,eccen,verbose);
   if(status!=0) {
     // Keplerint_multipoint_univar failed.
     return(LARGERR3);
@@ -15085,7 +15282,7 @@ double Hergetchi_vstar(double geodist1, double geodist2, int Hergetpoint1, int H
   double orbchi;
   // Note that the output vectors fitRA, fitDec, and resid are null-wiped
   // internally in orbitchi01, so it isn't necessary to wipe them here.
-  orbchi = orbitchi_univar(startpos, startvel, obsMJD[Hergetpoint1]-geodist1/CLIGHT_AUDAY, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, &a, &e);
+  orbchi = orbitchi_univar(startpos, startvel, obsMJD[Hergetpoint1]-geodist1/CLIGHT_AUDAY, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, &a, &e, verbose);
 
   orbit={};
   orbit.push_back(a);
@@ -20800,6 +20997,652 @@ int find_pairs(vector <hldet> &detvec, const vector <hlimage> &img_log, vector <
   return(0);
 }
 
+
+//find_pairs2: July 21, 2025:  Create pairs, output a vector pairdets of type hldet;
+// a vector indvecs of type vector <long>, with the same length as pairdets,
+// giving the indices of all the detections paired with a given detection;
+// and the vector pairvec of type longpair, giving all the pairs of detections.
+int find_pairs2(vector <hldet> &detvec, const vector <hlimage> &img_log, vector <hldet> &pairdets, vector <tracklet> &tracklets, vector <longpair> &trk2det, int min_tracklet_points, int max_netl, double mintime, double maxtime, double imagetimetol, double imrad, double minvel, double maxvel, double minarc, double matchrad, double trkfrac, double maxgcr, int verbose)
+{
+  cout << "Inside find_pairs2\n";
+  long detnum = detvec.size();
+  if(detnum<=0) {
+    cerr << "ERROR: findpairs2 called with no input detections\n";
+    return(1);
+  }
+  int imnum = img_log.size();
+  int imct=0;
+  int imtarg=0;
+  long detct=0;
+  long pdct=0; // count of detections that have been paired
+  xy_index xyind=xy_index(0.0, 0.0, 0);
+  vector <xy_index> axyvec = {};
+  vector <long> indexvec;
+  vector <long> indexvec2;
+  double dist,pa;
+  dist = pa = 0.0l;
+  long dettarg=0;
+  longpair onepair = longpair(0,0);
+  vector <int> image_overlap;
+  vector <int> image_overlap_future;
+  int apct=0;
+  int adetct=0;
+  long i = 0;
+  double range,timeA,timeB,xA,xB,yA,yB,xpred,ypred,timepred;
+  range = timeA = timeB = xA = xB = yA = yB = xpred = ypred = timepred = 0.0;
+  vector <hldet> trkdets;
+  vector <long> Atrkvec;
+  vector <vector <long>> Atrkmat;
+  vector <vector <long>> Atrkmat2;
+  vector <double> residuals;
+  vector <double> fitRA;
+  vector <double> fitDec;
+  tracklet track1 = tracklet(0,0.0l,0.0l,0,0.0l,0.0l,0,0);
+  double poleRA,poleDec,angvel,crosstrack,alongtrack;
+  poleRA=poleDec=angvel=crosstrack=alongtrack=0.0;
+  int status,instep,rp1,rp2;
+  status=instep=rp1=rp2=0;
+  int bad_reuse=0;
+  long forbidden_reuses = 0;
+  
+  pairdets={};
+  tracklets={};
+  trk2det={};
+
+  // Mark all detections as unpaired and available using index = -detnum-2
+  for(detct=0;detct<detnum;detct++) detvec[detct].index = -detnum - 2;
+
+  // Loop over all images, determining the effective number of overlapping
+  // images in each case.
+  // Loop over images for image A
+  for(imct=0;imct<imnum;imct++) {
+    cout << "Initial loop considering image " << imct << " of " << imnum << "\n";
+    if(img_log[imct].endind<=0 || img_log[imct].endind<=img_log[imct].startind) continue; // No detections on this image.
+    // Project all the detections on image A
+    xyind=xy_index(0.0, 0.0, 0);
+    axyvec = {};
+    dist=pa=0.0;
+    dettarg=0;
+    for(detct=img_log[imct].startind ; detct<img_log[imct].endind ; detct++) {
+      distradec02(img_log[imct].RA, img_log[imct].Dec,detvec[detct].RA,detvec[detct].Dec,&dist,&pa);
+      xyind = xy_index(dist*sin(pa/DEGPRAD),dist*cos(pa/DEGPRAD),detct);
+      axyvec.push_back(xyind);
+      if((!isnormal(xyind.x) && xyind.x!=0) || (!isnormal(xyind.y) && xyind.y!=0)) {
+	cerr << "nan-producing input: ra1, dec1, ra2, dec2, dist, pa:\n";
+	cerr << img_log[imct].RA << " " << img_log[imct].Dec << " " << detvec[detct].RA << " " << detvec[detct].Dec << " " << dist << " " << pa << " " << xyind.x << " " << xyind.x << "\n";
+      }
+    }
+    // Calculate the number of successfully projected detections on image imct (image A)
+    long imdetnum = axyvec.size();
+    cout << imdetnum << " detections successfully projected\n";
+
+    // Create two vectors of zeros with this number of entries, one
+    // to store all overlapping images, and one to store only those
+    // images later in time than image A
+    vector <int> detection_matches;
+    make_ivec(imdetnum, detection_matches);
+    vector <int> detection_matches_future;
+    make_ivec(imdetnum, detection_matches_future);
+    // Loop over potential image B's
+    for(imtarg=0;imtarg<imnum;imtarg++) {
+      //cout << "probing match between images " << imct << " and " << imtarg << "\n";
+      // Calculate the boresight center-to-center distance between images A (imct) and B (imtarg)
+      double imcendist = distradec01(img_log[imct].RA, img_log[imct].Dec, img_log[imtarg].RA, img_log[imtarg].Dec);
+      // Calculate the number of detections on image B
+      long targdetnum = 1 + img_log[imtarg].endind - img_log[imtarg].startind;
+      // Calculate the time difference between the two images
+      double timediff = fabs(img_log[imtarg].MJD - img_log[imct].MJD);
+      if(imtarg!=imnum && targdetnum>0 && timediff>=mintime && timediff<=maxtime && imcendist<2.0*imrad+maxvel*timediff) {
+	//cout << "Matches are possible, ";
+	// Image B is close enough in time and on the sky
+	// Project all the detections on image B 
+	vector <xy_index> bxyvec = {};
+	// Project all detections on image B
+	for(dettarg=img_log[imtarg].startind ; dettarg<img_log[imtarg].endind ; dettarg++) {
+	  distradec02(img_log[imct].RA, img_log[imct].Dec,detvec[dettarg].RA,detvec[dettarg].Dec,&dist,&pa);
+	  xyind = xy_index(dist*sin(pa/DEGPRAD),dist*cos(pa/DEGPRAD),dettarg);
+	  bxyvec.push_back(xyind);
+	}
+	//cout << bxyvec.size() << " detections projected for image B\n";
+	// Create k-d tree of detections on image B (imtarg).
+	int dim=1;
+	xy_index xyi = bxyvec[0];
+	kdpoint root = kdpoint(xyi,-1,-1,dim);
+	vector <kdpoint> kdvec ={};
+	long medpt;
+	long bestpoint=0;
+	double dist=LARGERR;
+	medpt = medindex(bxyvec,dim);
+	root = kdpoint(bxyvec[medpt],-1,-1,1);
+	kdvec.push_back(root);
+	kdtree01(bxyvec,dim,medpt,0,kdvec);
+	// Loop over detections on image A
+	if(DEBUG>=1) cout << "Looking for pairs between " << imdetnum << " detections on image " << imct << " and " << kdvec.size() << " on image " << imtarg << "\n";
+	for(detct=0 ; detct<imdetnum ; detct++) {
+	  dist=LARGERR;
+	  if((isnormal(axyvec[detct].x) || axyvec[detct].x==0) && (isnormal(axyvec[detct].y) || axyvec[detct].y==0)) {
+	     bestpoint = kdnearest01(kdvec,axyvec[detct].x,axyvec[detct].y);
+	     dist = sqrt(DSQUARE(axyvec[detct].x - kdvec[bestpoint].point.x) + DSQUARE(axyvec[detct].y - kdvec[bestpoint].point.y));
+	  } else {
+	    cerr << "WARNING: detection " << detct << " on image " << imct << " not normal: " << axyvec[detct].x << " " << axyvec[detct].y << "\n";
+	  }
+	  if(dist<=matchrad) {
+	    detection_matches[detct] += 1;
+	    if(img_log[imtarg].MJD > img_log[imct].MJD) detection_matches_future[detct] += 1;
+	  }
+	  // Close loop over detections on source image (image A)
+	}
+	// Close if-statement checking if image B could match image A
+      }
+      // Close loop over all possible image B's
+    }
+    if(verbose>=1) cout << "Image " << imct << ": found " << adetct << " newly paired detections and a total of " << apct << " pairs.\n";
+    // Find the mode of the number of matches for detections on image A
+    vector <int> mode_all;
+    vector <int> mode_future;
+    make_ivec(imnum+1, mode_all);
+    make_ivec(imnum+1, mode_future);
+    for(detct=0; detct<imdetnum; detct++) {
+      if(detection_matches[detct]<=imnum && detection_matches_future[detct]<=imnum) {
+	mode_all[detection_matches[detct]] += 1;
+	mode_future[detection_matches_future[detct]] += 1;
+      } else if(detection_matches[detct]>imnum) {
+	cerr << "ERROR: detection_matches[detct] = " << detection_matches[detct] << " for detection " << detct << " out of " << imdetnum << " on image " << imct << " out of " << imnum << "; logical max is " << imnum << "\n";
+	return(1);
+      } else {
+	cerr << "ERROR: detection_matches_future[detct] = " << detection_matches_future[detct] << " for detection " << detct << " out of " << imdetnum << " on image " << imct << " out of " << imnum << "; logical max is " << imnum << "\n";
+	cerr << "and detection_matches[detct] = " << detection_matches[detct] << " for detection " << detct << " out of " << imdetnum << " on image " << imct << " out of " << imnum << "\n";
+	return(1);
+      }
+    }
+    int amax,fmax,amode,fmode;
+    amax = fmax = amode = fmode = 0;
+    for(i=0;i<=imnum;i++) {
+      if(mode_all[i] > amax) {
+	amax = mode_all[i];
+	amode = i;
+      }
+      if(mode_future[i] > fmax) {
+	fmax = mode_future[i];
+	fmode = i;
+      }
+    }
+    // Load newly calculate modes into the image_overlap vectors
+    image_overlap.push_back(amode);
+    image_overlap_future.push_back(fmode);
+    if(imct+1 != int(image_overlap.size()) || imct+1 != int(image_overlap_future.size())) {
+      cerr << "ERROR: size mismatch in image overlap vectors: " << imct << " " << image_overlap.size() << " " << image_overlap_future.size() << "\n";
+      return(2);
+    }
+    // Close loop over images for image A
+  }
+  for(imct=0;imct<imnum;imct++) {
+    cout << "Image " << imct << ": overlaps are " << image_overlap[imct] << " and " << image_overlap_future[imct] << "\n";
+  }
+  
+  // NEW LOOPS THAT ACTUALLY MAKE THE TRACKLETS
+  // Loop over images for image A
+  for(imct=0;imct<imnum;imct++) {
+    cout << "Tracklet-creation loop considering image " << imct << " of " << imnum << "\n";
+    if(img_log[imct].endind<=0 || img_log[imct].endind<=img_log[imct].startind) continue; // No detections on this image.
+    timeA = img_log[imct].MJD;
+    apct=0;
+    adetct=0;
+    // See if there are any images that might match
+    vector <int> imagematches = {};
+    int imatchcount = 0;
+    int imtarg=imct+1;
+    while(imtarg<imnum && img_log[imtarg].MJD < img_log[imct].MJD + maxtime) {
+      timeB = img_log[imtarg].MJD;
+      double timediff = timeB - timeA;
+      if(!isnormal(timediff) || timediff<0.0) {
+	cerr << "WARNING: Negative time difference " << timediff << " encountered between images " << imct << " and " << imtarg << "\n";
+      }
+      // See if the images are close enough on the sky.
+      double imcendist = distradec01(img_log[imct].RA, img_log[imct].Dec, img_log[imtarg].RA, img_log[imtarg].Dec);
+      if(imcendist<2.0*imrad+maxvel*timediff && timediff>=mintime && img_log[imtarg].endind>0 && img_log[imtarg].endind>img_log[imtarg].startind) {
+	if(DEBUG>=1) cout << "  pairs may exist between images " << imct << " and " << imtarg << ": dist = " << imcendist << ", timediff = " << timediff << "\n";
+	imagematches.push_back(imtarg);
+      }
+      imtarg++;
+    }
+    if(verbose>=1) cout << "Looking for pairs for image " << imct << ": " << imagematches.size() << " later images are worth searching\n";
+    int imatchnum = imagematches.size();
+    // Set minimum tracklet length appropriate for this image
+    int local_mintrkpts = double(image_overlap[imct])*trkfrac + 0.5;
+    if(local_mintrkpts < min_tracklet_points) local_mintrkpts = min_tracklet_points;
+    // Project all the detections on image A.
+    xyind=xy_index(0.0, 0.0, 0);
+    axyvec = {};
+    dist=pa=0.0;
+    dettarg=0;
+    for(detct=img_log[imct].startind ; detct<img_log[imct].endind ; detct++) {
+      if(detvec[detct].index>0) continue; // This detection is already part of an exclusive tracklet: skip it.
+      distradec02(img_log[imct].RA, img_log[imct].Dec,detvec[detct].RA,detvec[detct].Dec,&dist,&pa);
+      xyind = xy_index(dist*sin(pa/DEGPRAD),dist*cos(pa/DEGPRAD),detct);
+      axyvec.push_back(xyind);
+      if((!isnormal(xyind.x) && xyind.x!=0) || (!isnormal(xyind.y) && xyind.y!=0)) {
+	cerr << "nan-producing input: ra1, dec1, ra2, dec2, dist, pa:\n";
+	cerr << img_log[imct].RA << " " << img_log[imct].Dec << " " << detvec[detct].RA << " " << detvec[detct].Dec << " " << dist << " " << pa << " " << xyind.x << " " << xyind.x << "\n";
+      }
+    }
+    cout << axyvec.size() << " detections successfully projected; " << imatchnum << " potentially matching images will be explored\n";
+    cout << "Minumum tracklet size for this image is " << local_mintrkpts << "\n";
+    if(imatchnum >= local_mintrkpts-1 && axyvec.size()>0) {
+      // There are enough matching images to create tracklets of at least the minimum length,
+      // and there are valid unpaired detections on image A: proceed with the search.
+      // Construct vector kdmat, holding k-d trees for
+      // all of the potentially matching images (image B's)
+      vector <vector <kdpoint>> kdmat = {};
+      for(imatchcount=0;imatchcount<imatchnum;imatchcount++) {
+      	imtarg = imagematches[imatchcount];
+	vector <xy_index> bxyvec = {};
+	// Project all detections on image B
+	for(dettarg=img_log[imtarg].startind ; dettarg<img_log[imtarg].endind ; dettarg++) {
+	  if(detvec[dettarg].index>0) continue; // This detection is already part of an exclusive tracklet: skip it.
+	  distradec02(img_log[imct].RA, img_log[imct].Dec,detvec[dettarg].RA,detvec[dettarg].Dec,&dist,&pa);
+	  xyind = xy_index(dist*sin(pa/DEGPRAD),dist*cos(pa/DEGPRAD),dettarg);
+	  bxyvec.push_back(xyind);
+	}
+	// Create k-d tree of detections on image B (imtarg).
+	vector <kdpoint> kdvec ={};
+	if(bxyvec.size()<=0) {
+	  // No valid unpaired detections in image B. Load dummy k-d vector
+	  kdmat.push_back(kdvec);
+	  // Skip to the next image
+	  continue;
+	}
+	int dim=1;
+	xy_index xyi = bxyvec[0];
+	kdpoint root = kdpoint(xyi,-1,-1,dim);
+	long medpt;
+	medpt = medindex(bxyvec,dim);
+	root = kdpoint(bxyvec[medpt],-1,-1,1);
+	kdvec.push_back(root);
+	kdtree01(bxyvec,dim,medpt,0,kdvec);
+	kdmat.push_back(kdvec);
+      }
+      // Loop over detections on image A
+      for(detct=0 ; detct<long(axyvec.size()) ; detct++) {
+	xA = axyvec[detct].x;
+	yA = axyvec[detct].y;
+	if((!isnormal(xA) && xA!=0.0) || (!isnormal(yA) && yA!=0.0)) continue;
+	// Declare vectors that will hold all possible tracklets that
+	// start with detection detct on image A.
+	Atrkvec = {};
+	Atrkmat = {}; 
+	// Loop over the image B's in reverse order, until we are so close
+	// to image A that no more tracklets of sufficient length are possible
+	for(imatchcount=imatchnum-1;imatchcount>=local_mintrkpts-2;imatchcount--) {
+	  if(kdmat[imatchcount].size()<=0) continue; // k-d tree for this image was empty.
+	  imtarg = imagematches[imatchcount];
+	  timeB = img_log[imtarg].MJD;
+	  range = (timeB-timeA)*maxvel;
+	  indexvec={};
+	  kdrange01(kdmat[imatchcount],xA,yA,range,indexvec);
+	  int matchnum=indexvec.size();
+	  // Loop over potentially matching detections on image B
+	  int matchct=0;
+	  for(matchct=0; matchct<matchnum; matchct++) {
+	    // Load original detection indices corresponding to detection detct on image A and
+	    // detection matchct on image B into a vector where we will try to build up a longer tracklet.
+	    Atrkvec={};
+	    Atrkvec.push_back(axyvec[detct].index);
+	    Atrkvec.push_back(kdmat[imatchcount][indexvec[matchct]].point.index);
+	    xB = kdmat[imatchcount][indexvec[matchct]].point.x;
+	    yB = kdmat[imatchcount][indexvec[matchct]].point.y;
+	    // Loop over all intervening images
+	    for(long imtct=0;imtct<imatchcount;imtct++) {
+	      // Consider a line from detection detct on image A,
+	      // to detection matchpt on image B. Use linear interpolation
+	      // to predict the position along this line for a source on
+	      // image imtct.
+	      timepred = img_log[imagematches[imtct]].MJD;
+	      xpred = xA + (xB-xA)*(timepred-timeA)/(timeB-timeA);
+	      ypred = yA + (yB-yA)*(timepred-timeA)/(timeB-timeA);
+	      indexvec2={};
+	      kdrange01(kdmat[imtct],xpred,ypred,maxgcr/1800.0,indexvec2);
+	      for(i=0;i<long(indexvec2.size());i++) {
+		// Load the new, matching detections into the vector Atrkvec.
+		Atrkvec.push_back(kdmat[imtct][indexvec2[i]].point.index);
+	      }
+	    }
+	    if(long(Atrkvec.size()) >= local_mintrkpts) {
+	      // Atrkvec contains indices to a potentially valid tracklet.
+	      // Write it out to the tracklet matrix Atrkmat
+	      Atrkmat.push_back(Atrkvec);
+	    }
+	    // Close loop on intervening images
+	  }
+	  // Close loop over all possible image B's
+	}
+	// Now, Atrkmat contains all possible tracklets that involve
+	// detection detct on image A. Clean them for duplicates and
+	// outliers, and determine which (if any) will make the final cut.
+	double_index di = double_index(0.0,0);
+	vector <double_index> best_trk;
+	Atrkmat2 = {}; 
+	for(long tct=0; tct<long(Atrkmat.size()); tct++) {
+	  if(long(Atrkmat[tct].size())==2) {
+	    // This is only a two-point tracklet: no point in calculating GCR.
+	    Atrkmat2.push_back(Atrkmat[tct]);
+	    // Store quality metric, set to 1.0 for two-point tracklets
+	    di = double_index(1.0,Atrkmat2.size()-1);
+	    best_trk.push_back(di);
+	    continue;
+	  } else if(long(Atrkmat[tct].size())<2) {
+	    cerr << "ERROR: stored a tracklet of size " << Atrkmat[tct].size() << "\n";
+	    return(3); // Later, change this to a continue, for robustness
+	  }
+	  trkdets={};
+	  for(i=0;i<long(Atrkmat[tct].size());i++) {
+	    hldet tdet = detvec[Atrkmat[tct][i]];
+	    tdet.index = Atrkmat[tct][i];
+	    trkdets.push_back(tdet);
+	  }
+	  // Sort trkdets
+	  sort(trkdets.begin(), trkdets.end(), early_hldet());
+	  // Great Circle fit
+	  double poleRA,poleDec,angvel,pa,crosstrack,alongtrack,GCR;
+	  status =  greatcircresid(trkdets,poleRA,poleDec,angvel,pa,crosstrack,alongtrack,fitRA,fitDec,residuals);
+	  if(status!=0) {
+	    cerr << "ERROR: greatcircresid exited with status " << status << "\n";
+	    return(4);
+	  }
+	  GCR = sqrt(crosstrack*crosstrack + alongtrack*alongtrack);
+	  // Reject time-duplicates and outliers
+	  int isdup=0;
+	  for(i=1;i<long(trkdets.size());i++) {
+	    if(fabs(trkdets[i].MJD - trkdets[i-1].MJD) < imagetimetol) isdup=1;
+	  }
+	  int isgood=0; // Goodness as yet undetermined.
+	  while(isdup>0 && long(trkdets.size()) > local_mintrkpts && isgood==0) {
+	    // We have time-duplicates, and the tracklet is long enough that
+	    // it could be culled.
+	    int worstoutlier=0;
+	    double worstresid=0.0;
+	    for(i=1;i<long(trkdets.size());i++) {
+	      if(fabs(trkdets[i].MJD - trkdets[i-1].MJD) < imagetimetol) {
+		if(residuals[i] >= worstresid) {
+		  worstoutlier = i;
+		  worstresid = residuals[i];
+		}
+		if(residuals[i-1] > worstresid) {
+		  worstoutlier = i-1;
+		  worstresid = residuals[i-1];
+		}
+	      }
+	    }
+	    // Tricky decision: how to handle the case where the first point,
+	    // the one from image A, is the worst outlier. Rejecting it
+	    // should be forbidden. Throw out the whole tracklet, or just
+	    // refuse to reject that point?
+	    // Choice for now: throw out the whole tracklet. The overall logic
+	    // of the code means the good part of the tracklet will inevitably
+	    // be reconstructed later on, while analyzing a different image.
+	    if(fabs(trkdets[worstoutlier].MJD-timeA) > imagetimetol) {
+	      // The worst residual is not on image A. Reject it.
+	      trkdets.erase(trkdets.begin()+worstoutlier);
+	      // Re-scan for duplicates.
+	      isdup=0;
+	      for(i=1;i<long(trkdets.size());i++) {
+		if(fabs(trkdets[i].MJD - trkdets[i-1].MJD) < imagetimetol) isdup=1;
+	      }
+	      // Re-do Great Circle fit
+	      status =  greatcircresid(trkdets,poleRA,poleDec,angvel,pa,crosstrack,alongtrack,fitRA,fitDec,residuals);
+	      if(status!=0) {
+		cerr << "ERROR: greatcircresid exited with status " << status << "\n";
+		return(5);
+	      }
+	      GCR = sqrt(crosstrack*crosstrack + alongtrack*alongtrack);
+	      if(isdup==0 && long(trkdets.size()) >= local_mintrkpts && GCR<=maxgcr) isgood=1;
+	    } else {
+	      // The worst residual is on image A. Mark the whole tracklet as bad.
+	      isgood = -1;
+	    }
+	  }
+	  while(GCR>maxgcr && isgood==0 && isdup==0 && long(trkdets.size()) > local_mintrkpts) {
+	    // All time-duplicates have been removed, but the tracklet still
+	    // has too high a GCR. Remove astrometric outliers until this is
+	    // no longer the case.
+	    int worstoutlier=0;
+	    double worstresid=0.0;
+	    for(i=0;i<long(trkdets.size());i++) {
+	      if(residuals[i] >= worstresid) {
+		worstoutlier = i;
+		worstresid = residuals[i];
+	      }
+	    }
+	    if(fabs(trkdets[worstoutlier].MJD-timeA) > imagetimetol) {
+	      // The worst residual is not on image A. Reject it.
+	      trkdets.erase(trkdets.begin()+worstoutlier);
+	      // Re-do Great Circle fit
+	      status =  greatcircresid(trkdets,poleRA,poleDec,angvel,pa,crosstrack,alongtrack,fitRA,fitDec,residuals);
+	      if(status!=0) {
+		cerr << "ERROR: greatcircresid exited with status " << status << "\n";
+		return(6);
+	      }
+	      GCR = sqrt(crosstrack*crosstrack + alongtrack*alongtrack);
+	      if(isdup==0 && long(trkdets.size()) >= local_mintrkpts && GCR<=maxgcr) isgood=1;
+	    } else {
+	      // The worst residual is on image A. Mark the whole tracklet as bad.
+	      isgood = -1;
+	    }
+	  }
+	  // Save culled version
+	  Atrkvec={};
+	  for(i=0;i<long(trkdets.size());i++) {
+	    Atrkvec.push_back(trkdets[i].index);
+	  }
+	  Atrkmat2.push_back(Atrkvec);
+	  // Store quality metric
+	  di = double_index(double(trkdets.size())+1.0-GCR/maxgcr,Atrkmat2.size()-1);
+	  best_trk.push_back(di);
+	  // Close loop over all tracklets involving detection detct on image A
+	}
+	if(Atrkmat2.size() != best_trk.size()) {
+	  cerr << "ERROR: Atrkmat2 and best_trk vectors don't have the same size: " << Atrkmat2.size() << " vs. " <<  best_trk.size() << "\n";
+	  return(7);
+	}
+	if(Atrkmat2.size()>0) {
+	  // Sort tracklets by quality metric
+	  sort(best_trk.begin(), best_trk.end(), lower_double_index());
+	  // Loop over tracklets from best to worst.
+	  for(long tct=best_trk.size()-1; tct>=0; tct--) {
+	    bad_reuse=0;
+	    long btrk = best_trk[tct].index;
+	    long trklen = Atrkmat2[btrk].size();
+	    // Screen out obvious failure cases
+	    if(trklen<2 || trklen<local_mintrkpts) continue;
+	    else if(trklen==2) {
+	      // Simple two-point tracklet, cannot be exclusive
+	      // Load the tracklet summary vector
+	      track1 = tracklet(detvec[Atrkmat2[btrk][0]].image,detvec[Atrkmat2[btrk][0]].RA,detvec[Atrkmat2[btrk][0]].Dec,detvec[Atrkmat2[btrk][1]].image,detvec[Atrkmat2[btrk][1]].RA,detvec[Atrkmat2[btrk][1]].Dec,trklen,tracklets.size());
+	      tracklets.push_back(track1);
+	      // Load pairdets and trk2det
+	      for(i=0;i<trklen;i++) {
+		if(detvec[Atrkmat2[btrk][i]].index <= -detnum) {
+		  // This detection has never been used before. Flag it as used
+		  detvec[Atrkmat2[btrk][i]].index = -pairdets.size();
+		  // Load the corresponding entry to the trk2det vector
+		  onepair = longpair(track1.trk_ID, pairdets.size());
+		  trk2det.push_back(onepair);
+		  // Load the detection to the pairdets vector.
+		  pairdets.push_back(detvec[Atrkmat2[btrk][i]]);
+		} else if(detvec[Atrkmat2[btrk][i]].index<=0) {
+		  // This detection has previously been used in an non-exclusive tracklet,
+		  // and hence has already been added to pairdets with a negative index to
+		  // the pairdets vector. Load just the trk2det entry
+		  pdct = -detvec[Atrkmat2[btrk][i]].index;
+		  onepair = longpair(track1.trk_ID, pdct);
+		  trk2det.push_back(onepair);
+		} else {
+		  // This detection has previously been used in an exclusive tracklet.
+		  // Ideally, this would not be possible, but the program's logic does
+		  // permit it under circumstances which should be statistically rare.
+		  // Track the errors:
+		  bad_reuse++;
+		  forbidden_reuses++;
+		  cerr << "Bad reuse of index " << detvec[Atrkmat2[btrk][i]].index << "\n";
+		  // And then add it to trk2det anyway.
+		  pdct = detvec[Atrkmat2[btrk][i]].index;
+		  onepair = longpair(track1.trk_ID, pdct);
+		  trk2det.push_back(onepair);
+		}
+	      }
+	      if(bad_reuse>0) {
+		cerr << "WARNING 8: " << bad_reuse << " attempts to use an already-excluded point, tct = " << tct << " of " << best_trk.size() << ", btrk = " << btrk << "\n";
+		for(i=0;i<trklen;i++) {
+		  cerr << " " << detvec[Atrkmat2[btrk][i]].image << " " << detvec[Atrkmat2[btrk][i]].MJD << " " << detvec[Atrkmat2[btrk][i]].RA << " " << detvec[Atrkmat2[btrk][i]].Dec << " " << detvec[Atrkmat2[btrk][i]].index << "\n";
+		}
+		return(8);
+	      }
+	      // End case of tracklet with only two points.
+	    } else {
+	      // This tracklet needs some analyis. Load it into trkdets.
+	      trkdets={};
+	      for(i=0;i<trklen;i++) {
+		trkdets.push_back(detvec[Atrkmat2[btrk][i]]);
+	      }
+	      // Perform a final Great Circle fit
+	      status =  greatcircresid(trkdets,poleRA,poleDec,angvel,pa,crosstrack,alongtrack,fitRA,fitDec,residuals);
+	      if(status!=0) {
+		cerr << "ERROR: greatcircresid exited with status " << status << "\n";
+		return(9);
+	      }
+	      if(angvel<minvel || angvel>maxvel) continue; // Velocity is out-of-range: skip this one
+	      // Select points that will represent this tracklet.
+	      instep = (trklen-1)/4;
+	      rp1 = instep;
+	      rp2 = trklen-1-instep;
+	      if(rp1==rp2) {
+		cerr << "ERROR: both representative points for a tracklet are the same!\n";
+		cerr << "size, instep, rp1, rp2: " << trklen << " " << instep << " " << rp1 << " " << rp2 << "\n";
+	      }
+	      // Calculate total angular arc
+	      dist = 3600.0*distradec01(fitRA[rp1], fitDec[rp1], fitRA[rp2], fitDec[rp2]);
+	      // Note: it can be argued that the dist calculated above is not really the total
+	      // angular arc, because it's the span between the two representative points instead
+	      // of all the way from the beginning of the tracklet to its end. There are at
+	      // least two alternative ways of calculating such a value: use the actual
+	      // extreme points, or just multiply the total time span by the angular velocity.
+	      // I haven't been able to convince myself that either of them is a better idea
+	      // than the above.
+	      if(dist<minarc) continue; // Total arc is too short: skip this one.
+	      // Load tracklet summary with image indices, RA, and Dec, for the representative pair, plus the
+	      // total number of constituent points and the tracklet's eventual index in the output tracklets vector,
+	      // and push to the output trackets vector.
+	      // Note: the index to the tracklets vector is preserved for now in track1.trk_ID.
+	      track1 = tracklet(detvec[Atrkmat2[btrk][rp1]].image,fitRA[rp1],fitDec[rp1],detvec[Atrkmat2[btrk][rp2]].image,fitRA[rp2],fitDec[rp2],trklen,tracklets.size());
+	      tracklets.push_back(track1);
+	      // Write points to the paired detection and the trk2det vectors
+	      if(trklen > max_netl) {
+		// This tracklet is exclusive
+		for(i=0;i<trklen;i++) {
+		  if(detvec[Atrkmat2[btrk][i]].index <= -detnum) {
+		    // This detection has never been used before. Flag it as exclusive
+		    detvec[Atrkmat2[btrk][i]].index = pairdets.size();
+		    // Load the corresponding entry to the trk2det vector
+		    onepair = longpair(track1.trk_ID, pairdets.size());
+		    trk2det.push_back(onepair);
+		    // Load the detection to the pairdets vector.
+		    pairdets.push_back(detvec[Atrkmat2[btrk][i]]);
+		  } else if(detvec[Atrkmat2[btrk][i]].index<=0) {
+		    // This detection has previously been used in an non-exclusive tracklet,
+		    // and hence has already been added to pairdets with a negative index to
+		    // the pairdets vector. Load just the trk2det entry
+		    pdct = -detvec[Atrkmat2[btrk][i]].index;
+		    onepair = longpair(track1.trk_ID, pdct);
+		    trk2det.push_back(onepair);
+		    // Re-set the detvec index to flag the point as exclusive
+		    detvec[Atrkmat2[btrk][i]].index = pdct;
+		    // Note: in principle, we should delete any previous tracklets
+		    // that contained this point, since it has been found in an
+		    // 'exclusive' tracklet. In practice, this is not worth the trouble,
+		    // since the case is expected to be rare and benign.
+		  } else {
+		    // This detection has previously been used in an exclusive tracklet.
+		    // Ideally, this would not be possible, but the program's logic does
+		    // permit it under circumstances which should be statistically rare.
+		    // Track the errors:
+		    bad_reuse++;
+		    forbidden_reuses++;
+		    cerr << "Bad reuse of index " << detvec[Atrkmat2[btrk][i]].index << "\n";
+		    // And then add it to trk2det anyway.
+		    pdct = detvec[Atrkmat2[btrk][i]].index;
+		    onepair = longpair(track1.trk_ID, pdct);
+		    trk2det.push_back(onepair);
+		  }
+		}
+		if(bad_reuse>0) {
+		  cerr << "WARNING 11: " << bad_reuse << " attempts to use an already-excluded point, tct = " << tct << " of " << best_trk.size() << ", btrk = " << btrk << "\n";
+		  for(i=0;i<trklen;i++) {
+		    cerr << " " << detvec[Atrkmat2[btrk][i]].image << " " << detvec[Atrkmat2[btrk][i]].MJD << " " << detvec[Atrkmat2[btrk][i]].RA << " " << detvec[Atrkmat2[btrk][i]].Dec << " " << detvec[Atrkmat2[btrk][i]].index << "\n";
+		  }
+		}
+		// Since the tracklet is exclusive, no other tracklets involving
+		// detection detct on image A need be considered.
+		break;
+		// End if-statement checking that the tracklet is exclusive
+	      } else {
+		// The tracklet is not exclusive
+		for(i=0;i<trklen;i++) {
+		  if(detvec[Atrkmat2[btrk][i]].index <= -detnum) {
+		    // This detection has never been used before. Flag it as used
+		    detvec[Atrkmat2[btrk][i]].index = -pairdets.size();
+		    // Load the corresponding entry to the trk2det vector
+		    onepair = longpair(track1.trk_ID, pairdets.size());
+		    trk2det.push_back(onepair);
+		    // Load the detection to the pairdets vector.
+		    pairdets.push_back(detvec[Atrkmat2[btrk][i]]);
+		  } else if(detvec[Atrkmat2[btrk][i]].index<=0) {
+		    // This detection has previously been used in an non-exclusive tracklet,
+		    // and hence has already been added to pairdets with a negative index to
+		    // the pairdets vector. Load just the trk2det entry
+		    pdct = -detvec[Atrkmat2[btrk][i]].index;
+		    onepair = longpair(track1.trk_ID, pdct);
+		    trk2det.push_back(onepair);
+		  } else {
+		    // This detection has previously been used in an exclusive tracklet.
+		    // Ideally, this would not be possible, but the program's logic does
+		    // permit it under circumstances which should be statistically rare.
+		    // Track the errors:
+		    bad_reuse++;
+		    forbidden_reuses++;
+		    cerr << "Bad reuse of index " << detvec[Atrkmat2[btrk][i]].index << "\n";
+		    // And then add it to trk2det anyway.
+		    pdct = detvec[Atrkmat2[btrk][i]].index;
+		    onepair = longpair(track1.trk_ID, pdct);
+		    trk2det.push_back(onepair);
+		  }
+		}
+		if(bad_reuse>0) {
+		  cerr << "WARNING 12: " << bad_reuse << " attempts to use an already-excluded point, tct = " << tct << " of " << best_trk.size() << ", btrk = " << btrk << "\n";
+		  for(i=0;i<trklen;i++) {
+		    cerr << " " << detvec[Atrkmat2[btrk][i]].image << " " << detvec[Atrkmat2[btrk][i]].MJD << " " << detvec[Atrkmat2[btrk][i]].RA << " " << detvec[Atrkmat2[btrk][i]].Dec << " " << detvec[Atrkmat2[btrk][i]].index << "\n";
+		  }
+		}		
+	      }
+	      // End else-statment checking that the tracklet has more that two points.
+	    }
+	    // End for loop over tracklets involving detection detct on image A.
+	  }
+	  // End if-statement checking that valid tracklets exist involving detection detct on image A
+	}
+	// End loop over all detections on image A
+      }
+      // End if-statement checking if image A has enough overlap
+      // to produce valid tracklets.
+    }
+    // End loop giving each image a chance to be image A
+  }
+  cout << "Exiting find_pairs2 with " << forbidden_reuses << " nominally forbidded re-uses of points from exclusive tracklets\n";
+  cout << fixed << setprecision(6) << "This is probably benign, since it is only " << double(forbidden_reuses)/double(trk2det.size()) << " of all tracklet points\n";
+  cout << "Vector sizes: pairdets = " << pairdets.size() << "  trk2det = " << trk2det.size() << "  tracklets = " << tracklets.size() << "\n";
+  return(0);
+}
+
+
 // find_trailpairs: February 14, 2024:  Create pairs, making use of trail
 // orientation and lengths output a vector pairdets of type hldet;
 // a vector indvecs of type vector <long>, with the same length as pairdets,
@@ -25572,7 +26415,7 @@ int trk2statevec_univarRR(const vector <hlimage> &image_log, const vector <track
 	  mjdavg = 0.5l*image_log[i1].MJD + 0.5l*image_log[i2].MJD;
 	  vector <point3d> targposvec;
 	  vector <point3d> targvelvec;
-	  status1 = Kepler_univ_vec(GMSUN_KM3_SEC2,mjdavg,targpos1,targvel1,mjdvec,targposvec,targvelvec);
+	  status1 = Kepler_univ_vec(GMSUN_KM3_SEC2,mjdavg,targpos1,targvel1,mjdvec,targposvec,targvelvec,verbose);
 	  //double semimajor_axis, eccen;
 	  //status1 = Keplerint_multipoint_univar(GMSUN_KM3_SEC2, mjdavg, mjdvec, targpos1,targvel1, targposvec,targvelvec,&semimajor_axis, &eccen);
 
@@ -38956,6 +39799,297 @@ int greatcircfit(const vector <hldet> &trackvec, double &poleRA, double &poleDec
   return(0);
 }
 
+
+// greatcircresid: July 22, 2025
+// Derived from early (September 09, 2020) bezalel01 code greatcirc_vel01.
+// Fit great circle motion at a contant angular velocity to
+// astrometric input data consisting of MJD in days, RA in degrees,
+// and Dec in degrees as three double precision vectors. 
+// Output the pole of the Great Circle, the angular velocity, the celestial
+// position angle of the objects angular velocity vector, and the cross-track
+// and along-track RMS residuals relative to constant velocity motion. 
+// Angle outputs are in degrees, except for the RMS residuals and the residuals vector,
+// which are in arcseconds; and the velocity is in degrees per day.*/
+int greatcircresid(const vector <hldet> &trackvec, double &poleRA, double &poleDec,double &angvel,double &pa,double &crosstrack,double &alongtrack, vector <double> &fitRA, vector <double> &fitDec, vector <double> &residuals)
+{
+  // Wipe output vectors
+  fitRA=fitDec=residuals={};
+  long npoints = trackvec.size();
+  point3d p3 = point3d(0l,0l,0l);
+  point3d p3avg = point3d(0l,0l,0l);
+  long i=0;
+  double RA,Dec,dist,theta,tpa,x,y,altra,altramean,altranorm;
+  RA = Dec = dist = theta = tpa = x = y = altra = altramean = altranorm = 0l;
+  vector <double> projx;
+  vector <double> projy;
+  vector <double> timevec;
+  vector <double> altravec;
+  vector <double> newRA;
+  vector <double> newDec;
+  vector <double> RAfit;
+  vector <double> Decfit;
+  vector <double> altRAfit;
+  vector <double> altDecfit;
+  double lastpa,avgtime,xsq,slopex,interceptx,slopey,intercepty;
+  lastpa = avgtime = xsq = slopex = interceptx = slopey = intercepty = 0l;
+  double tpoleRA,tpoleDec,oldpolera,meanRA,meanDec;
+  tpoleRA = tpoleDec = oldpolera = 0.0l;
+  double offeq,tcross,talong,tangvel,unwrapping;
+  offeq = tcross = talong = tangvel = unwrapping = 0.0l;
+  double altpa,GCR,altGCR;
+  altpa = altGCR = GCR = 0.0l;
+  double tempRA,tempDec,gcRA,gcDec;
+  tempRA = tempDec = gcRA = gcDec = 0.0;
+  
+  if(npoints<=1) {
+    cerr << "ERROR: too few points to fit a Great Circle!\n";
+    return(1);
+  } else if(npoints==2) {
+    distradec02(trackvec[0].RA,trackvec[0].Dec,trackvec[1].RA,trackvec[1].Dec,&dist,&tpa);
+    theta = tpa + 90.0l;
+    if(theta>=360.0l) theta-=360.0l;
+    arc2cel01(trackvec[0].RA,trackvec[0].Dec,90.0l,theta,poleRA,poleDec);
+    angvel = dist/fabs(trackvec[1].MJD-trackvec[0].MJD);
+    crosstrack = alongtrack = -1.0l;
+    pa = tpa;
+    for(i=0;i<npoints;i++) {
+      fitRA.push_back(trackvec[i].RA);
+      fitDec.push_back(trackvec[i].Dec);
+      residuals.push_back(0.0);
+    }
+    return(0);
+  }
+  // If we get here, it wasn't a trivial case with one or two points.
+  
+  // Find averaged Cartesian projection over input points,
+  // and average time
+  avgtime = 0.0l;
+  p3avg = point3d(0l,0l,0l);
+  for(i=0;i<npoints;i++) {
+    avgtime += trackvec[i].MJD;
+    p3 =  celeproj01(trackvec[i].RA,trackvec[i].Dec);
+    p3avg.x += p3.x;
+    p3avg.y += p3.y;
+    p3avg.z += p3.z;
+  }
+  p3avg.x /= double(npoints);
+  p3avg.y /= double(npoints);
+  p3avg.z /= double(npoints);
+  avgtime /= double(npoints);
+  // Normalize the Cartesian vector
+  vecnorm3d(p3avg);
+  // Convert this back to RA and Dec
+  celedeproj01(p3avg, &meanRA, &meanDec);
+
+  // Project all points relative to this mean position, using arc projection,
+  // and load time vector
+  altramean=altranorm=0.0;
+  projx = projy = altravec = {};
+  timevec={};
+  for(i=0;i<npoints;i++) {
+    distradec02(meanRA,meanDec,trackvec[i].RA,trackvec[i].Dec,&dist,&tpa);
+    x = dist/3600.0l * -sin(tpa/DEGPRAD);
+    y = dist/3600.0l * cos(tpa/DEGPRAD);
+    projx.push_back(x);
+    projy.push_back(y);
+    // Load RA for alternative PA determination*/
+    altra = atan(x/y)*DEGPRAD;
+    altravec.push_back(altra);
+    altramean += altra*dist;
+    altranorm += dist;
+    // Load time vector
+    timevec.push_back(trackvec[i].MJD - avgtime);
+  }
+  // Save celestial PA of last point relative to mean position
+  lastpa=tpa;
+  // Calculate alternative mean RA
+  altramean = altramean/altranorm;
+
+  // Perform linear fit on projected x and y
+  linfituw01(timevec, projx, slopex, interceptx);
+  linfituw01(timevec, projy, slopey, intercepty);
+  if(slopex==0.0l && slopey>=0.0l) tpa = 0.0l;
+  else if(slopex==0.0l && slopey<0.0l) tpa=180.0;
+  else if(slopex>0.0l) tpa = 270.0 +  DEGPRAD*atan(slopey/slopex);
+  else if(slopex<0.0l) tpa = 90.0 +  DEGPRAD*atan(slopey/slopex);
+  else {
+    // Illogical case
+    cerr << "Logically excluded position angle case. slopex = " << slopex << ", slopey = " << slopey << "\n";
+    return(1);
+  }
+  pa = tpa;
+  // Solve for pole position using calculated PA of tracklet.
+  tpa-=90.0;
+  if(tpa<0.0) tpa+=360.0;
+  arc2cel01(meanRA,meanDec,90.0l,tpa,tpoleRA,tpoleDec);
+
+  // Transform all points to a coordinate system whose
+  // pole is the Great Circle pole. Thus the tracklet should
+  // lie along the equator.*/
+  newRA = newDec = {};
+  for(i=0;i<npoints;i++) {
+    oldpolera=0.0;
+    poleswitch02(trackvec[i].RA, trackvec[i].Dec, tpoleRA, tpoleDec, oldpolera, RA, Dec);
+    newRA.push_back(RA);
+    newDec.push_back(Dec);
+   }
+
+  // Calculate the crosstrack RMS
+  // Find the mean Dec of the transformed points, (should be zero)
+  offeq=0.0;
+  for(i=0;i<npoints;i++) offeq+=newDec[i];
+  offeq/=double(npoints);
+
+  tcross=0.0;
+  for(i=0;i<npoints;i++) {
+    tcross += DSQUARE(offeq-newDec[i]);
+  }
+  tcross = sqrt(tcross/double(npoints-1))*3600.0l;
+
+  // Calculate the mean angular velocity in degrees per day
+  unwrapping = 0.0l;
+  for(i=1;i<npoints;i++) {
+    // Check for wrapping of RA
+    if(newRA[i] > newRA[i-1]+180.0) {
+      // We were going downward and wrapped across zero
+      // into values just slightly less than 360 degrees
+      unwrapping = -360.0l;
+    }
+    else if(newRA[i] < newRA[i-1]-180.0) {
+      // We were going upward and wrapped across zero
+      // into values just slightly greater than zero
+      unwrapping = +360.0l;
+    }
+    newRA[i] += unwrapping;
+  }
+  linfituw01(timevec, newRA, tangvel, interceptx);
+  talong = 0.0;
+  // Calculate the along-track RMS, and load the model vectors
+  RAfit = Decfit = {};
+  for(i=0;i<npoints;i++) {
+    double along_err = interceptx + tangvel*timevec[i] - newRA[i];
+    talong += along_err*along_err;
+    tempRA = interceptx + tangvel*timevec[i];
+    tempDec = 0.0;
+    while(tempRA>=360.0) tempRA-=360.0;
+    while(tempRA<0.0) tempRA+=360.0;
+    oldpolera=tpoleRA;
+    poleswitch02(tempRA, tempDec, 0.0, tpoleDec, oldpolera, gcRA, gcDec);
+    RAfit.push_back(gcRA);
+    Decfit.push_back(gcDec);
+  }
+  talong = sqrt(talong/double(npoints-1))*3600.0l;
+  fitRA = RAfit;
+  fitDec = Decfit;
+
+  GCR = sqrt(DSQUARE(tcross)+DSQUARE(talong));
+  angvel = tangvel;
+  crosstrack = tcross;
+  alongtrack = talong;
+  poleRA = tpoleRA;
+  poleDec = tpoleDec;
+  
+  // Perform alternative calculation using old method for position angle
+  // Unwrap position angle and match to last point
+  while(altramean<0.0) altramean+=360.0;
+  while(altramean>=360.0) altramean-=360.0;
+  altpa = 360.0 - altramean;
+  if(altpa>lastpa)
+    {
+      if(fabs(altpa-180.0-lastpa) < fabs(altpa-lastpa)) altpa-=180.0;
+      if(altpa<0) altpa+=360.0;
+    }
+  else if(altpa<lastpa)
+    {
+      if(fabs(altpa+180.0-lastpa) < fabs(altpa-lastpa))altpa+=180.0;
+      if(altpa>=360.0) altpa-=360.0;
+    }
+  tpa=altpa;
+
+  // Solve for pole position using calculated PA of tracklet.*/
+  tpa-=90.0;
+  if(tpa<0.0) tpa+=360.0;
+  arc2cel01(meanRA,meanDec,90.0l,tpa,tpoleRA,tpoleDec);
+
+  // Transform all points to a coordinate system whose
+  // pole is the Great Circle pole. Thus the tracklet should
+  // lie along the equator.*/
+  newRA = newDec = {};
+  for(i=0;i<npoints;i++) {
+    oldpolera=0.0;
+    poleswitch02(trackvec[i].RA, trackvec[i].Dec, tpoleRA, tpoleDec, oldpolera, RA, Dec);
+    newRA.push_back(RA);
+    newDec.push_back(Dec);
+   }
+
+  // Calculate the crosstrack RMS
+  // Find the mean Dec of the transformed points, (should be zero)
+  offeq=0.0;
+  for(i=0;i<npoints;i++) offeq+=newDec[i];
+  offeq/=double(npoints);
+
+  tcross=0.0;
+  for(i=0;i<npoints;i++) {
+    tcross += DSQUARE(offeq-newDec[i]);
+  }
+  tcross = sqrt(tcross/double(npoints-1))*3600.0l;
+
+  // Calculate the mean angular velocity in degrees per day
+  unwrapping = 0.0l;
+  for(i=1;i<npoints;i++) {
+    // Check for wrapping of RA
+    if(newRA[i] > newRA[i-1]+180.0) {
+      // We were going downward and wrapped across zero
+      // into values just slightly less than 360 degrees
+      unwrapping = -360.0l;
+    }
+    else if(newRA[i] < newRA[i-1]-180.0) {
+      // We were going upward and wrapped across zero
+      // into values just slightly greater than zero
+      unwrapping = +360.0l;
+    }
+    newRA[i] += unwrapping;
+  }
+  linfituw01(timevec, newRA, tangvel, interceptx);
+  talong = 0.0;
+  altRAfit = altDecfit = {};
+  for(i=0;i<npoints;i++) {
+    double along_err = interceptx + tangvel*timevec[i] - newRA[i];
+    talong += along_err*along_err;
+    tempRA = interceptx + tangvel*timevec[i];
+    tempDec = 0.0;
+    while(tempRA>=360.0) tempRA-=360.0;
+    while(tempRA<0.0) tempRA+=360.0;
+    oldpolera=tpoleRA;
+    poleswitch02(tempRA, tempDec, 0.0, tpoleDec, oldpolera, gcRA, gcDec);
+    altRAfit.push_back(gcRA);
+    altDecfit.push_back(gcDec);
+  }
+  talong = sqrt(talong/double(npoints-1))*3600.0l;
+
+  altGCR = sqrt(DSQUARE(tcross)+DSQUARE(talong));
+
+  // printf("GCR=%f, altac=%f, altal=%f, altGCR=%f\n",GCR,altcrosstrack,altalongtrack,altGCR);
+
+  if(altGCR<GCR) {
+    angvel = tangvel;
+    crosstrack = tcross;
+    alongtrack = talong;
+    poleRA = tpoleRA;
+    poleDec = tpoleDec;
+    fitRA = altRAfit;
+    fitDec = altDecfit;
+    cout << "Used case 2 fit\n";
+  } 
+  residuals={};
+  for(i=0;i<npoints;i++) {
+    dist = distradec01(trackvec[i].RA, trackvec[i].Dec, fitRA[i], fitDec[i]);
+    residuals.push_back(3600.0*dist);
+  }
+  return(0);
+}
+
+
 // greatcircfit: April 15, 2024:
 // Like overloaded function above, but takes independent MJD, RA, and Dec vectors,
 // instead of an hldet vector.
@@ -39827,7 +40961,7 @@ int vector_outerprod(const vector <double> &u, const vector <double> &v, vector 
   return(0);
 }
 
-int orbgrad01a(long double oldchi, long double pos_step, long double pvtimescale, int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, const vector <point3LD> &observerpos, const vector <long double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, const point3LD startpos, const point3LD startvel, long double mjdstart, vector <long double> &gradient)
+int orbgrad01a(long double oldchi, long double pos_step, long double pvtimescale, int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, const vector <point3LD> &observerpos, const vector <long double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, const point3LD startpos, const point3LD startvel, long double mjdstart, vector <long double> &gradient, int verbose)
 {
   vector <double> fitRA;
   vector <double> fitDec;
@@ -39931,7 +41065,7 @@ int orbgrad01b(long double oldchi, long double pos_step, long double pvtimescale
 // orbgrad01_Kep: February 05, 2025: 
 // Like orbgrad01b, but with 2-body Keplerian orbit-fitting,
 // hence, much faster but not as accurate. Does not use long double precision.
-int orbgrad01_Kep(double oldchi, double pos_step, double pvtimescale, const vector <point3d> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, const point3d startpos, const point3d startvel, double mjdstart, vector <double> &gradient)
+int orbgrad01_Kep(double oldchi, double pos_step, double pvtimescale, const vector <point3d> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, const point3d startpos, const point3d startvel, double mjdstart, vector <double> &gradient, int verbose)
 {
   vector <double> fitRA;
   vector <double> fitDec;
@@ -39944,37 +41078,37 @@ int orbgrad01_Kep(double oldchi, double pos_step, double pvtimescale, const vect
   // Calculate x position derivative
   testpos = startpos;
   testpos.x += pos_step;
-  newchi = orbitchi_univar(testpos, startvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, &semimajor_axis, &eccen);
+  newchi = orbitchi_univar(testpos, startvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, &semimajor_axis, &eccen, verbose);
   gradient.push_back((oldchi-newchi)/pos_step);
 
   // Calculate y position derivative
   testpos = startpos;
   testpos.y += pos_step;
-  newchi = orbitchi_univar(testpos, startvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, &semimajor_axis, &eccen);
+  newchi = orbitchi_univar(testpos, startvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, &semimajor_axis, &eccen, verbose);
   gradient.push_back((oldchi-newchi)/pos_step);
 
   // Calculate z position derivative
   testpos = startpos;
   testpos.z += pos_step;
-  newchi = orbitchi_univar(testpos, startvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, &semimajor_axis, &eccen);
+  newchi = orbitchi_univar(testpos, startvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, &semimajor_axis, &eccen, verbose);
   gradient.push_back((oldchi-newchi)/pos_step);
     
   // Calculate x velocity derivative
   testvel = startvel;
   testvel.x += pos_step/pvtimescale;
-  newchi = orbitchi_univar(startpos, testvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, &semimajor_axis, &eccen);
+  newchi = orbitchi_univar(startpos, testvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, &semimajor_axis, &eccen, verbose);
   gradient.push_back((oldchi-newchi)/pos_step);
     
   // Calculate y velocity derivative
   testvel = startvel;
   testvel.y += pos_step/pvtimescale;
-  newchi = orbitchi_univar(startpos, testvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, &semimajor_axis, &eccen);
+  newchi = orbitchi_univar(startpos, testvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, &semimajor_axis, &eccen, verbose);
   gradient.push_back((oldchi-newchi)/pos_step);
 
   // Calculate z velocity derivative
   testvel = startvel;
   testvel.z += pos_step/pvtimescale;
-  newchi = orbitchi_univar(startpos, testvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, &semimajor_axis, &eccen);
+  newchi = orbitchi_univar(startpos, testvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, &semimajor_axis, &eccen, verbose);
   gradient.push_back((oldchi-newchi)/pos_step);
 
   return(0);
@@ -40060,7 +41194,7 @@ double nvecdotprod(const vector <double> &vec1, const vector <double> &vec2)
 // Given a 6-D unit vector unitdir, find the minimum chi-square value
 // for an orbit fit, that can be obtained by changing state-vectors
 // in this specific direction.
-long double orb1Dmin01a(long double oldchi, long double inputstep, long double pvtimescale, long double minchichange, const vector <long double> &unitdir, int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, const vector <point3LD> &observerpos, const vector <long double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, const point3LD startpos, const point3LD startvel, long double mjdstart, vector <double> &fitRA, vector <double> &fitDec, vector <double> &fitresid, long double *step, point3LD &newpos, point3LD &newvel)
+long double orb1Dmin01a(long double oldchi, long double inputstep, long double pvtimescale, long double minchichange, const vector <long double> &unitdir, int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, const vector <point3LD> &observerpos, const vector <long double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, const point3LD startpos, const point3LD startvel, long double mjdstart, vector <double> &fitRA, vector <double> &fitDec, vector <double> &fitresid, long double *step, point3LD &newpos, point3LD &newvel, int verbose)
 {
   vector <double> tempRA;
   vector <double> tempDec;
@@ -40409,7 +41543,7 @@ long double orb1Dmin01b(long double oldchi, long double inputstep, long double p
 // orb1Dmin01_Kep: March 31, 2025:
 // Like orb1Dmin01b, but does Keplerian 2-body integration. Hence,
 // should be much faster but not as accurate. Does not use long double precision.
-double orb1Dmin01_Kep(double oldchi, double inputstep, double pvtimescale, double minchichange, const vector <double> &unitdir, const vector <point3d> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, const point3d startpos, const point3d startvel, double mjdstart, vector <double> &fitRA, vector <double> &fitDec, vector <double> &fitresid, double *step, point3d &newpos, point3d &newvel)
+double orb1Dmin01_Kep(double oldchi, double inputstep, double pvtimescale, double minchichange, const vector <double> &unitdir, const vector <point3d> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, const point3d startpos, const point3d startvel, double mjdstart, vector <double> &fitRA, vector <double> &fitDec, vector <double> &fitresid, double *step, point3d &newpos, point3d &newvel, int verbose)
 {
   vector <double> tempRA;
   vector <double> tempDec;
@@ -40431,7 +41565,6 @@ double orb1Dmin01_Kep(double oldchi, double inputstep, double pvtimescale, doubl
     chivals.push_back(0.0l);
   }
   double semimajor_axis, eccen;
-  int verbose=0;
   
   // Bracket the minimum: that is, find three values for the step,
   // of which the middle one produces the smallest chi-squared value.
@@ -40447,7 +41580,7 @@ double orb1Dmin01_Kep(double oldchi, double inputstep, double pvtimescale, doubl
   testvel.y = startvel.y + unitdir[4]*teststep/pvtimescale;
   testvel.z = startvel.z + unitdir[5]*teststep/pvtimescale;
 
-  newchi = orbitchi_univar(testpos, testvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, tempRA, tempDec, resid, &semimajor_axis, &eccen);
+  newchi = orbitchi_univar(testpos, testvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, tempRA, tempDec, resid, &semimajor_axis, &eccen, verbose);
 
   itct++;
   if(verbose>0) cout << "1-D iteration " << itct << ": bracketing, chisq = " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << teststep << "\n";
@@ -40464,7 +41597,7 @@ double orb1Dmin01_Kep(double oldchi, double inputstep, double pvtimescale, doubl
       testvel.x = startvel.x + unitdir[3]*teststep/pvtimescale;
       testvel.y = startvel.y + unitdir[4]*teststep/pvtimescale;
       testvel.z = startvel.z + unitdir[5]*teststep/pvtimescale;
-      newchi = orbitchi_univar(testpos, testvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, tempRA, tempDec, resid, &semimajor_axis, &eccen);
+      newchi = orbitchi_univar(testpos, testvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, tempRA, tempDec, resid, &semimajor_axis, &eccen, verbose);
       itct++;
       if(verbose>0) cout << "1-D iteration " << itct << ": bracketing, chisq = " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << teststep << "\n";
     }
@@ -40494,7 +41627,7 @@ double orb1Dmin01_Kep(double oldchi, double inputstep, double pvtimescale, doubl
       testvel.x = startvel.x + unitdir[3]*teststep/pvtimescale;
       testvel.y = startvel.y + unitdir[4]*teststep/pvtimescale;
       testvel.z = startvel.z + unitdir[5]*teststep/pvtimescale;
-      newchi = orbitchi_univar(testpos, testvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, tempRA, tempDec, resid, &semimajor_axis, &eccen);
+      newchi = orbitchi_univar(testpos, testvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, tempRA, tempDec, resid, &semimajor_axis, &eccen, verbose);
       itct++;
       if(verbose>0) cout << "1-D iteration " << itct << ": bracketing, chisq = " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << teststep << "\n";
     }
@@ -40517,7 +41650,7 @@ double orb1Dmin01_Kep(double oldchi, double inputstep, double pvtimescale, doubl
       testvel.x = startvel.x + unitdir[3]*teststep/pvtimescale;
       testvel.y = startvel.y + unitdir[4]*teststep/pvtimescale;
       testvel.z = startvel.z + unitdir[5]*teststep/pvtimescale;
-      newchi = orbitchi_univar(testpos, testvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, tempRA, tempDec, resid, &semimajor_axis, &eccen);
+      newchi = orbitchi_univar(testpos, testvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, tempRA, tempDec, resid, &semimajor_axis, &eccen, verbose);
       itct++;
       if(verbose>0) cout << "1-D iteration " << itct << ": searching, chisq = " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << teststep << "\n";
       if(newchi<chivals[1]) {
@@ -40548,7 +41681,7 @@ double orb1Dmin01_Kep(double oldchi, double inputstep, double pvtimescale, doubl
       testvel.x = startvel.x + unitdir[3]*teststep/pvtimescale;
       testvel.y = startvel.y + unitdir[4]*teststep/pvtimescale;
       testvel.z = startvel.z + unitdir[5]*teststep/pvtimescale;
-      newchi = orbitchi_univar(testpos, testvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, tempRA, tempDec, resid, &semimajor_axis, &eccen);
+      newchi = orbitchi_univar(testpos, testvel, mjdstart, observerpos, obsMJD, obsRA, obsDec, sigastrom, tempRA, tempDec, resid, &semimajor_axis, &eccen, verbose);
       itct++;
       if(verbose>0) cout << "1-D iteration " << itct << ": searching, chisq = " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << teststep << "\n";
       if(newchi<chivals[1]) {
@@ -40584,7 +41717,7 @@ double orb1Dmin01_Kep(double oldchi, double inputstep, double pvtimescale, doubl
 // Implement the two-stage orbit fitting from arctrace01d.cpp in a single function.
 // The two stages are, first, a Keplerian fit to a subset of the data, and then
 // a full 6-D fit with planetary perturbations, to the whole data set.
-int arctrace01(int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, const vector <point3LD> &Sunpos, const vector <point3LD> &Sunvel, const vector <point3LD> &observerpos, const vector <long double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, double kepspan, long double minchichange, const point3LD initpos, const point3LD initvel, vector <double> &bestRA, vector <double> &bestDec, vector <double> &bestresid, point3LD &newpos, point3LD &newvel, long double *chisquared, long double *astromrms, int *refpoint)
+int arctrace01(int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <point3LD> &planetpos, const vector <point3LD> &Sunpos, const vector <point3LD> &Sunvel, const vector <point3LD> &observerpos, const vector <long double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, double kepspan, long double minchichange, const point3LD initpos, const point3LD initvel, vector <double> &bestRA, vector <double> &bestDec, vector <double> &bestresid, point3LD &newpos, point3LD &newvel, long double *chisquared, long double *astromrms, int *refpoint, int verbose)
 {
   vector <long double> unitdir;
   vector <point3LD> orbit05pos;
@@ -40602,10 +41735,10 @@ int arctrace01(int polyorder, int planetnum, const vector <long double> &planetm
   double simplex_scale = SIMPLEX_SCALEFAC;
   int obsnum = obsMJD.size();
   int obsct,i,j,status;
-  int bestpoint,point1,verbose;
+  int bestpoint,point1;
   int simptype,point2,kepnum,kepmax;
   obsct=i=j=status=0;
-  bestpoint=point1=verbose=0;
+  bestpoint=point1=0;
   simptype=point2=kepnum=kepmax=1;
   vector <double> orbit;
   vector <long double> gradient;
@@ -41220,7 +42353,7 @@ int arc6D01(int polyorder, int planetnum, const vector <long double> &planetmjd,
 // the latter program would converge faster. Note that, unlike
 // arc6D01, observer and target positions must be heliocentric
 // rather than barycentric.
-int arc6DKep(const vector <point3d> &observer_heliopos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, double minchichange, double mjdstart, const point3d initpos, const point3d initvel, vector <double> &bestRA, vector <double> &bestDec, vector <double> &bestresid, point3d &newpos, point3d &newvel, double *chisquared, double *astromrms)
+int arc6DKep(const vector <point3d> &observer_heliopos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, double minchichange, double mjdstart, const point3d initpos, const point3d initvel, vector <double> &bestRA, vector <double> &bestDec, vector <double> &bestresid, point3d &newpos, point3d &newvel, double *chisquared, double *astromrms, int verbose)
 {
   vector <double> unitdir;
   vector <double> fitRA;
@@ -41266,10 +42399,9 @@ int arc6DKep(const vector <point3d> &observer_heliopos, const vector <double> &o
   double newchi=0.0l;
   double bestchi=0.0l;
   double semimajor_axis,eccen;
-  int verbose=0;
  
   fitDec = fitRA = fitresid = {};
-  chisq = orbitchi_univar(startpos, startvel, mjdstart, observer_heliopos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, fitresid, &semimajor_axis, &eccen);
+  chisq = orbitchi_univar(startpos, startvel, mjdstart, observer_heliopos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, fitresid, &semimajor_axis, &eccen, verbose);
   cout << "Chi-square value for input state vector is " << chisq << "\n";
   bestchi = chisq;
   bestRA = fitRA;
@@ -41301,7 +42433,7 @@ int arc6DKep(const vector <point3d> &observer_heliopos, const vector <double> &o
   while(itct<ITMAX && pos_step>MINPOS_STEP && chifailct<=CHIFAILMAX) {
     itct+=1;
     // Calculate the gradient of the chi-squared surface
-    orbgrad01_Kep(chisq, pos_step, pvtimescale, observer_heliopos, obsMJD, obsRA, obsDec, sigastrom, startpos, startvel, mjdstart, gradient);
+    orbgrad01_Kep(chisq, pos_step, pvtimescale, observer_heliopos, obsMJD, obsRA, obsDec, sigastrom, startpos, startvel, mjdstart, gradient, verbose);
     for(i=0;i<6;i++) gradient[i] *= -1.0l; // Now it really is the gradient.
     // Calculate unit vector corresponding to the gradient
     gradunit = gradient;
@@ -41392,7 +42524,7 @@ int arc6DKep(const vector <point3d> &observer_heliopos, const vector <double> &o
 
     // Perform one-dimensional optimization along the direction defined by
     // the Hessian-scaled gradient vector thisway
-    newchi = orb1Dmin01_Kep(chisq, poschange, pvtimescale, minchichange, thisway, observer_heliopos, obsMJD, obsRA, obsDec, sigastrom, startpos, startvel, mjdstart, fitRA, fitDec, fitresid, &beststep, tppos, tpvel);
+    newchi = orb1Dmin01_Kep(chisq, poschange, pvtimescale, minchichange, thisway, observer_heliopos, obsMJD, obsRA, obsDec, sigastrom, startpos, startvel, mjdstart, fitRA, fitDec, fitresid, &beststep, tppos, tpvel, verbose);
     
     if(verbose>0) cout << "Iteration " << itct << ": chi-square value for input state vector is " << fixed << setprecision(3) << newchi << " step: " << fixed << setprecision(3) << pos_step  << " motion: " << fixed << setprecision(3) << beststep << ", chichange = " << chichange << "\n";
 
@@ -41662,7 +42794,7 @@ int arctrace03(int polyorder, int planetnum, const vector <long double> &planetm
     Kepobserverpos.push_back(dpos);
   }
 
-  arc6DKep(Kepobserverpos, KepMJD, obsRA, obsDec, sigastrom, minchichange, planetmjd[planetfile_refpoint], dendpos, dendvel, bestRA, bestDec, bestresid, dendpos, dendvel, &dchisq, &dastromrms);
+  arc6DKep(Kepobserverpos, KepMJD, obsRA, obsDec, sigastrom, minchichange, planetmjd[planetfile_refpoint], dendpos, dendvel, bestRA, bestDec, bestresid, dendpos, dendvel, &dchisq, &dastromrms, verbose);
   cout << "Full-range Keplerian fit produced chisq = " << dchisq << ", astromrms = " << dastromrms << "\n";
   
   // Convert Keplerian state vectors from heliocentric to barycentric coords.

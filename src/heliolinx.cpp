@@ -370,39 +370,6 @@ std::tuple<py::array, py::array>heliolinc(
   return(std::make_tuple(py_detout1, py_detout2));
 }
 
-// link_refine_Herget: April 11, 2023:
-// Minimalist wrapper, only handles the python <-> C++ translations.
-// All the interesting algorithmic stuff happens in functions called from solarsyst_dyn_geo01.
-
-std::tuple<py::array, py::array>linkRefineHerget(
-    LinkRefineConfig config,
-    py::array_t<hlimage> py_imglog,
-    py::array_t<hldet> py_detvec,
-    py::array_t<hlclust> py_inclust,
-    py::array_t<longpair> py_inclust2det
-  ) {
-  cout << "C++ wrapper for link_refine_Herget\n";
-  
-  std::vector <hlimage> image_log = ndarray_to_vec(py_imglog);
-  std::vector <hldet> detvec = ndarray_to_vec(py_detvec);
-  std::vector <hlclust> inclust = ndarray_to_vec(py_inclust);
-  std::vector <longpair> inclust2det = ndarray_to_vec(py_inclust2det);
-  int status = 0;
-  std::vector <hlclust> outclust;
-  std::vector <longpair> outclust2det;
-     
-  status = link_refine_Herget_univar(image_log, detvec, inclust, inclust2det, config, outclust, outclust2det);
-  if(status!=0) {
-    cerr << "ERROR: link_refine_Herget returned failure status " << status << "\n";
-    auto py_clustout = vec_to_ndarray<hlclust>({});
-    return(std::make_tuple(py_clustout, py_clustout));
-  }
-      
-  auto py_detout1 = vec_to_ndarray<hlclust>(outclust);
-  auto py_detout2 = vec_to_ndarray<longpair>(outclust2det);
-
-  return(std::make_tuple(py_detout1, py_detout2));
-}
 
 // link_Purify: March 08, 2024:
 // Minimalist wrapper, only handles the python <-> C++ translations.
@@ -672,7 +639,6 @@ PYBIND11_MODULE(heliolinx, m) {
     m.def("makeTracklets", &makeTracklets,  "Make tracklets from set of detections.");
     m.def("makeTrailedTracklets", &makeTrailedTracklets,  "Make tracklets from set of trailed detections.");
     m.def("heliolinc", &heliolinc,  "Link input tracklets into candidate discoveries.");
-    m.def("linkRefineHerget", &linkRefineHerget, "Refine linkages, eliminating duplicates and preserving the best candidates.");
     m.def("linkPurify", &linkPurify, "Purify linkages, eliminating duplicates, and rejecting astrometric outliers.");
     m.def("linkPlanarity", &linkPlanarity, "Purify linkages, eliminating duplicates, and rejecting astrometric outliers.");
     m.def("findGlints", &findGlints, "Identify glint trails produced by space junk, using pixel x,y coordinates");
