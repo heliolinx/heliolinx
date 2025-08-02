@@ -1,16 +1,8 @@
-// September 13, 2024: make_tracklets.cpp:
-// Like make_tracklets_new.cpp in that it uses python-compatible
-// routines, but also does some careful bookeeping so that, if it
-// is called with -mintrkpts greater than 2, the paired detection
-// file does not contain any detections that were not included in
-// the final tracklets. This is in contrast to the previous code
-// that included in the paired detection file all detections that
-// were initially part of any pair, even if -mintrkpts was set to
-// exclude mere pairs, and only output tracklets with more tham
-// two points. This led to very cumbersome paired detection files
-// that caused heliolinc and other downstream programs to be
-// unnecessarily slow and memory-intensive.
-
+// July 28, 2025: make_tracklets6.cpp:
+// Big algorithmic change, designed to tune the effective minimum
+// tracklet length based on how many images per night overlap a given field.
+// Tracks and preserves valid overlapping tracklets, resolving them on
+// a point-to-point basis.
 
 #include "solarsyst_dyn_geo01.h"
 #include "cmath"
@@ -39,6 +31,8 @@ static void show_usage()
   cerr << "Usage: make_tracklets -dets detfile -imgs imfile -outimgs output image file/ \n";
   cerr << "-pairdets paired detection file -tracklets tracklet file -trk2det output tracklet-to-detection file/ \n";
   cerr << "-colformat column format file -imrad image radius(deg)/ \n";
+  cerr << "-matchrad radius for image overlap calculation (deg)/ \n";
+  cerr << "-trkfrac min fraction of overlapping images that must be included in a valid tracklet/ \n";
   cerr << "-maxtime max inter-image time interval (hr) -mintime min inter-image time interval (hr)/ \n";
   cerr << "-maxGCR maximum GRC -mintrkpts min. num. of tracklet points/ \n";
   cerr << "-max_netl maximum number of points for a non-exclusive (overlap permitted) tracklet/ \n";
@@ -93,12 +87,12 @@ int main(int argc, char *argv[])
   int inimfile_set,colformatfile_set;
   inimfile_set = colformatfile_set = 0;
   int outimfile_default,pairdetfile_default,trackletfile_default,trk2detfile_default,imagerad_default;
-  int maxtime_default,mintime_default,minvel_default,maxvel_default;
+  int maxtime_default,mintime_default,minvel_default,maxvel_default,matchrad_default,trkfrac_default;
   int maxgcr_default,minarc_default,mintrkpts_default,time_offset_default,maxnetl_default;
   MakeTrackletsConfig config;
   
   outimfile_default = pairdetfile_default = trackletfile_default = trk2detfile_default = imagerad_default = 1;
-  maxtime_default = mintime_default = minvel_default = maxvel_default = 1;
+  maxtime_default = mintime_default = minvel_default = maxvel_default = matchrad_default = trkfrac_default = 1;
   maxgcr_default = minarc_default = mintrkpts_default = time_offset_default=maxnetl_default = 1;
 
   if(argc<7)
@@ -195,6 +189,40 @@ int main(int argc, char *argv[])
       }
       else {
 	cerr << "Output image radius keyword supplied with no corresponding argument\n";
+	show_usage();
+	return(1);
+      }
+    } else if(string(argv[i]) == "-matchrad" || string(argv[i]) == "--matchrad" ) {
+      if(i+1 < argc) {
+	//There is still something to read;
+        config.matchrad=stod(argv[++i]);
+	matchrad_default = 0;
+	i++;
+	if(!isnormal(config.matchrad) || config.matchrad<=0.0) {
+	  cerr << "Error: invalid matching radius (" << config.matchrad << " deg) supplied.\n";
+	  cerr << "Matching radius must be strictly positive!\n";
+	  return(2);
+	}
+      }
+      else {
+	cerr << "Matching radius keyword supplied with no corresponding argument\n";
+	show_usage();
+	return(1);
+      }
+    } else if(string(argv[i]) == "-trkfrac" || string(argv[i]) == "--trkfrac" ) {
+      if(i+1 < argc) {
+	//There is still something to read;
+        config.trkfrac=stod(argv[++i]);
+	trkfrac_default = 0;
+	i++;
+	if(!isnormal(config.trkfrac) || config.trkfrac<=0.0) {
+	  cerr << "Error: invalid tracklet detection fraction (" << config.trkfrac << ") supplied.\n";
+	  cerr << "Tracklet detection fraction must be strictly positive!\n";
+	  return(2);
+	}
+      }
+      else {
+	cerr << "Tracklet detection fraction keyword supplied with no corresponding argument\n";
 	show_usage();
 	return(1);
       }
@@ -372,6 +400,17 @@ int main(int argc, char *argv[])
 	show_usage();
 	return(1);
       }
+    } else if(string(argv[i]) == "-use_lowmem" || string(argv[i]) == "-lowmem" || string(argv[i]) == "-ulm" || string(argv[i]) == "-mem" || string(argv[i]) == "--use_lowmem" || string(argv[i]) == "--lowmem" || string(argv[i]) == "-incremental") {
+      if(i+1 < argc) {
+	//There is still something to read;
+	config.use_lowmem=stoi(argv[++i]);
+	i++;
+      }
+      else {
+	cerr << "Keyword for choosing low-memory algorithm supplied with no corresponding argument\n";
+	show_usage();
+	return(1);
+      }
     } else if(string(argv[i]) == "-verbose" || string(argv[i]) == "-verb" || string(argv[i]) == "-VERBOSE" || string(argv[i]) == "-VERB" || string(argv[i]) == "--verbose" || string(argv[i]) == "--VERBOSE" || string(argv[i]) == "--VERB") {
       if(i+1 < argc) {
 	//There is still something to read;
@@ -453,6 +492,17 @@ int main(int argc, char *argv[])
   
   if(imagerad_default == 0) cout << "Image radius = " << config.imagerad << " degrees.\n";
   else cout << "Defaulting to image radius = " <<  config.imagerad << " degrees.\n";
+
+  if(config.use_lowmem==1) {
+    cout << "Using memory-efficient algorithm: matchrad and trkfrac parameters are operative\n";
+    if(matchrad_default == 0) cout << "Matching radius for image overlap calculation = " << config.matchrad << " degrees.\n";
+    else cout << "Defaulting to matching radius = " <<  config.matchrad << " degrees.\n";
+  
+    if(trkfrac_default == 0) cout << "Minimum tracklet length = " << config.trkfrac << " times the number of overlapping images.\n";
+    else cout << "Defaulting to minimum tracklet length = " <<  config.trkfrac << " times the number of overlapping images.\n";
+  } else {
+    cout << "Using simpler, less memory-efficient algorithm: matchrad and trkfrac parameters have no effect\n";
+  }
   
   if(maxtime_default == 0) cout << "Max time interval = " << config.maxtime*24.0 << " hours.\n";
   else cout << "Defaulting to max time interval = " << config.maxtime*24.0 << " hours.\n";
@@ -625,7 +675,7 @@ int main(int argc, char *argv[])
   long exp_resetnum=0;
   for(i=0;i<long(img_log.size());i++) {
     if(img_log[i].exptime<=0.0l) {
-      cout << "Correcting exposure time on image " << i << ": " << img_log[i].MJD << " " << img_log[i].RA << " " << img_log[i].Dec << " " << img_log[i].obscode << ", exptime was " << img_log[i].exptime << "\n";
+      if(config.verbose>0) cout << "Correcting exposure time on image " << i << ": " << img_log[i].MJD << " " << img_log[i].RA << " " << img_log[i].Dec << " " << img_log[i].obscode << ", exptime was " << img_log[i].exptime << "\n";
       img_log[i].exptime = config.exptime;
       exp_resetnum++;
     }
@@ -644,7 +694,7 @@ int main(int argc, char *argv[])
   }
   outstream1.close();
 
-  make_tracklets3(detvec, img_log, config, pairdets, tracklets, trk2det);
+  make_tracklets7(detvec, img_log, config, pairdets, tracklets, trk2det);
   
   cout << "Output image catalog " << outimfile << ", with " << img_log.size() << " lines, has been written\n";
   // Write paired detection file

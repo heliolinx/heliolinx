@@ -18263,27 +18263,27 @@ int read_detection_filemt2(string indetfile, int mjdcol, int racol, int deccol, 
 	  return(2);
 	}
       }
-      if(verbose>=2 && !trail_len_read) {
+      if(verbose>2 && !trail_len_read) {
 	cerr << "Warning: trail length not read from line " << detvec.size()+1 << " of input detection file " << indetfile << "!\n";
 	cerr << "Here is the line: " << lnfromfile << "\n";
       }
-      if(verbose>=2 && !trail_PA_read) {
+      if(verbose>2 && !trail_PA_read) {
 	cerr << "Warning: trail PA not read from line " << detvec.size()+1 << " of input detection file " << indetfile << "!\n";
 	cerr << "Here is the line: " << lnfromfile << "\n";
       }
-      if(verbose>=2 && !sigmag_read) {
+      if(verbose>2 && !sigmag_read) {
 	cerr << "Warning: magnitude uncertainty sigmag not read from line " << detvec.size()+1 << " of input detection file " << indetfile << "!\n";
 	cerr << "Here is the line: " << lnfromfile << "\n";
       }
-      if(verbose>=2 && !sig_across_read) {
+      if(verbose>2 && !sig_across_read) {
 	cerr << "Warning: cross-trail astrometric uncertainty sig_across not read from line " << detvec.size()+1 << " of input detection file " << indetfile << "!\n";
 	cerr << "Here is the line: " << lnfromfile << "\n";
       }
-      if(verbose>=2 && !known_obj_read) {
+      if(verbose>2 && !known_obj_read) {
 	cerr << "Warning: known object specifier not read from line " << detvec.size()+1 << " of input detection file " << indetfile << "!\n";
 	cerr << "Here is the line: " << lnfromfile << "\n";
       }
-      if(verbose>=2 && !det_qual_read) {
+      if(verbose>2 && !det_qual_read) {
 	cerr << "Warning: detection quality specifier not read from line " << detvec.size()+1 << " of input detection file " << indetfile << "!\n";
 	cerr << "Here is the line: " << lnfromfile << "\n";
       }
@@ -21344,7 +21344,7 @@ int find_pairs2(vector <hldet> &detvec, const vector <hlimage> &img_log, vector 
 	  sort(trkdets.begin(), trkdets.end(), early_hldet());
 	  // Great Circle fit
 	  double poleRA,poleDec,angvel,pa,crosstrack,alongtrack,GCR;
-	  status =  greatcircresid(trkdets,poleRA,poleDec,angvel,pa,crosstrack,alongtrack,fitRA,fitDec,residuals);
+	  status =  greatcircresid(trkdets,poleRA,poleDec,angvel,pa,crosstrack,alongtrack,fitRA,fitDec,residuals,verbose);
 	  if(status!=0) {
 	    cerr << "ERROR: greatcircresid exited with status " << status << "\n";
 	    return(4);
@@ -21389,7 +21389,7 @@ int find_pairs2(vector <hldet> &detvec, const vector <hlimage> &img_log, vector 
 		if(fabs(trkdets[i].MJD - trkdets[i-1].MJD) < imagetimetol) isdup=1;
 	      }
 	      // Re-do Great Circle fit
-	      status =  greatcircresid(trkdets,poleRA,poleDec,angvel,pa,crosstrack,alongtrack,fitRA,fitDec,residuals);
+	      status =  greatcircresid(trkdets,poleRA,poleDec,angvel,pa,crosstrack,alongtrack,fitRA,fitDec,residuals,verbose);
 	      if(status!=0) {
 		cerr << "ERROR: greatcircresid exited with status " << status << "\n";
 		return(5);
@@ -21417,7 +21417,7 @@ int find_pairs2(vector <hldet> &detvec, const vector <hlimage> &img_log, vector 
 	      // The worst residual is not on image A. Reject it.
 	      trkdets.erase(trkdets.begin()+worstoutlier);
 	      // Re-do Great Circle fit
-	      status =  greatcircresid(trkdets,poleRA,poleDec,angvel,pa,crosstrack,alongtrack,fitRA,fitDec,residuals);
+	      status =  greatcircresid(trkdets,poleRA,poleDec,angvel,pa,crosstrack,alongtrack,fitRA,fitDec,residuals,verbose);
 	      if(status!=0) {
 		cerr << "ERROR: greatcircresid exited with status " << status << "\n";
 		return(6);
@@ -21505,7 +21505,7 @@ int find_pairs2(vector <hldet> &detvec, const vector <hlimage> &img_log, vector 
 		trkdets.push_back(detvec[Atrkmat2[btrk][i]]);
 	      }
 	      // Perform a final Great Circle fit
-	      status =  greatcircresid(trkdets,poleRA,poleDec,angvel,pa,crosstrack,alongtrack,fitRA,fitDec,residuals);
+	      status =  greatcircresid(trkdets,poleRA,poleDec,angvel,pa,crosstrack,alongtrack,fitRA,fitDec,residuals,verbose);
 	      if(status!=0) {
 		cerr << "ERROR: greatcircresid exited with status " << status << "\n";
 		return(9);
@@ -21636,8 +21636,2113 @@ int find_pairs2(vector <hldet> &detvec, const vector <hlimage> &img_log, vector 
     }
     // End loop giving each image a chance to be image A
   }
-  cout << "Exiting find_pairs2 with " << forbidden_reuses << " nominally forbidded re-uses of points from exclusive tracklets\n";
+  cout << "Exiting find_pairs2 with " << forbidden_reuses << " nominally forbidden re-uses of points from exclusive tracklets\n";
   cout << fixed << setprecision(6) << "This is probably benign, since it is only " << double(forbidden_reuses)/double(trk2det.size()) << " of all tracklet points\n";
+  cout << "Vector sizes: pairdets = " << pairdets.size() << "  trk2det = " << trk2det.size() << "  tracklets = " << tracklets.size() << "\n";
+  return(0);
+}
+
+// delete_tracklet01: July 28, 2025: Delete tracklet overtrk, presumed to
+// be overlapping with a better tracklet, based on the tracklet accounting scheme
+// used in find_pairs3, and properly change all the
+// accounting in the vectors detvec, trk2det,tracklets, and pairdets,
+// which are globally important to make_tracklets4, as well as the additional
+// vectors tracklet_metrics, det2trk, tracklets_min_length, tracklet_indexmat,
+// and overlapping_tracklets, which are of local importance in find_pairs3.
+// Note: the small index vectors trkdetind and trkindind, which index the
+// tracklet to be deleted in detvec and trk2det, respectively, are also
+// required as input -- and should be obtained by a call to the function
+// tracklet_lookup_ind() immediately before calling delete_tracklet01.
+int delete_tracklet01(long overtrk, vector <long> &trkdetind, vector <long> &trkindind, vector <hldet> &detvec, vector <longpair> &trk2det, vector <tracklet> &tracklets, vector <hldet> &pairdets, vector <double> &tracklet_metrics, vector <long> &det2trk, vector <long> &tracklets_min_length, vector <vector <long>> &tracklet_indexmat, vector <long> &overlapping_tracklets, int verbose)
+{ 
+  long i=0;
+  long trklnum = trkdetind.size();
+  vector <long> ivec;
+  
+  if(trklnum != long(trkindind.size())) {
+    cerr << "ERROR: inconsistent tracklet length info from tracklet_lookup_ind(): " << trklnum << " " << trkdetind.size() << " " << trkindind.size() << "\n";
+    return(1);
+  }
+  if(trklnum != tracklets[overtrk].npts) {
+    cerr << "ERROR: tracklet length mis-match for overlapping tracklet " << overtrk << " : " << trklnum << " vs. " << tracklets[overtrk].npts << "\n";
+    return(2);
+  }
+  if(verbose>1) {
+    cout << "PRE-DELETION:\n";
+    for(i=0;i<trklnum;i++) {
+      cerr << " " << pairdets[trkdetind[i]].index << " " << detvec[pairdets[trkdetind[i]].index].image << " " << detvec[pairdets[trkdetind[i]].index].MJD << " " << detvec[pairdets[trkdetind[i]].index].RA << " " << detvec[pairdets[trkdetind[i]].index].Dec << " " << detvec[pairdets[trkdetind[i]].index].index << " " << det2trk[pairdets[trkdetind[i]].index] << "\n";
+    }
+  }
+
+  // Re-assign detvec indices and det2trk entries
+  for(i=0;i<trklnum;i++) {
+    if(detvec[pairdets[trkdetind[i]].index].index > 0) {
+      // This detection was previously marked as exclusive. Let it still
+      // index pairdets, but change the sign to negative, making it non-exclusive.
+      detvec[pairdets[trkdetind[i]].index].index *= -1;
+    } else if(detvec[pairdets[trkdetind[i]].index].index < 0) {
+      cerr << "Detection " << pairdets[trkdetind[i]].index << " assigned to exclusive tracklet " << overtrk << ", had negative index" << detvec[pairdets[trkdetind[i]].index].index << "\n";
+      // Note: there is nothing to do here in the case detvec[pairdets[trkdetind[i]].index].index==0, since sign-flipping it has no effect.
+      // Hence, the meaning of detvec[xxx].index in that one case is ambiguous, but this should not cause any problems.
+      return(3);
+    }
+    // Erase exclusive tracklet attribution from the vector det2trk.
+    det2trk[pairdets[trkdetind[i]].index] = -1;
+  }
+  // Delete tracklet entry
+  tracklets.erase(tracklets.begin()+overtrk);
+  // Delete tracklet_indexmat entry
+  tracklet_indexmat.erase(tracklet_indexmat.begin()+overtrk);
+  // Delete corresponding entry in tracklet_metrics.
+  tracklet_metrics.erase(tracklet_metrics.begin()+overtrk);
+  // Delete corresponding entry in tracklets_min_length
+  tracklets_min_length.erase(tracklets_min_length.begin()+overtrk);
+  // Re-number subsequent entries in tracklet vector
+  for(i=overtrk;i<long(tracklets.size());i++) {
+    tracklets[i].trk_ID = i;
+  }
+  // Delete trk2det entries
+  trk2det.erase(trk2det.begin()+trkindind[0],trk2det.begin()+trkindind[0]+trklnum);
+  // Re-number subsequent entries in trk2det vector
+  for(i=trkindind[0];i<long(trk2det.size());i++) {
+    trk2det[i].i1 -= 1;
+  }
+  // Re-number det2trk entries.
+  // Create a unique list of those that need to be re-numbered.
+  vector <long> fixlist;
+  for(long k=overtrk; k<long(tracklet_indexmat.size()); k++) {
+    ivec = tracklet_indexmat[k];
+    for(i=0;i<long(ivec.size());i++) fixlist.push_back(ivec[i]);
+  }
+  if(fixlist.size()>0) {
+    // Remove duplicates from fixlist
+    ivec = fixlist;
+    sort(ivec.begin(),ivec.end());
+    fixlist={};
+    fixlist.push_back(ivec[0]);
+    for(i=1;i<long(ivec.size());i++) {
+      if(ivec[i]!=ivec[i-1]) fixlist.push_back(ivec[i]);
+    }
+    // Re-number all the detrk entries in the now-unique list fixlist.
+    for(i=0;i<long(fixlist.size());i++) {
+      det2trk[fixlist[i]] -= 1;
+    }
+  } // Note that if fixlist.size()==0, we have removed the very last tracklet that was added,
+    // and hence there is nothing to re-number.
+  if(verbose>1) {
+    cout << "POST-DELETION:\n";
+    for(i=0;i<trklnum;i++) {
+      cerr << " " << pairdets[trkdetind[i]].index << " " << detvec[pairdets[trkdetind[i]].index].image << " " << detvec[pairdets[trkdetind[i]].index].MJD << " " << detvec[pairdets[trkdetind[i]].index].RA << " " << detvec[pairdets[trkdetind[i]].index].Dec << " " << detvec[pairdets[trkdetind[i]].index].index << " " << det2trk[pairdets[trkdetind[i]].index] << "\n";
+    }
+  }
+  return(0);
+}
+
+//find_pairs3: July 25, 2025: Like findpairs2, but retains potentially
+// overlapping tracklets, in order to choose the best option.
+int find_pairs3(vector <hldet> &detvec, const vector <hlimage> &img_log, vector <hldet> &pairdets, vector <tracklet> &tracklets, vector <longpair> &trk2det, int min_tracklet_points, int max_netl, double mintime, double maxtime, double imagetimetol, double imrad, double minvel, double maxvel, double minarc, double matchrad, double trkfrac, double maxgcr, int verbose)
+{
+  cout << "Inside find_pairs3\n";
+  long detnum = detvec.size();
+  if(detnum<=0) {
+    cerr << "ERROR: findpairs3 called with no input detections\n";
+    return(1);
+  }
+  int imnum = img_log.size();
+  int imct=0;
+  int imtarg=0;
+  long detct=0;
+  long pdct=0; // count of detections that have been paired
+  xy_index xyind=xy_index(0.0, 0.0, 0);
+  vector <xy_index> axyvec = {};
+  vector <long> indexvec;
+  vector <long> indexvec2;
+  double dist,pa;
+  dist = pa = 0.0l;
+  long dettarg=0;
+  longpair onepair = longpair(0,0);
+  vector <int> image_overlap;
+  vector <int> image_overlap_future;
+  int apct=0;
+  int adetct=0;
+  long i = 0;
+  long j = 0;
+  double range,timeA,timeB,xA,xB,yA,yB,xpred,ypred,timepred;
+  range = timeA = timeB = xA = xB = yA = yB = xpred = ypred = timepred = 0.0;
+  vector <hldet> trkdets;
+  vector <long> Atrkvec;
+  vector <vector <long>> Atrkmat;
+  vector <vector <long>> Atrkmat2;
+  vector <double> residuals;
+  vector <double> fitRA;
+  vector <double> fitDec;
+  tracklet track1 = tracklet(0,0.0l,0.0l,0,0.0l,0.0l,0,0);
+  double poleRA,poleDec,angvel,crosstrack,alongtrack;
+  poleRA=poleDec=angvel=crosstrack=alongtrack=0.0;
+  int status,instep,rp1,rp2;
+  status=instep=rp1=rp2=0;
+  vector <long> overlapping_tracklets;
+  int bad_reuse=0;
+  long forbidden_reuses = 0;
+  vector <double> tracklet_metrics;
+  vector <long> det2trk;
+  vector <long> tracklets_min_length;
+  vector <vector <long>> tracklet_indexmat;
+  hldet onedet = hldet(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, "null", "V", "500", 0, 0, 0);
+  vector <long> trkdetind;
+  vector <long> trkindind;
+  vector <long> ivec;
+  long bad_reuse_example=0;
+  int isgood = 0;
+  
+  pairdets={};
+  tracklets={};
+  trk2det={};
+  
+  // Mark all detections as unpaired and available using index = -detnum-2
+  // Also, load det2trk with a vector of -1s, to indicate no
+  // detections are yet in an exclusive tracklet.
+  for(detct=0;detct<detnum;detct++) {
+    detvec[detct].index = -detnum - 2;
+    det2trk.push_back(-1);
+  }
+
+  // Loop over all images, determining the effective number of overlapping
+  // images in each case.
+  // Loop over images for image A
+  for(imct=0;imct<imnum;imct++) {
+    cout << "Initial loop considering image " << imct << " of " << imnum << "\n";
+    if(img_log[imct].endind<=0 || img_log[imct].endind<=img_log[imct].startind) continue; // No detections on this image.
+    // Project all the detections on image A
+    xyind=xy_index(0.0, 0.0, 0);
+    axyvec = {};
+    dist=pa=0.0;
+    dettarg=0;
+    for(detct=img_log[imct].startind ; detct<img_log[imct].endind ; detct++) {
+      distradec02(img_log[imct].RA, img_log[imct].Dec,detvec[detct].RA,detvec[detct].Dec,&dist,&pa);
+      xyind = xy_index(dist*sin(pa/DEGPRAD),dist*cos(pa/DEGPRAD),detct);
+      axyvec.push_back(xyind);
+      if((!isnormal(xyind.x) && xyind.x!=0) || (!isnormal(xyind.y) && xyind.y!=0)) {
+	cerr << "nan-producing input: ra1, dec1, ra2, dec2, dist, pa:\n";
+	cerr << img_log[imct].RA << " " << img_log[imct].Dec << " " << detvec[detct].RA << " " << detvec[detct].Dec << " " << dist << " " << pa << " " << xyind.x << " " << xyind.x << "\n";
+      }
+    }
+    // Calculate the number of successfully projected detections on image imct (image A)
+    long imdetnum = axyvec.size();
+    cout << imdetnum << " detections successfully projected\n";
+
+    // Create two vectors of zeros with this number of entries, one
+    // to store all overlapping images, and one to store only those
+    // images later in time than image A
+    vector <int> detection_matches;
+    make_ivec(imdetnum, detection_matches);
+    vector <int> detection_matches_future;
+    make_ivec(imdetnum, detection_matches_future);
+    // Loop over potential image B's
+    for(imtarg=0;imtarg<imnum;imtarg++) {
+      //cout << "probing match between images " << imct << " and " << imtarg << "\n";
+      // Calculate the boresight center-to-center distance between images A (imct) and B (imtarg)
+      double imcendist = distradec01(img_log[imct].RA, img_log[imct].Dec, img_log[imtarg].RA, img_log[imtarg].Dec);
+      // Calculate the number of detections on image B
+      long targdetnum = 1 + img_log[imtarg].endind - img_log[imtarg].startind;
+      // Calculate the time difference between the two images
+      double timediff = fabs(img_log[imtarg].MJD - img_log[imct].MJD);
+      if(imtarg!=imnum && targdetnum>0 && timediff>=mintime && timediff<=maxtime && imcendist<2.0*imrad+maxvel*timediff) {
+	//cout << "Matches are possible, ";
+	// Image B is close enough in time and on the sky
+	// Project all the detections on image B 
+	vector <xy_index> bxyvec = {};
+	// Project all detections on image B
+	for(dettarg=img_log[imtarg].startind ; dettarg<img_log[imtarg].endind ; dettarg++) {
+	  distradec02(img_log[imct].RA, img_log[imct].Dec,detvec[dettarg].RA,detvec[dettarg].Dec,&dist,&pa);
+	  xyind = xy_index(dist*sin(pa/DEGPRAD),dist*cos(pa/DEGPRAD),dettarg);
+	  bxyvec.push_back(xyind);
+	}
+	//cout << bxyvec.size() << " detections projected for image B\n";
+	// Create k-d tree of detections on image B (imtarg).
+	int dim=1;
+	xy_index xyi = bxyvec[0];
+	kdpoint root = kdpoint(xyi,-1,-1,dim);
+	vector <kdpoint> kdvec ={};
+	long medpt;
+	long bestpoint=0;
+	double dist=LARGERR;
+	medpt = medindex(bxyvec,dim);
+	root = kdpoint(bxyvec[medpt],-1,-1,1);
+	kdvec.push_back(root);
+	kdtree01(bxyvec,dim,medpt,0,kdvec);
+	// Loop over detections on image A
+	if(DEBUG>=1) cout << "Looking for pairs between " << imdetnum << " detections on image " << imct << " and " << kdvec.size() << " on image " << imtarg << "\n";
+	for(detct=0 ; detct<imdetnum ; detct++) {
+	  dist=LARGERR;
+	  if((isnormal(axyvec[detct].x) || axyvec[detct].x==0) && (isnormal(axyvec[detct].y) || axyvec[detct].y==0)) {
+	     bestpoint = kdnearest01(kdvec,axyvec[detct].x,axyvec[detct].y);
+	     dist = sqrt(DSQUARE(axyvec[detct].x - kdvec[bestpoint].point.x) + DSQUARE(axyvec[detct].y - kdvec[bestpoint].point.y));
+	  } else {
+	    cerr << "WARNING: detection " << detct << " on image " << imct << " not normal: " << axyvec[detct].x << " " << axyvec[detct].y << "\n";
+	  }
+	  if(dist<=matchrad) {
+	    detection_matches[detct] += 1;
+	    if(img_log[imtarg].MJD > img_log[imct].MJD) detection_matches_future[detct] += 1;
+	  }
+	  // Close loop over detections on source image (image A)
+	}
+	// Close if-statement checking if image B could match image A
+      }
+      // Close loop over all possible image B's
+    }
+    if(verbose>=1) cout << "Image " << imct << ": found " << adetct << " newly paired detections and a total of " << apct << " pairs.\n";
+    // Find the mode of the number of matches for detections on image A
+    vector <int> mode_all;
+    vector <int> mode_future;
+    make_ivec(imnum+1, mode_all);
+    make_ivec(imnum+1, mode_future);
+    for(detct=0; detct<imdetnum; detct++) {
+      if(detection_matches[detct]<=imnum && detection_matches_future[detct]<=imnum) {
+	mode_all[detection_matches[detct]] += 1;
+	mode_future[detection_matches_future[detct]] += 1;
+      } else if(detection_matches[detct]>imnum) {
+	cerr << "ERROR: detection_matches[detct] = " << detection_matches[detct] << " for detection " << detct << " out of " << imdetnum << " on image " << imct << " out of " << imnum << "; logical max is " << imnum << "\n";
+	return(1);
+      } else {
+	cerr << "ERROR: detection_matches_future[detct] = " << detection_matches_future[detct] << " for detection " << detct << " out of " << imdetnum << " on image " << imct << " out of " << imnum << "; logical max is " << imnum << "\n";
+	cerr << "and detection_matches[detct] = " << detection_matches[detct] << " for detection " << detct << " out of " << imdetnum << " on image " << imct << " out of " << imnum << "\n";
+	return(1);
+      }
+    }
+    int amax,fmax,amode,fmode;
+    amax = fmax = amode = fmode = 0;
+    for(i=0;i<=imnum;i++) {
+      if(mode_all[i] > amax) {
+	amax = mode_all[i];
+	amode = i;
+      }
+      if(mode_future[i] > fmax) {
+	fmax = mode_future[i];
+	fmode = i;
+      }
+    }
+    // Load newly calculate modes into the image_overlap vectors
+    image_overlap.push_back(amode);
+    image_overlap_future.push_back(fmode);
+    if(imct+1 != int(image_overlap.size()) || imct+1 != int(image_overlap_future.size())) {
+      cerr << "ERROR: size mismatch in image overlap vectors: " << imct << " " << image_overlap.size() << " " << image_overlap_future.size() << "\n";
+      return(2);
+    }
+    // Close loop over images for image A
+  }
+  for(imct=0;imct<imnum;imct++) {
+    cout << "Image " << imct << ": overlaps are " << image_overlap[imct] << " and " << image_overlap_future[imct] << "\n";
+  }
+  
+  // NEW LOOPS THAT ACTUALLY MAKE THE TRACKLETS
+  // Loop over images for image A
+  for(imct=0;imct<imnum;imct++) {
+    cout << "Tracklet-creation loop considering image " << imct << " of " << imnum << "\n";
+    if(img_log[imct].endind<=0 || img_log[imct].endind<=img_log[imct].startind) continue; // No detections on this image.
+    timeA = img_log[imct].MJD;
+    apct=0;
+    adetct=0;
+    // See if there are any images that might match
+    vector <int> imagematches = {};
+    int imatchcount = 0;
+    int imtarg=imct+1;
+    while(imtarg<imnum && img_log[imtarg].MJD < img_log[imct].MJD + maxtime) {
+      timeB = img_log[imtarg].MJD;
+      double timediff = timeB - timeA;
+      if(!isnormal(timediff) || timediff<0.0) {
+	cerr << "WARNING: Negative time difference " << timediff << " encountered between images " << imct << " and " << imtarg << "\n";
+      }
+      // See if the images are close enough on the sky.
+      double imcendist = distradec01(img_log[imct].RA, img_log[imct].Dec, img_log[imtarg].RA, img_log[imtarg].Dec);
+      if(imcendist<2.0*imrad+maxvel*timediff && timediff>=mintime && img_log[imtarg].endind>0 && img_log[imtarg].endind>img_log[imtarg].startind) {
+	if(DEBUG>=1) cout << "  pairs may exist between images " << imct << " and " << imtarg << ": dist = " << imcendist << ", timediff = " << timediff << "\n";
+	imagematches.push_back(imtarg);
+      }
+      imtarg++;
+    }
+    if(verbose>=1) cout << "Looking for pairs for image " << imct << ": " << imagematches.size() << " later images are worth searching\n";
+    int imatchnum = imagematches.size();
+    // Set minimum tracklet length appropriate for this image
+    int local_mintrkpts = double(image_overlap[imct])*trkfrac + 0.5;
+    if(local_mintrkpts < min_tracklet_points) local_mintrkpts = min_tracklet_points;
+    // Project all the detections on image A.
+    xyind=xy_index(0.0, 0.0, 0);
+    axyvec = {};
+    dist=pa=0.0;
+    dettarg=0;
+    for(detct=img_log[imct].startind ; detct<img_log[imct].endind ; detct++) {
+      distradec02(img_log[imct].RA, img_log[imct].Dec,detvec[detct].RA,detvec[detct].Dec,&dist,&pa);
+      xyind = xy_index(dist*sin(pa/DEGPRAD),dist*cos(pa/DEGPRAD),detct);
+      axyvec.push_back(xyind);
+      if((!isnormal(xyind.x) && xyind.x!=0) || (!isnormal(xyind.y) && xyind.y!=0)) {
+	cerr << "nan-producing input: ra1, dec1, ra2, dec2, dist, pa:\n";
+	cerr << img_log[imct].RA << " " << img_log[imct].Dec << " " << detvec[detct].RA << " " << detvec[detct].Dec << " " << dist << " " << pa << " " << xyind.x << " " << xyind.x << "\n";
+      }
+    }
+    cout << axyvec.size() << " detections successfully projected; " << imatchnum << " potentially matching images will be explored\n";
+    cout << "Minumum tracklet size for this image is " << local_mintrkpts << "\n";
+    if(imatchnum >= local_mintrkpts-1 && axyvec.size()>0) {
+      // There are enough matching images to create tracklets of at least the minimum length,
+      // and there are valid unpaired detections on image A: proceed with the search.
+      // Construct vector kdmat, holding k-d trees for
+      // all of the potentially matching images (image B's)
+      vector <vector <kdpoint>> kdmat = {};
+      for(imatchcount=0;imatchcount<imatchnum;imatchcount++) {
+      	imtarg = imagematches[imatchcount];
+	vector <xy_index> bxyvec = {};
+	// Project all detections on image B
+	for(dettarg=img_log[imtarg].startind ; dettarg<img_log[imtarg].endind ; dettarg++) {
+	  distradec02(img_log[imct].RA, img_log[imct].Dec,detvec[dettarg].RA,detvec[dettarg].Dec,&dist,&pa);
+	  xyind = xy_index(dist*sin(pa/DEGPRAD),dist*cos(pa/DEGPRAD),dettarg);
+	  bxyvec.push_back(xyind);
+	}
+	// Create k-d tree of detections on image B (imtarg).
+	vector <kdpoint> kdvec ={};
+	if(bxyvec.size()<=0) {
+	  // No valid detections in image B. Load dummy k-d vector
+	  kdmat.push_back(kdvec);
+	  // Skip to the next image
+	  continue;
+	}
+	int dim=1;
+	xy_index xyi = bxyvec[0];
+	kdpoint root = kdpoint(xyi,-1,-1,dim);
+	long medpt;
+	medpt = medindex(bxyvec,dim);
+	root = kdpoint(bxyvec[medpt],-1,-1,1);
+	kdvec.push_back(root);
+	kdtree01(bxyvec,dim,medpt,0,kdvec);
+	kdmat.push_back(kdvec);
+      }
+      // Loop over detections on image A
+      for(detct=0 ; detct<long(axyvec.size()) ; detct++) {
+	xA = axyvec[detct].x;
+	yA = axyvec[detct].y;
+	if((!isnormal(xA) && xA!=0.0) || (!isnormal(yA) && yA!=0.0)) continue;
+	// Declare vectors that will hold all possible tracklets that
+	// start with detection detct on image A.
+	Atrkvec = {};
+	Atrkmat = {}; 
+	// Loop over the image B's in reverse order, until we are so close
+	// to image A that no more tracklets of sufficient length are possible
+	for(imatchcount=imatchnum-1;imatchcount>=local_mintrkpts-2;imatchcount--) {
+	  if(kdmat[imatchcount].size()<=0) continue; // k-d tree for this image was empty.
+	  imtarg = imagematches[imatchcount];
+	  timeB = img_log[imtarg].MJD;
+	  range = (timeB-timeA)*maxvel;
+	  indexvec={};
+	  kdrange01(kdmat[imatchcount],xA,yA,range,indexvec);
+	  int matchnum=indexvec.size();
+	  // Loop over potentially matching detections on image B
+	  int matchct=0;
+	  for(matchct=0; matchct<matchnum; matchct++) {
+	    // Load original detection indices corresponding to detection detct on image A and
+	    // detection matchct on image B into a vector where we will try to build up a longer tracklet.
+	    Atrkvec={};
+	    Atrkvec.push_back(axyvec[detct].index);
+	    Atrkvec.push_back(kdmat[imatchcount][indexvec[matchct]].point.index);
+	    xB = kdmat[imatchcount][indexvec[matchct]].point.x;
+	    yB = kdmat[imatchcount][indexvec[matchct]].point.y;
+	    // Loop over all intervening images
+	    for(long imtct=0;imtct<imatchcount;imtct++) {
+	      // Consider a line from detection detct on image A,
+	      // to detection matchpt on image B. Use linear interpolation
+	      // to predict the position along this line for a source on
+	      // image imtct.
+	      timepred = img_log[imagematches[imtct]].MJD;
+	      xpred = xA + (xB-xA)*(timepred-timeA)/(timeB-timeA);
+	      ypred = yA + (yB-yA)*(timepred-timeA)/(timeB-timeA);
+	      indexvec2={};
+	      kdrange01(kdmat[imtct],xpred,ypred,maxgcr/1800.0,indexvec2);
+	      for(i=0;i<long(indexvec2.size());i++) {
+		// Load the new, matching detections into the vector Atrkvec.
+		Atrkvec.push_back(kdmat[imtct][indexvec2[i]].point.index);
+	      }
+	    }
+	    if(long(Atrkvec.size()) >= local_mintrkpts) {
+	      // Atrkvec contains indices to a potentially valid tracklet.
+	      // Write it out to the tracklet matrix Atrkmat
+	      Atrkmat.push_back(Atrkvec);
+	    }
+	    // Close loop on intervening images
+	  }
+	  // Close loop over all possible image B's
+	}
+	// Now, Atrkmat contains all possible tracklets that involve
+	// detection detct on image A. Clean them for duplicates and
+	// outliers, and determine which (if any) will make the final cut.
+	double_index di = double_index(0.0,0);
+	vector <double_index> best_trk;
+	Atrkmat2 = {}; 
+	for(long tct=0; tct<long(Atrkmat.size()); tct++) {
+	  if(long(Atrkmat[tct].size())==2) {
+	    // This is only a two-point tracklet: no point in calculating GCR.
+	    // Calculate arc length and angular velocity
+	    dist = distradec01(detvec[Atrkmat[tct][0]].RA, detvec[Atrkmat[tct][0]].Dec, detvec[Atrkmat[tct][1]].RA, detvec[Atrkmat[tct][1]].Dec);
+	    angvel = dist/fabs(detvec[Atrkmat[tct][1]].MJD - detvec[Atrkmat[tct][0]].MJD);
+	    dist*=3600.0;
+	    if(angvel<minvel || angvel>maxvel || dist<minarc) continue; // Velocity is out-of-range: skip this one
+	    Atrkmat2.push_back(Atrkmat[tct]);
+	    // Store quality metric, set to 1.0 for two-point tracklets
+	    di = double_index(1.0,Atrkmat2.size()-1);
+	    best_trk.push_back(di);
+	    continue;
+	  } else if(long(Atrkmat[tct].size())<2) {
+	    cerr << "ERROR: stored a tracklet of size " << Atrkmat[tct].size() << "\n";
+	    return(3); // Later, change this to a continue, for robustness
+	  }
+	  trkdets={};
+	  for(i=0;i<long(Atrkmat[tct].size());i++) {
+	    hldet tdet = detvec[Atrkmat[tct][i]];
+	    tdet.index = Atrkmat[tct][i];
+	    trkdets.push_back(tdet);
+	  }
+	  // Sort trkdets
+	  sort(trkdets.begin(), trkdets.end(), early_hldet());
+	  // Great Circle fit
+	  double poleRA,poleDec,angvel,pa,crosstrack,alongtrack,GCR;
+	  status =  greatcircresid(trkdets,poleRA,poleDec,angvel,pa,crosstrack,alongtrack,fitRA,fitDec,residuals,verbose);
+	  if(status!=0) {
+	    cerr << "ERROR: greatcircresid exited with status " << status << "\n";
+	    return(4);
+	  }
+	  if(angvel<minvel || angvel>maxvel) continue; // Velocity is out-of-range: skip this one
+
+	  // Calculate the total angular arc, using the same prescription as will
+	  // be used in the final analysis later on.
+	  instep = (trkdets.size()-1)/4;
+	  rp1 = instep;
+	  rp2 = trkdets.size()-1-instep;
+	  dist = 3600.0*distradec01(fitRA[rp1], fitDec[rp1], fitRA[rp2], fitDec[rp2]);
+	  if(dist<minarc) continue; // Total arc is too short: skip this one.
+
+	  cout << "Initial tracklet:\n";
+	  for(i=0;i<long(Atrkmat[tct].size());i++) {
+	    cout << "point " << i << ": " << trkdets[i].image << " "  << trkdets[i].MJD << " "  << trkdets[i].RA << " "  << trkdets[i].Dec << " "  << trkdets[i].index << "\n"; 
+	  }
+	  GCR = sqrt(crosstrack*crosstrack + alongtrack*alongtrack);
+	  // Reject time-duplicates and outliers
+	  int isdup=0;
+	  for(i=1;i<long(trkdets.size());i++) {
+	    if(fabs(trkdets[i].MJD - trkdets[i-1].MJD) < imagetimetol) isdup=1;
+	  }
+	  cout << "GCR = " << GCR << " , isdup = " << isdup << "\n";
+	  if(isdup==0 && GCR<=maxgcr && long(trkdets.size()) >= local_mintrkpts) isgood=1;
+	  else isgood=0; // Needs some culling.
+	  while(long(trkdets.size()) > local_mintrkpts && isgood==0) {
+	    if(isdup>0) {
+	      // We have time-duplicates, and the tracklet is long enough that it could be culled.
+	      // Identify the worst outlier that is also a time-duplicate
+	      int worstoutlier=0;
+	      double worstresid=0.0;
+	      for(i=1;i<long(trkdets.size());i++) {
+		if(fabs(trkdets[i].MJD - trkdets[i-1].MJD) < imagetimetol) {
+		  if(residuals[i] >= worstresid) {
+		    worstoutlier = i;
+		    worstresid = residuals[i];
+		  }
+		  if(residuals[i-1] > worstresid) {
+		    worstoutlier = i-1;
+		    worstresid = residuals[i-1];
+		  }
+		}
+	      }
+	      // Tricky decision: how to handle the case where the first point,
+	      // the one from image A, is the worst outlier. Rejecting it
+	      // should be forbidden. Throw out the whole tracklet, or just
+	      // refuse to reject that point?
+	      // Choice for now: throw out the whole tracklet. The overall logic
+	      // of the code means the good part of the tracklet will inevitably
+	      // be reconstructed later on, while analyzing a different image.
+	      if(fabs(trkdets[worstoutlier].MJD-timeA) > imagetimetol) {
+		// The worst residual is not on image A. Reject it.
+		trkdets.erase(trkdets.begin()+worstoutlier);
+		cout << "Rejected a time-duplicate. New, culled tracklet: \n";
+		for(i=0;i<long(trkdets.size());i++) {
+		  cout << "point " << i << ": " << trkdets[i].image << " "  << trkdets[i].MJD << " "  << trkdets[i].RA << " "  << trkdets[i].Dec << " "  << trkdets[i].index << "\n";
+		}
+		// Re-scan for duplicates.
+		isdup=0;
+		for(i=1;i<long(trkdets.size());i++) {
+		  if(fabs(trkdets[i].MJD - trkdets[i-1].MJD) < imagetimetol) isdup=1;
+		}
+		// Re-do Great Circle fit
+		status =  greatcircresid(trkdets,poleRA,poleDec,angvel,pa,crosstrack,alongtrack,fitRA,fitDec,residuals,verbose);
+		if(status!=0) {
+		  cerr << "ERROR: greatcircresid exited with status " << status << "\n";
+		  return(5);
+		}
+		GCR = sqrt(crosstrack*crosstrack + alongtrack*alongtrack);
+		cout << "GCR = " << GCR << " , isdup = " << isdup << "\n";
+		if(isdup==0 && long(trkdets.size()) >= local_mintrkpts && GCR<=maxgcr) isgood=1;
+	      } else {
+		// The worst residual is on image A. Mark the whole tracklet as bad.
+		isgood = -1;
+		cout << "Worst residual is on image A: tracklet is bad\n";
+	      }
+	    } else if(GCR>maxgcr) {
+	      // All time-duplicates have been removed, but the tracklet still
+	      // has too high a GCR. Remove astrometric outliers until this is
+	      // no longer the case.
+	      int worstoutlier=0;
+	      double worstresid=0.0;
+	      for(i=0;i<long(trkdets.size());i++) {
+		if(residuals[i] >= worstresid) {
+		  worstoutlier = i;
+		  worstresid = residuals[i];
+		}
+	      }
+	      if(fabs(trkdets[worstoutlier].MJD-timeA) > imagetimetol) {
+		// The worst residual is not on image A. Reject it.
+		trkdets.erase(trkdets.begin()+worstoutlier);
+		cout << "Rejected an astrometric outlier at " << worstresid << " arcsec. New, culled tracklet: \n";
+		for(i=0;i<long(trkdets.size());i++) {
+		  cout << "point " << i << ": " << trkdets[i].image << " "  << trkdets[i].MJD << " "  << trkdets[i].RA << " "  << trkdets[i].Dec << " "  << trkdets[i].index << "\n";
+		}
+		// Re-do Great Circle fit
+		status =  greatcircresid(trkdets,poleRA,poleDec,angvel,pa,crosstrack,alongtrack,fitRA,fitDec,residuals,verbose);
+		if(status!=0) {
+		  cerr << "ERROR: greatcircresid exited with status " << status << "\n";
+		  return(6);
+		}
+		GCR = sqrt(crosstrack*crosstrack + alongtrack*alongtrack);
+		cout << "GCR = " << GCR << " , isdup = " << isdup << " " << local_mintrkpts << " " << maxgcr << "\n";
+		if(isdup==0 && long(trkdets.size()) >= local_mintrkpts && GCR<=maxgcr) isgood=1;
+	      } else {
+		// The worst residual is on image A. Mark the whole tracklet as bad.
+		isgood = -1;
+	      }
+	    }
+	  }
+	  if(isgood<=0) {
+	    cout << "Tracklet was no good: skipping it\n";
+	    cout << "GCR = " << GCR << " , isdup = " << isdup << " " << local_mintrkpts << " " << maxgcr << "\n";
+	    continue; // This tracklet was no good: skip (i.e., reject) it.
+	  }
+	  cout << "Keeping tracklet with " << trkdets.size() << " points\n";
+	  // Save culled version
+	  Atrkvec={};
+	  for(i=0;i<long(trkdets.size());i++) {
+	    Atrkvec.push_back(trkdets[i].index);
+	  }
+	  Atrkmat2.push_back(Atrkvec);
+	  // Store quality metric
+	  di = double_index(double(trkdets.size())+1.0-GCR/maxgcr,Atrkmat2.size()-1);
+	  best_trk.push_back(di);
+	  // Close loop over all tracklets involving detection detct on image A
+	}
+	if(Atrkmat2.size() != best_trk.size()) {
+	  cerr << "ERROR: Atrkmat2 and best_trk vectors don't have the same size: " << Atrkmat2.size() << " vs. " <<  best_trk.size() << "\n";
+	  return(7);
+	}
+	if(Atrkmat2.size()>0) {
+	  // Sort tracklets by quality metric
+	  sort(best_trk.begin(), best_trk.end(), lower_double_index());
+	  // Loop over tracklets from best to worst.
+	  for(long tct=best_trk.size()-1; tct>=0; tct--) {
+	    bad_reuse=0;
+	    long btrk = best_trk[tct].index;
+	    double this_trkmetric = best_trk[tct].delem;
+	    long trklen = Atrkmat2[btrk].size();
+	    
+	    // Screen out obvious failure cases
+	    if(trklen<2 || trklen<local_mintrkpts) continue;
+	    
+	    // Determine if this tracklet overlaps an exclusive tracklet
+	    overlapping_tracklets={};
+	    for(i=0;i<trklen;i++) {
+	      if(detvec[Atrkmat2[btrk][i]].index>0) {
+		// Load the tracklet index of the exclusive tracklet to which this
+		// detection was previously assigned.
+		overlapping_tracklets.push_back(det2trk[Atrkmat2[btrk][i]]);
+	      }
+	    }
+	    if(overlapping_tracklets.size()>1) {
+	      // Sort and de-duplicate the vector overlapping_tracklets
+	      sort(overlapping_tracklets.begin(),overlapping_tracklets.end());
+	      i=0;
+	      while(i<long(overlapping_tracklets.size()-1)) {
+		if(overlapping_tracklets[i+1] == overlapping_tracklets[i]) overlapping_tracklets.erase(overlapping_tracklets.begin()+i+1);
+		else i++;
+	      }
+	    }
+	    
+	    if(trklen==2 && overlapping_tracklets.size()<=0) {
+	      // Simple two-point tracklet, cannot supersede an exclusive tracklet
+	      // Load the tracklet summary vector
+	      track1 = tracklet(detvec[Atrkmat2[btrk][0]].image,detvec[Atrkmat2[btrk][0]].RA,detvec[Atrkmat2[btrk][0]].Dec,detvec[Atrkmat2[btrk][1]].image,detvec[Atrkmat2[btrk][1]].RA,detvec[Atrkmat2[btrk][1]].Dec,trklen,tracklets.size());
+	      tracklets.push_back(track1);
+	      // Load the tracklet index vector
+	      ivec = {};
+	      for(i=0;i<trklen;i++) ivec.push_back(Atrkmat2[btrk][i]);
+	      tracklet_indexmat.push_back(ivec);
+	      tracklets_min_length.push_back(local_mintrkpts);
+	      tracklet_metrics.push_back(this_trkmetric);
+	      // Load pairdets and trk2det
+	      for(i=0;i<trklen;i++) {
+		if(detvec[Atrkmat2[btrk][i]].index <= -detnum) {
+		  // This detection has never been used before. Flag it as used
+		  detvec[Atrkmat2[btrk][i]].index = -pairdets.size();
+		  // Load the corresponding entry to the trk2det vector
+		  onepair = longpair(track1.trk_ID, pairdets.size());
+		  trk2det.push_back(onepair);
+		  // Load the detection to the pairdets vector.
+		  onedet = detvec[Atrkmat2[btrk][i]];
+		  onedet.index = Atrkmat2[btrk][i];
+		  pairdets.push_back(onedet);
+		} else if(detvec[Atrkmat2[btrk][i]].index<=0) {
+		  // This detection has previously been used in an non-exclusive tracklet,
+		  // and hence has already been added to pairdets with a negative index to
+		  // the pairdets vector. Load just the trk2det entry
+		  pdct = -detvec[Atrkmat2[btrk][i]].index;
+		  onepair = longpair(track1.trk_ID, pdct);
+		  trk2det.push_back(onepair);
+		} else {
+		  // This detection has previously been used in an exclusive tracklet.
+		  // This earlier, exclusive tracklet supersedes the
+		  // current two-point tracklet: skip (i.e., reject) the current tracklet
+		  continue;
+		}
+	      }
+	      // End case of tracklet with only two points.
+	    } else {
+	      // This tracklet needs some analyis, since it has more than two points.
+	      // Load it into trkdets.
+	      trkdets={};
+	      for(i=0;i<trklen;i++) {
+		trkdets.push_back(detvec[Atrkmat2[btrk][i]]);
+	      }
+	      // Perform a final Great Circle fit
+	      status =  greatcircresid(trkdets,poleRA,poleDec,angvel,pa,crosstrack,alongtrack,fitRA,fitDec,residuals,verbose);
+	      if(status!=0) {
+		cerr << "ERROR: greatcircresid exited with status " << status << "\n";
+		return(9);
+	      }
+	      if(angvel<minvel || angvel>maxvel) continue; // Velocity is out-of-range: skip this one
+	      // Select points that will represent this tracklet.
+	      instep = (trklen-1)/4;
+	      rp1 = instep;
+	      rp2 = trklen-1-instep;
+	      if(rp1==rp2) {
+		cerr << "ERROR: both representative points for a tracklet are the same!\n";
+		cerr << "size, instep, rp1, rp2: " << trklen << " " << instep << " " << rp1 << " " << rp2 << "\n";
+	      }
+	      // Calculate total angular arc
+	      dist = 3600.0*distradec01(fitRA[rp1], fitDec[rp1], fitRA[rp2], fitDec[rp2]);
+	      // Note: it can be argued that the dist calculated above is not really the total
+	      // angular arc, because it's the span between the two representative points instead
+	      // of all the way from the beginning of the tracklet to its end. There are at
+	      // least two alternative ways of calculating such a value: use the actual
+	      // extreme points, or just multiply the total time span by the angular velocity.
+	      // I haven't been able to convince myself that either of them is a better idea
+	      // than the above.
+	      if(dist<minarc) continue; // Total arc is too short: skip this one.
+	      if(overlapping_tracklets.size()>0) {
+		cout << "Found " << overlapping_tracklets.size() << " tracklets that overlap " << trklen << "-point tracklet ";
+		for(i=0;i<trklen;i++) cout << Atrkmat2[btrk][i] << " ";
+		cout << "\n";
+	      }
+	      int superseded=0;
+	      for(j=0;j<long(overlapping_tracklets.size());j++) {
+		if(tracklet_metrics[overlapping_tracklets[j]] > this_trkmetric) {
+		  // An earlier exclusive tracklet is better than the current one.
+		  superseded=1;
+		}
+	      }
+	      if(superseded>0) continue; // This tracklet overlaps an older, better tracklet: skip it.
+	      if(superseded==0 && overlapping_tracklets.size() > 0) {
+		// This tracklet overlaps older tracklets, but it is better than they are
+		// Delete overlapping previous tracklets that are inferior to this one.
+		for(j=0;j<long(overlapping_tracklets.size());j++) {
+		  long overtrk = overlapping_tracklets[j];
+		  long trklnum = tracklet_lookup_ind(trk2det, overtrk, trkdetind, trkindind);
+		  // Check for failure in tracklet_lookup_ind()
+		  if(trklnum != long(trkdetind.size()) || trklnum != long(trkindind.size())) {
+		    cerr << "ERROR: inconsistent tracklet length info from tracklet_lookup_ind(): " << trklnum << " " << trkdetind.size() << " " << trkindind.size() << "\n";
+		    return(15);
+		  }
+		  if(trklnum != tracklets[overtrk].npts) {
+		    cerr << "ERROR: tracklet length mis-match for overlapping tracklet " << overtrk << " : " << trklnum << " vs. " << tracklets[overtrk].npts << "\n";
+		    return(16);
+		  }
+		  // Catch the illogical case where a non-exclusive tracklet supersedes an exclusive one.
+		  if(trklen <= max_netl) {
+		    cerr << "ERROR: non-exclusive tracklet of length " << trklen << " and metric " << this_trkmetric << " recorded as superseding\n";
+		    cerr << "an earlier, exlusive tracklet length " << trklnum << " and metric " <<  tracklet_metrics[overlapping_tracklets[j]] << "\n";
+		    return(12);
+		  }
+		  cout << "In favor of new tracklet " << tracklets.size()-1 << ", with " << trklen << " points and metric " << this_trkmetric << ", deleting " << trklnum << "-point tracket " << overtrk << " with metric " << tracklet_metrics[overtrk] << "\n";
+		  status = delete_tracklet01(overtrk, trkdetind, trkindind, detvec, trk2det, tracklets, pairdets, tracklet_metrics, det2trk, tracklets_min_length, tracklet_indexmat, overlapping_tracklets, 1);
+
+		  if(status!=0) {
+		    cerr << "ERROR: delete_tracklet01 returns error code " << status << "\n";
+		    return(status);
+		  }
+		  // Renumber any further entries in the overlapping tracklets list
+		  for(long k=j+1; k<long(overlapping_tracklets.size()); k++) {
+		    overlapping_tracklets[k]--;
+		  }
+		  // Close loop on tracklets we are deleting
+		}
+		// Close if-statement checking that there were old overlapping tracklets to be deleted.
+	      }
+	      // If we get here, we have a tracklet with more than two points that either
+	      // has no overlap with previous exclusive tracklets, or else supersedes them.
+
+	      // Load tracklet summary with image indices, RA, and Dec, for the representative pair, plus the
+	      // total number of constituent points and the tracklet's eventual index in the output tracklets vector,
+	      // and push to the output trackets vector.
+	      // Note: the index to the tracklets vector is preserved for now in track1.trk_ID.
+	      track1 = tracklet(detvec[Atrkmat2[btrk][rp1]].image,fitRA[rp1],fitDec[rp1],detvec[Atrkmat2[btrk][rp2]].image,fitRA[rp2],fitDec[rp2],trklen,tracklets.size());
+	      // Load it to the output vectors.
+	      tracklets.push_back(track1);
+	      // Load the tracklet index vector
+	      ivec = {};
+	      for(i=0;i<trklen;i++) ivec.push_back(Atrkmat2[btrk][i]);
+	      tracklet_indexmat.push_back(ivec);
+	      tracklets_min_length.push_back(local_mintrkpts);
+	      tracklet_metrics.push_back(this_trkmetric);
+
+	      //DEBUGGING
+	      if(tracklets.size()%10==7) {
+		bad_reuse_example = 10*floor(double(tracklets.size())/10.0)+5;
+		i = tracklet_lookup_ind(trk2det, bad_reuse_example, trkdetind, trkindind);
+		cerr << "TEST TRACKLET: " << bad_reuse_example << " :\n";
+		for(i=0;i<long(trkdetind.size());i++) {
+		  cerr << " " << pairdets[trkdetind[i]].index << " " << detvec[pairdets[trkdetind[i]].index].image << " " << detvec[pairdets[trkdetind[i]].index].MJD << " " << detvec[pairdets[trkdetind[i]].index].RA << " " << detvec[pairdets[trkdetind[i]].index].Dec << " " << detvec[pairdets[trkdetind[i]].index].index << " " << det2trk[pairdets[trkdetind[i]].index] << "\n";
+		}
+	      }
+	      //DEBUGGING
+
+	      // Write points to the paired detection and the trk2det vectors
+	      if(trklen > max_netl) {
+		// This tracklet is exclusive
+		for(i=0;i<trklen;i++) {
+		  cout << "new tracklet point: " << Atrkmat2[btrk][i] << " " << detvec[Atrkmat2[btrk][i]].image << " " << detvec[Atrkmat2[btrk][i]].MJD << " " << detvec[Atrkmat2[btrk][i]].RA << " " << detvec[Atrkmat2[btrk][i]].Dec << " " << detvec[Atrkmat2[btrk][i]].index << " " << det2trk[Atrkmat2[btrk][i]] << "\n";
+		  if(detvec[Atrkmat2[btrk][i]].index <= -detnum) {
+		    // This detection has never been used before. Flag it as exclusive
+		    detvec[Atrkmat2[btrk][i]].index = pairdets.size();
+		    // Load the corresponding entry to the trk2det vector
+		    onepair = longpair(track1.trk_ID, pairdets.size());
+		    trk2det.push_back(onepair);
+		    // Load the detection to the pairdets vector.
+		    onedet = detvec[Atrkmat2[btrk][i]];
+		    onedet.index = Atrkmat2[btrk][i];
+		    pairdets.push_back(onedet);
+		  } else if(detvec[Atrkmat2[btrk][i]].index<=0) {
+		    // This detection has previously been used in an non-exclusive tracklet,
+		    // and hence has already been added to pairdets with a negative index to
+		    // the pairdets vector. Load just the trk2det entry
+		    pdct = -detvec[Atrkmat2[btrk][i]].index;
+		    onepair = longpair(track1.trk_ID, pdct);
+		    trk2det.push_back(onepair);
+		    // Re-set the detvec index to flag the point as exclusive
+		    detvec[Atrkmat2[btrk][i]].index = pdct;
+		    // Note: in principle, we should delete any previous tracklets
+		    // that contained this point, since it has been found in an
+		    // 'exclusive' tracklet. In practice, this is not worth the trouble,
+		    // since the case is expected to be rare and benign.
+		  } else {
+		    // This detection has previously been used in an exclusive tracklet.
+		    // Ideally, this would not be possible, but the program's logic does
+		    // permit it under circumstances which should be statistically rare.
+		    // Track the errors:
+		    bad_reuse++;
+		    forbidden_reuses++;
+		    bad_reuse_example = det2trk[Atrkmat2[btrk][i]];
+		    cerr << "Bad reuse of index " << detvec[Atrkmat2[btrk][i]].index << ", previously assigned to exclusive tracklet " << det2trk[Atrkmat2[btrk][i]] << " originally numbered as " << det2trk[Atrkmat2[btrk][i]] << "\n";
+		    cerr << " " << Atrkmat2[btrk][i] << " " << detvec[Atrkmat2[btrk][i]].image << " " << detvec[Atrkmat2[btrk][i]].MJD << " " << detvec[Atrkmat2[btrk][i]].RA << " " << detvec[Atrkmat2[btrk][i]].Dec << " " << detvec[Atrkmat2[btrk][i]].index << " " << det2trk[Atrkmat2[btrk][i]] << "\n";
+		    // And then add it to trk2det anyway.
+		    pdct = detvec[Atrkmat2[btrk][i]].index;
+		    onepair = longpair(track1.trk_ID, pdct);
+		    trk2det.push_back(onepair);
+		  }
+		  // Mark detection i as having been used in an exclusive tracklet
+		  det2trk[Atrkmat2[btrk][i]] = track1.trk_ID;
+		}
+		if(bad_reuse>0) {
+		  cerr << "WARNING 13: " << bad_reuse << " attempts to use an already-excluded point, tct = " << tct << " of " << best_trk.size() << ", btrk = " << btrk << "\n";
+		  cerr << "NEW TRACKLET:\n";
+		  for(i=0;i<trklen;i++) {
+		    cerr << " " << Atrkmat2[btrk][i] << " " << detvec[Atrkmat2[btrk][i]].image << " " << detvec[Atrkmat2[btrk][i]].MJD << " " << detvec[Atrkmat2[btrk][i]].RA << " " << detvec[Atrkmat2[btrk][i]].Dec << " " << detvec[Atrkmat2[btrk][i]].index << " " << det2trk[Atrkmat2[btrk][i]] << "\n";
+		  }
+		  i = tracklet_lookup_ind(trk2det, bad_reuse_example, trkdetind, trkindind);
+		  cerr << "OLD TRACKLET: " << bad_reuse_example << " :\n";
+		  for(i=0;i<long(trkdetind.size());i++) {
+		    cerr << " " << pairdets[trkdetind[i]].index << " " << detvec[pairdets[trkdetind[i]].index].image << " " << detvec[pairdets[trkdetind[i]].index].MJD << " " << detvec[pairdets[trkdetind[i]].index].RA << " " << detvec[pairdets[trkdetind[i]].index].Dec << " " << detvec[pairdets[trkdetind[i]].index].index << " " << det2trk[pairdets[trkdetind[i]].index] << "\n";
+		  }
+		  return(13);
+		}
+		// Since the tracklet is exclusive, no other tracklets involving
+		// detection detct on image A need be considered.
+		break;
+		// End if-statement checking that the tracklet is exclusive
+	      } else {
+		// The tracklet is not exclusive
+		for(i=0;i<trklen;i++) {
+		  if(detvec[Atrkmat2[btrk][i]].index <= -detnum) {
+		    // This detection has never been used before. Flag it as used
+		    detvec[Atrkmat2[btrk][i]].index = -pairdets.size();
+		    // Load the corresponding entry to the trk2det vector
+		    onepair = longpair(track1.trk_ID, pairdets.size());
+		    trk2det.push_back(onepair);
+		    // Load the detection to the pairdets vector.
+		    onedet = detvec[Atrkmat2[btrk][i]];
+		    onedet.index = Atrkmat2[btrk][i];
+		    pairdets.push_back(onedet);
+		  } else if(detvec[Atrkmat2[btrk][i]].index<=0) {
+		    // This detection has previously been used in an non-exclusive tracklet,
+		    // and hence has already been added to pairdets with a negative index to
+		    // the pairdets vector. Load just the trk2det entry
+		    pdct = -detvec[Atrkmat2[btrk][i]].index;
+		    onepair = longpair(track1.trk_ID, pdct);
+		    trk2det.push_back(onepair);
+		  } else {
+		    // This detection has previously been used in an exclusive tracklet.
+		    // Ideally, this would not be possible, but the program's logic does
+		    // permit it under circumstances which should be statistically rare.
+		    // Track the errors:
+		    bad_reuse++;
+		    forbidden_reuses++;
+		    bad_reuse_example = det2trk[Atrkmat2[btrk][i]];
+		    cerr << "Bad reuse of index " << detvec[Atrkmat2[btrk][i]].index << ", previously assigned to exclusive tracklet " << det2trk[Atrkmat2[btrk][i]] << " originally numbered as " << det2trk[Atrkmat2[btrk][i]] << "\n";
+		    cerr << " " << Atrkmat2[btrk][i] << " " << detvec[Atrkmat2[btrk][i]].image << " " << detvec[Atrkmat2[btrk][i]].MJD << " " << detvec[Atrkmat2[btrk][i]].RA << " " << detvec[Atrkmat2[btrk][i]].Dec << " " << detvec[Atrkmat2[btrk][i]].index << " " << det2trk[Atrkmat2[btrk][i]] << "\n";
+		    // And then add it to trk2det anyway.
+		    pdct = detvec[Atrkmat2[btrk][i]].index;
+		    onepair = longpair(track1.trk_ID, pdct);
+		    trk2det.push_back(onepair);
+		  }
+		}
+		if(bad_reuse>0) {
+		  cerr << "WARNING 12: " << bad_reuse << " attempts to use an already-excluded point, tct = " << tct << " of " << best_trk.size() << ", btrk = " << btrk << "\n";
+		  cerr << "NEW TRACKLET:\n";
+		  for(i=0;i<trklen;i++) {
+		    cerr << " " << Atrkmat2[btrk][i] << " " << detvec[Atrkmat2[btrk][i]].image << " " << detvec[Atrkmat2[btrk][i]].MJD << " " << detvec[Atrkmat2[btrk][i]].RA << " " << detvec[Atrkmat2[btrk][i]].Dec << " " << detvec[Atrkmat2[btrk][i]].index << " " << det2trk[Atrkmat2[btrk][i]] << "\n";
+		  }
+		  i = tracklet_lookup_ind(trk2det, bad_reuse_example, trkdetind, trkindind);
+		  cerr << "OLD TRACKLET: " << bad_reuse_example << " :\n";
+		  for(i=0;i<long(trkdetind.size());i++) {
+		    cerr << " " << pairdets[trkdetind[i]].index << " " << detvec[pairdets[trkdetind[i]].index].image << " " << detvec[pairdets[trkdetind[i]].index].MJD << " " << detvec[pairdets[trkdetind[i]].index].RA << " " << detvec[pairdets[trkdetind[i]].index].Dec << " " << detvec[pairdets[trkdetind[i]].index].index << " " << det2trk[pairdets[trkdetind[i]].index] << "\n";
+		  }
+		  return(12);
+		}
+	      }
+	      // End else-statment checking that the tracklet has more that two points.
+	    }
+	    // End for loop over tracklets involving detection detct on image A.
+	  }
+	  // End if-statement checking that valid tracklets exist involving detection detct on image A
+	}
+	// End loop over all detections on image A
+      }
+      // End if-statement checking if image A has enough overlap
+      // to produce valid tracklets.
+    }
+    // End loop giving each image a chance to be image A
+  }
+  cout << "Exiting find_pairs3 with " << forbidden_reuses << " nominally forbidden re-uses of points from exclusive tracklets\n";
+  cout << fixed << setprecision(6) << "This is probably benign, since it is only " << double(forbidden_reuses)/double(trk2det.size()) << " of all tracklet points\n";
+  cout << "Vector sizes: pairdets = " << pairdets.size() << "  trk2det = " << trk2det.size() << "  tracklets = " << tracklets.size() << "\n";
+  return(0);
+}
+
+#define OVLP_GRIDNUM 20
+
+//find_pairs4: July 31, 2025: Similar to find_pairs3, but resolves conflicts
+// between overlapping exclusive tracklets on a point-by-point basis, instead of
+// discarding the inferior tracklet of an overlapping pair in its entirety.
+int find_pairs4(vector <hldet> &detvec, const vector <hlimage> &img_log, vector <hldet> &pairdets, vector <tracklet> &tracklets, vector <longpair> &trk2det, int min_tracklet_points, int max_netl, double mintime, double maxtime, double imagetimetol, double imrad, double minvel, double maxvel, double minarc, double matchrad, double trkfrac, double maxgcr, int verbose)
+{
+  cout << "Inside find_pairs4\n";
+  long detnum = detvec.size();
+  if(detnum<=0) {
+    cerr << "ERROR: find_pairs4 called with no input detections\n";
+    return(1);
+  }
+  int imnum = img_log.size();
+  int imct=0;
+  int imtarg=0;
+  long detct=0;
+  long pdct=0; // count of detections that have been paired
+  xy_index xyind=xy_index(0.0, 0.0, 0);
+  vector <xy_index> axyvec = {};
+  vector <xy_index> bxyvec = {};
+  vector <xy_index> repxyvec = {};
+  double minx,miny,maxx,maxy;
+  int dim=1;
+  xy_index xyi = xy_index(0.0, 0.0, 0);
+  kdpoint root = kdpoint(xyi,-1,-1,dim);
+  vector <kdpoint> kdvec ={};
+  kdpoint rootA = kdpoint(xyi,-1,-1,dim);
+  vector <kdpoint> kdvecA ={};
+  long medpt;
+  long bestpoint=0;
+  vector <long> indexvec;
+  vector <long> indexvec2;
+  long dettarg=0;
+  longpair onepair = longpair(0,0);
+  vector <int> image_overlap;
+  long i = 0;
+  long j = 0;
+  double range,timeA,timeB,xA,xB,yA,yB,xpred,ypred,timepred;
+  range = timeA = timeB = xA = xB = yA = yB = xpred = ypred = timepred = 0.0;
+  vector <hldet> trkdets;
+  vector <long> Atrkvec;
+  vector <vector <long>> Atrkmat;
+  vector <vector <long>> Atrkmat2;
+  vector <double> residuals;
+  vector <double> fitRA;
+  vector <double> fitDec;
+  tracklet track1 = tracklet(0,0.0l,0.0l,0,0.0l,0.0l,0,0);
+  int status,instep,rp1,rp2;
+  status=instep=rp1=rp2=0;
+  vector <long> overlapping_tracklets;
+  int bad_reuse=0;
+  long forbidden_reuses = 0;
+  vector <double> tracklet_metrics;
+  vector <long> det2trk;
+  vector <long> tracklets_min_length;
+  vector <vector <long>> tracklet_indexmat;
+  hldet onedet = hldet(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, "null", "V", "500", 0, 0, 0);
+  vector <long> trkdetind;
+  vector <long> trkindind;
+  vector <long> ivec;
+  long bad_reuse_example=0;
+  int isgood = 0;
+  double this_trkmetric = 0.0;
+  int superior_overlap=0;
+  double poleRA,poleDec,angvel,dist,pa,crosstrack,alongtrack,GCR,overmetric;
+  poleRA = poleDec = angvel = dist = pa = crosstrack = alongtrack = GCR = overmetric = 0.0;
+  double tpoleRA,tpoleDec,tangvel,tpa,tcrosstrack,talongtrack,tGCR,tdist;
+  tpoleRA = tpoleDec = tangvel = tpa = tcrosstrack = talongtrack = tGCR = tdist = 0;
+  vector <double> tfitRA;
+  vector <double> tfitDec;
+  vector <double> tresiduals;
+  long trp1,trp2;
+  trp1 = trp2 = 0;
+  int local_mintrkpts = 2;
+  int first_point_overlap = 0;
+  
+  pairdets={};
+  tracklets={};
+  trk2det={};
+  
+  // Mark all detections as unpaired and available using index = -detnum-2
+  // Also, load det2trk with a vector of -1s, to indicate no
+  // detections are yet in an exclusive tracklet.
+  for(detct=0;detct<detnum;detct++) {
+    detvec[detct].index = -detnum - 2;
+    det2trk.push_back(-1);
+  }
+
+  // Loop over all images, determining the effective number of overlapping
+  // images in each case.
+  // Loop over images for image A
+  for(imct=0;imct<imnum;imct++) {
+    if(verbose>0) cout << "Initial loop considering image " << imct << " of " << imnum << "\n";
+    if(img_log[imct].endind<=0 || img_log[imct].endind<=img_log[imct].startind) continue; // No detections on this image.
+    // Project all the detections on image A, and find the min and max projected coordinates
+    xyind=xy_index(0.0, 0.0, 0);
+    axyvec = {};
+    dist=pa=0.0;
+    dettarg=0;
+    minx = miny = LARGERR2;
+    maxx = maxy = -LARGERR2;
+    for(detct=img_log[imct].startind ; detct<img_log[imct].endind ; detct++) {
+      distradec02(img_log[imct].RA, img_log[imct].Dec,detvec[detct].RA,detvec[detct].Dec,&dist,&pa);
+      xyind = xy_index(dist*sin(pa/DEGPRAD),dist*cos(pa/DEGPRAD),detct);
+      axyvec.push_back(xyind);
+      if(xyind.x > maxx) maxx=xyind.x;
+      if(xyind.y > maxy) maxy=xyind.y;
+      if(xyind.x < minx) minx=xyind.x;
+      if(xyind.y < miny) miny=xyind.y;
+      if((!isnormal(xyind.x) && xyind.x!=0) || (!isnormal(xyind.y) && xyind.y!=0)) {
+	cerr << "nan-producing input: ra1, dec1, ra2, dec2, dist, pa:\n";
+	cerr << img_log[imct].RA << " " << img_log[imct].Dec << " " << detvec[detct].RA << " " << detvec[detct].Dec << " " << dist << " " << pa << " " << xyind.x << " " << xyind.x << "\n";
+      }
+    }
+    if(verbose>0) cout << "The " << axyvec.size() << " detections projected on image A have x and y ranges of " << minx << " to " << maxx << " and " << miny << " to " << maxy << "\n";
+    // Create k-d tree of detections on image A (imct).
+    dim=1;
+    xyi = axyvec[0];
+    rootA = kdpoint(xyi,-1,-1,dim);
+    kdvecA ={};
+    medpt=bestpoint=0;
+    dist=LARGERR;
+    medpt = medindex(axyvec,dim);
+    rootA = kdpoint(axyvec[medpt],-1,-1,1);
+    kdvecA.push_back(rootA);
+    kdtree01(axyvec,dim,medpt,0,kdvecA);
+    
+    // Find representative detections spanning the whole area of image imct (image A)
+    double gridrad = (maxx-minx)/double(OVLP_GRIDNUM);
+    if(gridrad < (maxy-miny)/double(OVLP_GRIDNUM)) gridrad = (maxy-miny)/double(OVLP_GRIDNUM);
+    gridrad/=sqrt(2.0); // Center-to-corner distance of a grid square
+    repxyvec = {};
+    for(i=0;i<OVLP_GRIDNUM;i++) {
+      double x = minx + (maxx-minx)*(double(i)+0.5)/double(OVLP_GRIDNUM);
+      for(j=0;j<OVLP_GRIDNUM;j++) {
+	double y = miny + (maxy-miny)*(double(j)+0.5)/double(OVLP_GRIDNUM);
+	bestpoint = kdnearest01(kdvecA,x,y);
+	dist = sqrt(DSQUARE(x - kdvecA[bestpoint].point.x) + DSQUARE(y - kdvecA[bestpoint].point.y));
+	if(dist<=gridrad) {
+	  // There is a point in image A that is close enough to gridpoint x,y to
+	  // be a good representative thereof.
+	  repxyvec.push_back(kdvecA[bestpoint].point);
+	}
+      }
+    }
+    // Calculate the number of representative detections on image imct (image A)
+    long imdetnum = repxyvec.size();
+    if(imdetnum<=0) {
+      cerr << "ERROR: no representative detections found for image " << imct << "\n";
+      return(41);
+    }
+    if(verbose>0) cout << imdetnum << " representative detections, out of " << OVLP_GRIDNUM*OVLP_GRIDNUM << " geometrically possible, identified on image A\n";
+
+    // Create a vector of zeros with this number of entries,
+    // to store all overlapping images
+    vector <int> detection_matches;
+    make_ivec(imdetnum, detection_matches);
+    // Loop over potential image B's
+    for(imtarg=0;imtarg<imnum;imtarg++) {
+      //cout << "probing match between images " << imct << " and " << imtarg << "\n";
+      // Calculate the boresight center-to-center distance between images A (imct) and B (imtarg)
+      double imcendist = distradec01(img_log[imct].RA, img_log[imct].Dec, img_log[imtarg].RA, img_log[imtarg].Dec);
+      // Calculate the number of detections on image B
+      long targdetnum = 1 + img_log[imtarg].endind - img_log[imtarg].startind;
+      // Calculate the time difference between the two images
+      double timediff = fabs(img_log[imtarg].MJD - img_log[imct].MJD);
+      if(imtarg!=imnum && targdetnum>0 && timediff>=mintime && timediff<=maxtime && imcendist<2.0*imrad+maxvel*timediff) {
+	//cout << "Matches are possible, ";
+	// Image B is close enough in time and on the sky
+	// Project all the detections on image B 
+	bxyvec = {};
+	// Project all detections on image B
+	for(dettarg=img_log[imtarg].startind ; dettarg<img_log[imtarg].endind ; dettarg++) {
+	  distradec02(img_log[imct].RA, img_log[imct].Dec,detvec[dettarg].RA,detvec[dettarg].Dec,&dist,&pa);
+	  xyind = xy_index(dist*sin(pa/DEGPRAD),dist*cos(pa/DEGPRAD),dettarg);
+	  bxyvec.push_back(xyind);
+	}
+	//cout << bxyvec.size() << " detections projected for image B\n";
+	// Create k-d tree of detections on image B (imtarg).
+	dim=1;
+	xyi = bxyvec[0];
+	root = kdpoint(xyi,-1,-1,dim);
+	kdvec ={};
+	medpt=bestpoint=0;
+	dist=LARGERR;
+	medpt = medindex(bxyvec,dim);
+	root = kdpoint(bxyvec[medpt],-1,-1,1);
+	kdvec.push_back(root);
+	kdtree01(bxyvec,dim,medpt,0,kdvec);
+	// Loop over detections on image A
+	if(DEBUG>=1) cout << "Looking for pairs between " << imdetnum << " detections on image " << imct << " and " << kdvec.size() << " on image " << imtarg << "\n";
+	for(detct=0 ; detct<imdetnum ; detct++) {
+	  dist=LARGERR;
+	  if((isnormal(repxyvec[detct].x) || repxyvec[detct].x==0) && (isnormal(repxyvec[detct].y) || repxyvec[detct].y==0)) {
+	     bestpoint = kdnearest01(kdvec,repxyvec[detct].x,repxyvec[detct].y);
+	     dist = sqrt(DSQUARE(repxyvec[detct].x - kdvec[bestpoint].point.x) + DSQUARE(repxyvec[detct].y - kdvec[bestpoint].point.y));
+	  } else {
+	    cerr << "WARNING: detection " << detct << " on image " << imct << " not normal: " << repxyvec[detct].x << " " << repxyvec[detct].y << "\n";
+	  }
+	  if(dist<=matchrad) detection_matches[detct] += 1;
+	  // Close loop over detections on source image (image A)
+	}
+	// Close if-statement checking if image B could match image A
+      }
+      // Close loop over all possible image B's
+    }
+    for(detct=0; detct<imdetnum; detct++) {
+      if(verbose>1) cout << "representative x,y,depth: " << repxyvec[detct].x << " " << repxyvec[detct].y << " " << detection_matches[detct] << "\n";
+    }
+    // Find the median of the number of matches for detections on image A
+    int amedian=0;
+    sort(detection_matches.begin(),detection_matches.end());
+    if(detection_matches.size()%2 == 1) {
+      // Odd number, a perfect median exists
+      amedian=detection_matches[(detection_matches.size()-1)/2];
+    }
+    else {
+      // Even number, take the high side of the median
+      amedian=detection_matches[detection_matches.size()/2];
+    }
+    // Load newly calculate median into the image_overlap vectors
+    image_overlap.push_back(amedian);
+    if(imct+1 != int(image_overlap.size())) {
+      cerr << "ERROR: size mismatch in image overlap vector: " << imct << " " << image_overlap.size() << "\n";
+      return(2);
+    }
+    if(verbose>0) cout << amedian << " overlapping images found for image " << imct << "\n";
+    // Close loop over images for image A
+  }
+  for(imct=0;imct<imnum;imct++) {
+    local_mintrkpts = double(image_overlap[imct])*trkfrac + 0.5;
+    if(local_mintrkpts < min_tracklet_points) local_mintrkpts = min_tracklet_points;
+    cout << "Image " << imct << ": overlaps " << image_overlap[imct] << " total images: min tracklet length is " << local_mintrkpts << "\n";
+  }
+  
+  // NEW LOOPS THAT ACTUALLY MAKE THE TRACKLETS
+  // Loop over images for image A
+  for(imct=0;imct<imnum;imct++) {
+    // Set minimum tracklet length appropriate for this image
+    local_mintrkpts = double(image_overlap[imct])*trkfrac + 0.5;
+    if(local_mintrkpts < min_tracklet_points) local_mintrkpts = min_tracklet_points;
+    if(img_log[imct].endind<=0 || img_log[imct].endind<=img_log[imct].startind) continue; // No detections on this image.
+    timeA = img_log[imct].MJD;
+    // See if there are any images that might match
+    vector <int> imagematches = {};
+    int imatchcount = 0;
+    int imtarg=imct+1;
+    while(imtarg<imnum && img_log[imtarg].MJD < img_log[imct].MJD + maxtime) {
+      timeB = img_log[imtarg].MJD;
+      double timediff = timeB - timeA;
+      if(!isnormal(timediff) || timediff<0.0) {
+	cerr << "WARNING: Negative time difference " << timediff << " encountered between images " << imct << " and " << imtarg << "\n";
+      }
+      // See if the images are close enough on the sky.
+      double imcendist = distradec01(img_log[imct].RA, img_log[imct].Dec, img_log[imtarg].RA, img_log[imtarg].Dec);
+      if(imcendist<2.0*imrad+maxvel*timediff && timediff>=mintime && img_log[imtarg].endind>0 && img_log[imtarg].endind>img_log[imtarg].startind) {
+	if(DEBUG>=1) cout << "  pairs may exist between images " << imct << " and " << imtarg << ": dist = " << imcendist << ", timediff = " << timediff << "\n";
+	imagematches.push_back(imtarg);
+      }
+      imtarg++;
+    }
+    if(verbose>0) cout << "Looking for pairs for image " << imct << ": " << imagematches.size() << " later images are worth searching\n";
+    int imatchnum = imagematches.size();
+    // Project all the detections on image A.
+    xyind=xy_index(0.0, 0.0, 0);
+    axyvec = {};
+    dist=pa=0.0;
+    dettarg=0;
+    for(detct=img_log[imct].startind ; detct<img_log[imct].endind ; detct++) {
+      distradec02(img_log[imct].RA, img_log[imct].Dec,detvec[detct].RA,detvec[detct].Dec,&dist,&pa);
+      xyind = xy_index(dist*sin(pa/DEGPRAD),dist*cos(pa/DEGPRAD),detct);
+      axyvec.push_back(xyind);
+      if((!isnormal(xyind.x) && xyind.x!=0) || (!isnormal(xyind.y) && xyind.y!=0)) {
+	cerr << "nan-producing input: ra1, dec1, ra2, dec2, dist, pa:\n";
+	cerr << img_log[imct].RA << " " << img_log[imct].Dec << " " << detvec[detct].RA << " " << detvec[detct].Dec << " " << dist << " " << pa << " " << xyind.x << " " << xyind.x << "\n";
+      }
+    }
+    cout << "Creating tracklets that start on image " << imct << " of " << imnum << ", which has " << axyvec.size() << " good detections and min tracklet length = " << local_mintrkpts << "\n";
+    if(verbose>0) cout << axyvec.size() << " detections successfully projected; " << imatchnum << " potentially matching images will be explored\n";
+    if(imatchnum >= local_mintrkpts-1 && axyvec.size()>0) {
+      // There are enough matching images to create tracklets of at least the minimum length,
+      // and there are valid unpaired detections on image A: proceed with the search.
+      // Construct vector kdmat, holding k-d trees for
+      // all of the potentially matching images (image B's)
+      vector <vector <kdpoint>> kdmat = {};
+      for(imatchcount=0;imatchcount<imatchnum;imatchcount++) {
+      	imtarg = imagematches[imatchcount];
+	vector <xy_index> bxyvec = {};
+	// Project all detections on image B
+	for(dettarg=img_log[imtarg].startind ; dettarg<img_log[imtarg].endind ; dettarg++) {
+	  distradec02(img_log[imct].RA, img_log[imct].Dec,detvec[dettarg].RA,detvec[dettarg].Dec,&dist,&pa);
+	  xyind = xy_index(dist*sin(pa/DEGPRAD),dist*cos(pa/DEGPRAD),dettarg);
+	  bxyvec.push_back(xyind);
+	}
+	// Create k-d tree of detections on image B (imtarg).
+	vector <kdpoint> kdvec ={};
+	if(bxyvec.size()<=0) {
+	  // No valid detections in image B. Load dummy k-d vector
+	  kdmat.push_back(kdvec);
+	  // Skip to the next image
+	  continue;
+	}
+	int dim=1;
+	xy_index xyi = bxyvec[0];
+	kdpoint root = kdpoint(xyi,-1,-1,dim);
+	long medpt;
+	medpt = medindex(bxyvec,dim);
+	root = kdpoint(bxyvec[medpt],-1,-1,1);
+	kdvec.push_back(root);
+	kdtree01(bxyvec,dim,medpt,0,kdvec);
+	kdmat.push_back(kdvec);
+      }
+      // Loop over detections on image A
+      for(detct=0 ; detct<long(axyvec.size()) ; detct++) {
+	xA = axyvec[detct].x;
+	yA = axyvec[detct].y;
+	if((!isnormal(xA) && xA!=0.0) || (!isnormal(yA) && yA!=0.0)) continue;
+	// Declare vectors that will hold all possible tracklets that
+	// start with detection detct on image A.
+	Atrkvec = {};
+	Atrkmat = {}; 
+	// Loop over the image B's in reverse order, until we are so close
+	// to image A that no more tracklets of sufficient length are possible
+	for(imatchcount=imatchnum-1;imatchcount>=local_mintrkpts-2;imatchcount--) {
+	  if(kdmat[imatchcount].size()<=0) continue; // k-d tree for this image was empty.
+	  imtarg = imagematches[imatchcount];
+	  timeB = img_log[imtarg].MJD;
+	  range = (timeB-timeA)*maxvel;
+	  indexvec={};
+	  kdrange01(kdmat[imatchcount],xA,yA,range,indexvec);
+	  int matchnum=indexvec.size();
+	  // Loop over potentially matching detections on image B
+	  int matchct=0;
+	  for(matchct=0; matchct<matchnum; matchct++) {
+	    // Load original detection indices corresponding to detection detct on image A and
+	    // detection matchct on image B into a vector where we will try to build up a longer tracklet.
+	    Atrkvec={};
+	    Atrkvec.push_back(axyvec[detct].index);
+	    Atrkvec.push_back(kdmat[imatchcount][indexvec[matchct]].point.index);
+	    xB = kdmat[imatchcount][indexvec[matchct]].point.x;
+	    yB = kdmat[imatchcount][indexvec[matchct]].point.y;
+	    // Loop over all intervening images
+	    for(long imtct=0;imtct<imatchcount;imtct++) {
+	      // Consider a line from detection detct on image A,
+	      // to detection matchpt on image B. Use linear interpolation
+	      // to predict the position along this line for a source on
+	      // image imtct.
+	      timepred = img_log[imagematches[imtct]].MJD;
+	      xpred = xA + (xB-xA)*(timepred-timeA)/(timeB-timeA);
+	      ypred = yA + (yB-yA)*(timepred-timeA)/(timeB-timeA);
+	      indexvec2={};
+	      kdrange01(kdmat[imtct],xpred,ypred,maxgcr/1800.0,indexvec2);
+	      for(i=0;i<long(indexvec2.size());i++) {
+		// Load the new, matching detections into the vector Atrkvec.
+		Atrkvec.push_back(kdmat[imtct][indexvec2[i]].point.index);
+	      }
+	    }
+	    if(long(Atrkvec.size()) >= local_mintrkpts) {
+	      // Atrkvec contains indices to a potentially valid tracklet.
+	      // Write it out to the tracklet matrix Atrkmat
+	      Atrkmat.push_back(Atrkvec);
+	    }
+	    // Close loop on intervening images
+	  }
+	  // Close loop over all possible image B's
+	}
+	// Now, Atrkmat contains all possible tracklets that involve
+	// detection detct on image A. Clean them for duplicates, outliers, and
+	// overlaps with superioer tracklets; load them into Atrkmat2, and load the 
+	// vector best_trk with quality metrics that enable the next loop to investigate them
+	// in order from best to worst.
+	double_index di = double_index(0.0,0);
+	vector <double_index> best_trk;
+	Atrkmat2 = {}; 
+	for(long tct=0; tct<long(Atrkmat.size()); tct++) {
+	  if(long(Atrkmat[tct].size())==2) {
+	    // This is only a two-point tracklet: no point in calculating GCR.
+	    // Calculate arc length and angular velocity
+	    dist = distradec01(detvec[Atrkmat[tct][0]].RA, detvec[Atrkmat[tct][0]].Dec, detvec[Atrkmat[tct][1]].RA, detvec[Atrkmat[tct][1]].Dec);
+	    angvel = dist/fabs(detvec[Atrkmat[tct][1]].MJD - detvec[Atrkmat[tct][0]].MJD);
+	    dist*=3600.0;
+	    if(angvel<minvel || angvel>maxvel || dist<minarc) continue; // Velocity is out-of-range: skip this one
+	    // Final check: does the tracklet overlap an earlier exclusive one?
+	    if(det2trk[Atrkmat[tct][0]] >= 0 || det2trk[Atrkmat[tct][1]] >= 0) continue; // Reject the tracklet because of overlap
+	    // If we get here, the tracklet appears OK: load it
+	    Atrkmat2.push_back(Atrkmat[tct]);
+	    // Store quality metric, set to 1.0 for two-point tracklets
+	    this_trkmetric = 1.0;
+	    GCR=0.0;
+	    di = double_index(this_trkmetric,Atrkmat2.size()-1);
+	    best_trk.push_back(di);
+	    continue;
+	  } else if(long(Atrkmat[tct].size())<2) {
+	    cerr << "ERROR: stored a tracklet of size " << Atrkmat[tct].size() << "\n";
+	    return(3); // Later, change this to a continue, for robustness
+	  }
+	  trkdets={};
+	  for(i=0;i<long(Atrkmat[tct].size());i++) {
+	    hldet tdet = detvec[Atrkmat[tct][i]];
+	    tdet.index = Atrkmat[tct][i];
+	    trkdets.push_back(tdet);
+	  }
+	  // Sort trkdets
+	  sort(trkdets.begin(), trkdets.end(), early_hldet());
+	  // Great Circle fit
+	  fitRA = fitDec = residuals = {};
+	  poleRA = poleDec = angvel = dist = pa = crosstrack = alongtrack = GCR = this_trkmetric = 0.0;
+	  status =  greatcircresid(trkdets,poleRA,poleDec,angvel,pa,crosstrack,alongtrack,fitRA,fitDec,residuals,verbose);
+	  if(status!=0) {
+	    cerr << "ERROR: greatcircresid exited with status " << status << "\n";
+	    return(4);
+	  }
+	  GCR = sqrt(crosstrack*crosstrack + alongtrack*alongtrack);
+	  if(!isnormal(GCR)) {
+	    cerr << "ERROR: GCR = " << GCR << "\n";
+	    cout << "Offending tracklet:\n";
+	    for(i=0;i<long(Atrkmat[tct].size());i++) {
+	      cerr << "point " << i << ": " << trkdets[i].image << " " << setprecision(8) << trkdets[i].MJD << " " << setprecision(8) << trkdets[i].RA << " " << setprecision(8) << trkdets[i].Dec << " " << setprecision(8) << trkdets[i].index << "\n"; 
+	    }
+	    return(25);
+	  }
+	  if(angvel<minvel || angvel>maxvel) continue; // Velocity is out-of-range: skip this one
+
+	  // Calculate the total angular arc, using the same prescription as will
+	  // be used in the final analysis later on.
+	  instep = (trkdets.size()-1)/4;
+	  rp1 = instep;
+	  rp2 = trkdets.size()-1-instep;
+	  dist = 3600.0*distradec01(fitRA[rp1], fitDec[rp1], fitRA[rp2], fitDec[rp2]);
+	  if(dist<minarc) continue; // Total arc is too short: skip this one.
+
+	  if(verbose>1) {
+	    cout << "Initial tracklet:\n";
+	    for(i=0;i<long(Atrkmat[tct].size());i++) {
+	      cout << fixed << setprecision(6) << "point " << i << ": " << trkdets[i].image << " "  << trkdets[i].MJD << " "  << trkdets[i].RA << " "  << trkdets[i].Dec << " "  << trkdets[i].index << "\n"; 
+	    }
+	  }
+	  // Reject time-duplicates and outliers
+	  int isdup=0;
+	  for(i=1;i<long(trkdets.size());i++) {
+	    if(fabs(trkdets[i].MJD - trkdets[i-1].MJD) < imagetimetol) isdup=1;
+	  }
+	  if(verbose>1) cout << "GCR = " << GCR << " , isdup = " << isdup << "\n";
+	  this_trkmetric = double(trkdets.size())+1.0-GCR/maxgcr;
+	  if(isdup==0 && GCR<=maxgcr && long(trkdets.size()) >= local_mintrkpts) {
+	    isgood=1;
+	    if(verbose>1) cout << "Tracklet passes duplication and GCR cuts without culling\n";
+	  }
+	  else {
+	    isgood=0; // Needs some culling.
+	    if(long(trkdets.size())<=local_mintrkpts) {
+	      if(verbose>1) cout << "Tracklet is rejected: too few points to survive needed culling\n";
+	    }
+	  }
+			      
+	  while(long(trkdets.size()) > local_mintrkpts && isgood==0) {
+	    if(verbose>1) cout << "Tracklet will be culled to eliminate time-duplicates and astrometric outliers\n";
+	    if(isdup>0) {
+	      // We have time-duplicates, and the tracklet is long enough that it could be culled.
+	      // Identify the worst outlier that is also a time-duplicate
+	      int worstoutlier=0;
+	      double worstresid=0.0;
+	      for(i=1;i<long(trkdets.size());i++) {
+		if(fabs(trkdets[i].MJD - trkdets[i-1].MJD) < imagetimetol) {
+		  if(residuals[i] >= worstresid) {
+		    worstoutlier = i;
+		    worstresid = residuals[i];
+		  }
+		  if(residuals[i-1] > worstresid) {
+		    worstoutlier = i-1;
+		    worstresid = residuals[i-1];
+		  }
+		}
+	      }
+	      // Tricky decision: how to handle the case where the first point,
+	      // the one from image A, is the worst outlier. Rejecting it
+	      // should be forbidden. Throw out the whole tracklet, or just
+	      // refuse to reject that point?
+	      // Choice for now: throw out the whole tracklet. The overall logic
+	      // of the code means the good part of the tracklet will inevitably
+	      // be reconstructed later on, while analyzing a different image.
+	      if(fabs(trkdets[worstoutlier].MJD-timeA) > imagetimetol) {
+		// The worst residual is not on image A. Reject it.
+		trkdets.erase(trkdets.begin()+worstoutlier);
+		if(verbose>1) {
+		  cout << "Rejected a time-duplicate. New, culled tracklet: \n";
+		  for(i=0;i<long(trkdets.size());i++) {
+		    cout << "point " << i << ": " << trkdets[i].image << " "  << trkdets[i].MJD << " "  << trkdets[i].RA << " "  << trkdets[i].Dec << " "  << trkdets[i].index << "\n";
+		  }
+		}
+		// Re-scan for duplicates.
+		isdup=0;
+		for(i=1;i<long(trkdets.size());i++) {
+		  if(fabs(trkdets[i].MJD - trkdets[i-1].MJD) < imagetimetol) isdup=1;
+		}
+		if(trkdets.size()>2) {
+		  // Re-do Great Circle fit
+		  fitRA = fitDec = residuals = {};
+		  poleRA = poleDec = angvel = dist = pa = crosstrack = alongtrack = GCR = overmetric = 0.0;
+		  status =  greatcircresid(trkdets,poleRA,poleDec,angvel,pa,crosstrack,alongtrack,fitRA,fitDec,residuals,verbose);
+		  if(status!=0) {
+		    cerr << "ERROR: greatcircresid exited with status " << status << "\n";
+		    return(5);
+		  }
+		  GCR = sqrt(crosstrack*crosstrack + alongtrack*alongtrack);
+		  this_trkmetric = double(trkdets.size())+1.0-GCR/maxgcr;
+		  if(verbose>1) cout << "GCR = " << GCR << " , isdup = " << isdup << "\n";
+		} else if(trkdets.size()==2) {
+		  dist = distradec01(trkdets[0].RA, trkdets[0].Dec, trkdets[1].RA, trkdets[1].Dec);
+		  angvel = dist/fabs(trkdets[1].MJD - trkdets[0].MJD);
+		  dist*=3600.0;
+		  this_trkmetric = 1.0;
+		  GCR=0.0;
+		}
+		if(isdup==0 && long(trkdets.size()) >= local_mintrkpts && GCR<=maxgcr) isgood=1;
+	      } else {
+		// The worst residual is on image A. Mark the whole tracklet as bad.
+		isgood = -1;
+		if(verbose>1) cout << "Worst residual is on image A: tracklet is bad\n";
+	      }
+	    } else if(GCR>maxgcr) {
+	      // All time-duplicates have been removed, but the tracklet still
+	      // has too high a GCR. Remove astrometric outliers until this is
+	      // no longer the case.
+	      int worstoutlier=0;
+	      double worstresid=0.0;
+	      for(i=0;i<long(trkdets.size());i++) {
+		if(residuals[i] >= worstresid) {
+		  worstoutlier = i;
+		  worstresid = residuals[i];
+		}
+	      }
+	      if(fabs(trkdets[worstoutlier].MJD-timeA) > imagetimetol) {
+		// The worst residual is not on image A. Reject it.
+		trkdets.erase(trkdets.begin()+worstoutlier);
+		if(verbose>1) {
+		  cout << "Rejected an astrometric outlier at " << worstresid << " arcsec. New, culled tracklet: \n";
+		  for(i=0;i<long(trkdets.size());i++) {
+		    cout << "point " << i << ": " << trkdets[i].image << " "  << trkdets[i].MJD << " "  << trkdets[i].RA << " "  << trkdets[i].Dec << " "  << trkdets[i].index << "\n";
+		  }
+		}
+		if(trkdets.size()>2) {
+		  // Re-do Great Circle fit
+		  fitRA = fitDec = residuals = {};
+		  poleRA = poleDec = angvel = dist = pa = crosstrack = alongtrack = GCR = overmetric = 0.0;
+		  status =  greatcircresid(trkdets,poleRA,poleDec,angvel,pa,crosstrack,alongtrack,fitRA,fitDec,residuals,verbose);
+		  if(status!=0) {
+		    cerr << "ERROR: greatcircresid exited with status " << status << "\n";
+		    return(6);
+		  }
+		  GCR = sqrt(crosstrack*crosstrack + alongtrack*alongtrack);
+		  this_trkmetric = double(trkdets.size())+1.0-GCR/maxgcr;
+		} else if(trkdets.size()==2) {
+		  dist = distradec01(trkdets[0].RA, trkdets[0].Dec, trkdets[1].RA, trkdets[1].Dec);
+		  angvel = dist/fabs(trkdets[1].MJD - trkdets[0].MJD);
+		  dist*=3600.0;
+		  this_trkmetric = 1.0;
+		  GCR=0.0;
+		}
+		if(verbose>1) cout << "GCR = " << GCR << " , isdup = " << isdup << " " << local_mintrkpts << " " << maxgcr << "\n";
+		if(isdup==0 && long(trkdets.size()) >= local_mintrkpts && GCR<=maxgcr) isgood=1;
+	      } else {
+		if(verbose>1) cout << "Worst residual is on image A: tracklet is bad\n";
+		isgood = -1;
+	      }
+	    }
+	  }
+	  if(isgood<=0) {
+	    if(verbose>1) cout << "Tracklet was no good: skipping it\n";
+	    if(verbose>1) cout << "GCR = " << GCR << " , isdup = " << isdup << " " << local_mintrkpts << " " << maxgcr << "\n";
+	    continue; // This tracklet was no good: skip (i.e., reject) it.
+	  } else if(verbose>1) cout << "Tracklet appears good, pending final check for overlap\n";
+	  // Final check: does the tracklet overlap an earlier tracklet with superior metric?
+	  superior_overlap=0;
+	  first_point_overlap=0;
+	  if(verbose>1) cout << "Overlap check for tracklet with ptnum, GCR, angvel, arc: " << trkdets.size() << " " << GCR << " " << angvel << " " << dist << "\n";
+	  for(i=0;i<long(trkdets.size());i++) {
+	    // Find out if point i of the new tracklet candidate overlaps a previous tracklet
+	    if(det2trk[trkdets[i].index] >= 0) {
+	      if(tracklet_metrics[det2trk[trkdets[i].index]] > this_trkmetric) {
+		superior_overlap++;
+		if(verbose>1) cout << "Overlaps superior tracklet " << det2trk[trkdets[i].index] << ": metric " << tracklet_metrics[det2trk[trkdets[i].index]] << " vs " << this_trkmetric << "\n";
+		if(i==0) {
+		  first_point_overlap=1;
+		  if(verbose>1) cout << "Overlap with superior tracklet is on the first point: reject this tracklet\n";
+		}
+	      } else {
+		if(verbose>1) cout << "Overlaps inferior tracklet " << det2trk[trkdets[i].index] << ": metric " << tracklet_metrics[det2trk[trkdets[i].index]] << " vs " << this_trkmetric << "\n";
+	      }
+	    }
+	  }
+	  if(verbose>1) cout << "trkdets.size(), superior_overlap, local_mintrkpts = " << trkdets.size() << " " << superior_overlap << " " << local_mintrkpts << "\n";
+	  if(long(trkdets.size())-superior_overlap < local_mintrkpts || first_point_overlap>0) {
+	    isgood = -1;
+	    if(verbose>1) cout << "Tracklet rejected: " << superior_overlap << " points overlap earlier, superior tracklets\n";
+	  }
+	  while(long(trkdets.size())-superior_overlap >= local_mintrkpts && superior_overlap>0 && isgood>0 && first_point_overlap<=0) {
+	    // The tracklet overlaps another tracklet with superior metric, but it might still be valid
+	    // after we remove the overlapping points.
+	    // Create a new tracklet with no points that overlap a superior tracklet
+	    vector <hldet> tmptrk;
+	    for(i=0;i<long(trkdets.size());i++) {
+	      if(det2trk[trkdets[i].index] < 0) {
+		// This point does not overlap any exclusive tracklet: add it to the temporary vector
+		tmptrk.push_back(trkdets[i]);
+	      } else if(this_trkmetric > tracklet_metrics[det2trk[trkdets[i].index]]) {
+		// This point overlaps a previous exclusive tracklet, but the new tracklet
+		// is better than the previous one. Add the point to the temporary vector
+		tmptrk.push_back(trkdets[i]);
+	      }
+	    }
+	    trkdets = tmptrk;
+	    // See if the tracklet still has sufficient points, GCR, velocities, arc length
+	    if(long(trkdets.size()) < local_mintrkpts) {
+	      isgood = -1; // Tracklet has become too short: reject this one
+	      break;
+	    }
+	    if(trkdets.size()<2) {
+	      isgood = -1; // Tracklet has become too short: reject this one
+	      break;
+ 	    } else if(trkdets.size()==2) {
+	      // This is only a two-point tracklet: no point in calculating GCR.
+	      // Calculate arc length and angular velocity
+	      dist = distradec01(trkdets[0].RA, trkdets[0].Dec, trkdets[1].RA, trkdets[1].Dec);
+	      angvel = dist/fabs(trkdets[1].MJD - trkdets[0].MJD);
+	      dist*=3600.0;
+	      this_trkmetric = 1.0;
+	      GCR=0.0;
+	    } else if(trkdets.size()>2) {
+	      fitRA = fitDec = residuals = {};
+	      poleRA = poleDec = angvel = dist = pa = crosstrack = alongtrack = GCR = overmetric = 0.0;
+	      status =  greatcircresid(trkdets,poleRA,poleDec,angvel,pa,crosstrack,alongtrack,fitRA,fitDec,residuals,verbose);
+	      if(status!=0) {
+		cerr << "ERROR: greatcircresid exited with status " << status << "\n";
+		return(24);
+	      }
+	      GCR = sqrt(crosstrack*crosstrack + alongtrack*alongtrack);
+	      // Calculate the total angular arc, using the same prescription as will
+	      // be used in the final analysis later on.
+	      instep = (trkdets.size()-1)/4;
+	      rp1 = instep;
+	      rp2 = trkdets.size()-1-instep;
+	      dist = 3600.0*distradec01(fitRA[rp1], fitDec[rp1], fitRA[rp2], fitDec[rp2]);
+	      // Re-calculate the metric.
+	      this_trkmetric = double(trkdets.size())+1.0-GCR/maxgcr;
+	    }
+	    if(angvel<minvel || angvel>maxvel || dist<minarc) {
+	      isgood = -1; // Total arc is too short: reject this one
+	      break; 
+	    }
+	    // If we get this far, the tracklet must be OK. Re-assess its superiority using the new metric.
+	    superior_overlap=0;
+	    first_point_overlap=0;
+	    for(i=0;i<long(trkdets.size());i++) {
+	      // The metric has changed, so we might find additional overlapping
+	      // tracklets to which it is no longer superior
+	      if(det2trk[trkdets[i].index] >= 0) {
+		if(tracklet_metrics[det2trk[trkdets[i].index]] > this_trkmetric) {
+		  superior_overlap++;
+		  if(i==0) first_point_overlap=1;
+		}
+	      }
+	    }
+	    if(long(trkdets.size())-superior_overlap < local_mintrkpts || first_point_overlap>0) {
+	      // Additional overlapping superior tracklets have been found, and
+	      // the current tracklet will not survive culling the overlapping points.
+	      isgood = -1;
+	      break;
+	    }
+	    if(superior_overlap==0 && long(trkdets.size()) >= local_mintrkpts && angvel>=minvel && angvel<=maxvel && dist>=minarc && first_point_overlap<=0) {
+	      isgood=1;
+	      break;
+	    }
+	  }
+	
+	  if(isgood<=0) {
+	    if(verbose>1) cout << "Tracklet rejected at overlap check: skipping it\n";
+	    if(verbose>1) cout << "GCR = " << GCR << " , isdup = " << isdup << " " << local_mintrkpts << " " << maxgcr << "\n";
+	    continue; // This tracklet was no good: skip (i.e., reject) it.
+	  }
+		
+	  if(verbose>1) cout << "Keeping tracklet with " << trkdets.size() << " points\n";
+	  // Save culled version
+	  Atrkvec={};
+	  for(i=0;i<long(trkdets.size());i++) {
+	    Atrkvec.push_back(trkdets[i].index);
+	  }
+	  Atrkmat2.push_back(Atrkvec);
+	  // Store quality metric
+	  di = double_index(this_trkmetric,Atrkmat2.size()-1);
+	  best_trk.push_back(di);
+	  // Close loop over all tracklets involving detection detct on image A
+	}
+	if(Atrkmat2.size() != best_trk.size()) {
+	  cerr << "ERROR: Atrkmat2 and best_trk vectors don't have the same size: " << Atrkmat2.size() << " vs. " <<  best_trk.size() << "\n";
+	  return(7);
+	}
+	if(Atrkmat2.size()>0) {
+	  // Sort tracklets by quality metric
+	  sort(best_trk.begin(), best_trk.end(), lower_double_index());
+	  // Loop over tracklets from best to worst.
+	  for(long tct=best_trk.size()-1; tct>=0; tct--) {
+	    bad_reuse=0;
+	    this_trkmetric = best_trk[tct].delem;
+	    long btrk = best_trk[tct].index;
+	    long trklen = Atrkmat2[btrk].size();
+	    
+	    // Screen out obvious failure cases
+	    if(trklen<2 || trklen<local_mintrkpts) continue;
+	    
+	    // Determine if this tracklet overlaps an exclusive tracklet
+	    overlapping_tracklets={};
+	    for(i=0;i<trklen;i++) {
+	      if(detvec[Atrkmat2[btrk][i]].index>0) {
+		// Load the tracklet index of the exclusive tracklet to which this
+		// detection was previously assigned.
+		overlapping_tracklets.push_back(det2trk[Atrkmat2[btrk][i]]);
+	      }
+	    }
+	    if(overlapping_tracklets.size()>1) {
+	      // Sort and de-duplicate the vector overlapping_tracklets
+	      sort(overlapping_tracklets.begin(),overlapping_tracklets.end());
+	      i=0;
+	      while(i<long(overlapping_tracklets.size()-1)) {
+		if(overlapping_tracklets[i+1] == overlapping_tracklets[i]) overlapping_tracklets.erase(overlapping_tracklets.begin()+i+1);
+		else i++;
+	      }
+	    }
+	  
+	    if(trklen==2 && overlapping_tracklets.size()<=0) {
+	      // Simple two-point tracklet, cannot supersede an exclusive tracklet
+	      // Load the tracklet summary vector
+	      track1 = tracklet(detvec[Atrkmat2[btrk][0]].image,detvec[Atrkmat2[btrk][0]].RA,detvec[Atrkmat2[btrk][0]].Dec,detvec[Atrkmat2[btrk][1]].image,detvec[Atrkmat2[btrk][1]].RA,detvec[Atrkmat2[btrk][1]].Dec,trklen,tracklets.size());
+	      tracklets.push_back(track1);
+	      if(local_mintrkpts>2) {
+		cerr << "ERROR: writing 2-point tracklet when this should be forbidden\n";
+		return(22);
+	      }
+	      // Load the tracklet index vector
+	      ivec = {};
+	      for(i=0;i<trklen;i++) ivec.push_back(Atrkmat2[btrk][i]);
+	      tracklet_indexmat.push_back(ivec);
+	      tracklets_min_length.push_back(local_mintrkpts);
+	      tracklet_metrics.push_back(this_trkmetric);
+	      if(tracklets_min_length.size() != tracklets.size() || tracklet_metrics.size() != tracklets.size() || tracklet_indexmat.size() != tracklets.size()) {
+		cerr << "ERROR: tracklet record vector size mismatch: " << tracklets.size() << " " << tracklets_min_length.size() << " " << tracklet_metrics.size() << " " <<  tracklet_indexmat.size() << "\n";
+		return(25);
+	      }
+
+	      // Load pairdets and trk2det
+	      for(i=0;i<trklen;i++) {
+		if(detvec[Atrkmat2[btrk][i]].index <= -detnum) {
+		  // This detection has never been used before. Flag it as used
+		  detvec[Atrkmat2[btrk][i]].index = -pairdets.size();
+		  // Load the corresponding entry to the trk2det vector
+		  onepair = longpair(track1.trk_ID, pairdets.size());
+		  trk2det.push_back(onepair);
+		  // Load the detection to the pairdets vector.
+		  onedet = detvec[Atrkmat2[btrk][i]];
+		  onedet.index = Atrkmat2[btrk][i];
+		  pairdets.push_back(onedet);
+		} else if(detvec[Atrkmat2[btrk][i]].index<=0) {
+		  // This detection has previously been used in an non-exclusive tracklet,
+		  // and hence has already been added to pairdets with a negative index to
+		  // the pairdets vector. Load just the trk2det entry
+		  pdct = -detvec[Atrkmat2[btrk][i]].index;
+		  onepair = longpair(track1.trk_ID, pdct);
+		  trk2det.push_back(onepair);
+		} else {
+		  // This detection has previously been used in an exclusive tracklet.
+		  // This earlier, exclusive tracklet supersedes the
+		  // current two-point tracklet: skip (i.e., reject) the current tracklet
+		  continue;
+		}
+	      }
+	      // End case of tracklet with only two points.
+	    } else {
+	      // This tracklet needs some analyis, since it has more than two points.
+	      // Load it into trkdets.
+	      trkdets={};
+	      for(i=0;i<trklen;i++) {
+		hldet tdet = detvec[Atrkmat2[btrk][i]];
+		tdet.index = Atrkmat2[btrk][i];
+		trkdets.push_back(tdet);
+	      }
+	      // Perform a final Great Circle fit
+	      fitRA = fitDec = residuals = {};
+	      poleRA = poleDec = angvel = dist = pa = crosstrack = alongtrack = GCR = overmetric = 0.0;
+	      status =  greatcircresid(trkdets,poleRA,poleDec,angvel,pa,crosstrack,alongtrack,fitRA,fitDec,residuals,verbose);
+	      if(status!=0) {
+		cerr << "ERROR: greatcircresid exited with status " << status << "\n";
+		return(9);
+	      }
+	      GCR = sqrt(crosstrack*crosstrack + alongtrack*alongtrack);
+	      this_trkmetric = double(trkdets.size())+1.0-GCR/maxgcr;
+	      if(angvel<minvel || angvel>maxvel) continue; // Velocity is out-of-range: skip this one
+	      // Select points that will represent this tracklet.
+	      instep = (trklen-1)/4;
+	      rp1 = instep;
+	      rp2 = trklen-1-instep;
+	      if(rp1==rp2) {
+		cerr << "ERROR: both representative points for a tracklet are the same!\n";
+		cerr << "size, instep, rp1, rp2: " << trklen << " " << instep << " " << rp1 << " " << rp2 << "\n";
+	      }
+	      // Calculate total angular arc
+	      dist = 3600.0*distradec01(fitRA[rp1], fitDec[rp1], fitRA[rp2], fitDec[rp2]);
+	      // Note: it can be argued that the dist calculated above is not really the total
+	      // angular arc, because it's the span between the two representative points instead
+	      // of all the way from the beginning of the tracklet to its end. There are at
+	      // least two alternative ways of calculating such a value: use the actual
+	      // extreme points, or just multiply the total time span by the angular velocity.
+	      // I haven't been able to convince myself that either of them is a better idea
+	      // than the above.
+	      if(dist<minarc) continue; // Total arc is too short: skip this one.
+	      if(overlapping_tracklets.size()>0 && verbose>1) {
+		cout << "Found " << overlapping_tracklets.size() << " tracklets that overlap " << trklen << "-point tracklet ";
+		for(i=0;i<trklen;i++) cout << Atrkmat2[btrk][i] << " ";
+		cout << "\n";
+	      }
+	      int superseded=0;
+	      for(j=0;j<long(overlapping_tracklets.size());j++) {
+		if(tracklet_metrics[overlapping_tracklets[j]] > this_trkmetric) {
+		  // An earlier exclusive tracklet is better than the current one.
+		  superseded=1;
+		}
+	      }
+	      if(superseded>0) {
+		// Though this case is logically allowed in find_pairs3, it it supposed to
+		// be impossible in find_pairs4. Exit with an error.
+		cerr << "ERROR: tracklet found to overlap a superior tracklet, at a stage where\n";
+		cerr << "all such cases should already have been caught\n";
+		return(15);
+	      }
+	      if(superseded==0 && overlapping_tracklets.size() > 0) {
+		// This tracklet overlaps older tracklets, but it is better than they are
+		// Delete (or trim) overlapping previous tracklets that are inferior to this one.
+		for(j=0;j<long(overlapping_tracklets.size());j++) {
+		  long overtrk = overlapping_tracklets[j];
+		  long trklnum = tracklet_lookup_ind(trk2det, overtrk, trkdetind, trkindind);
+		  // Check for failure in tracklet_lookup_ind()
+		  if(trklnum != long(trkdetind.size()) || trklnum != long(trkindind.size())) {
+		    cerr << "ERROR: inconsistent tracklet length info from tracklet_lookup_ind(): " << trklnum << " " << trkdetind.size() << " " << trkindind.size() << "\n";
+		    return(15);
+		  }
+		  if(trklnum != tracklets[overtrk].npts) {
+		    cerr << "ERROR: tracklet length mis-match for overlapping tracklet " << overtrk << " : " << trklnum << " vs. " << tracklets[overtrk].npts << "\n";
+		    return(16);
+		  }
+		  // Catch the illogical case where a non-exclusive tracklet supersedes an exclusive one.
+		  if(trklen <= max_netl) {
+		    cerr << "ERROR: non-exclusive tracklet of length " << trklen << " and metric " << this_trkmetric << " recorded as superseding\n";
+		    cerr << "an earlier, exlusive tracklet length " << trklnum << " and metric " <<  tracklet_metrics[overlapping_tracklets[j]] << "\n";
+		    return(12);
+		  }
+		  // Determine how many of the points in tracklet overtrk actually overlap the current tracklet
+		  superior_overlap=0;
+		  vector <long> erase_trkdetind;
+		  vector <long> erase_trkindind;
+		  vector <hldet> trimmed_overtrk;
+		  for(i=0;i<long(trkdetind.size());i++) {
+		    // Find out if point i of tracklet overtrk overlaps the new tracklet;
+		    int ovlp=0;
+		    for(long k=0;k<long(trkdets.size());k++) {
+		      if(pairdets[trkdetind[i]].index==trkdets[k].index) {
+			ovlp=1;
+			erase_trkdetind.push_back(trkdetind[i]);
+			erase_trkindind.push_back(trkindind[i]);
+		      }
+		    }
+		    if(ovlp<=0) {
+		      trimmed_overtrk.push_back(pairdets[trkdetind[i]]);
+		    }
+		  }
+		  if(erase_trkdetind.size()<=0 || erase_trkindind.size()<=0) {
+		    cerr << "ERROR: tracklet " << overtrk << " was reported as overlapping, but does not actually do so\n";
+		    cerr << "TRACKLET " << overtrk << ":\n";
+		    for(i=0;i<trklnum;i++) {
+		      cerr << " " << pairdets[trkdetind[i]].index << " " << detvec[pairdets[trkdetind[i]].index].image << " " << detvec[pairdets[trkdetind[i]].index].MJD << " " << detvec[pairdets[trkdetind[i]].index].RA << " " << detvec[pairdets[trkdetind[i]].index].Dec << " " << detvec[pairdets[trkdetind[i]].index].index << " " << det2trk[pairdets[trkdetind[i]].index] << "\n";
+		    }
+		    cerr << "NEW TRACKLET:\n";
+		    for(i=0;i<trklen;i++) {
+		      cerr << " " << trkdets[i].index << " " << detvec[trkdets[i].index].image << " " << detvec[trkdets[i].index].MJD << " " << detvec[trkdets[i].index].RA << " " << detvec[trkdets[i].index].Dec << " " << detvec[trkdets[i].index].index << " " << det2trk[trkdets[i].index] << "\n";
+		    }
+   		    return(16);
+		  }
+		  long erasenum = erase_trkdetind.size();
+		  long trimmed_overlen = trimmed_overtrk.size();
+		  if(verbose>1) cout << "Investigating overlapping tracklet " << overtrk << ", with " << erase_trkdetind.size() << " = " << erase_trkindind.size() << " overlapping points, and " << trimmed_overlen << " points that remain unique\n";
+		  int keep_overtrk=1;
+		  if(trimmed_overlen < tracklets_min_length[overtrk]) {
+		    if(verbose>1) cout << "After removing overlaps, tracklet " << overtrk << " has too few points (" << trimmed_overlen << "), and must be deleted\n";
+		    keep_overtrk=0;
+		  }
+		  if(keep_overtrk>0) {
+		    if(trimmed_overlen==2) {
+		      tdist = distradec01(trimmed_overtrk[0].RA, trimmed_overtrk[0].Dec, trimmed_overtrk[1].RA, trimmed_overtrk[1].Dec);
+		      tangvel = tdist/fabs(trimmed_overtrk[1].MJD - trimmed_overtrk[0].MJD);
+		      tdist*=3600.0;
+		      overmetric = 1.0;
+		      tGCR=0.0;
+		      trp1=0;
+		      trp2=1;
+		    }
+		    else if(trimmed_overlen>2) {
+		      // Perform Great Circle fit to trimmed_overtrk
+		      tpoleRA = tpoleDec = tangvel = tpa = tcrosstrack = talongtrack = tGCR = tdist = 0.0;
+		      tfitRA = tfitDec = tresiduals = {};
+		      trp1 = trp2 = 0;
+		      status =  greatcircresid(trimmed_overtrk,tpoleRA,tpoleDec,tangvel,tpa,tcrosstrack,talongtrack,tfitRA,tfitDec,tresiduals,verbose);
+		      if(status!=0) {
+			cerr << "ERROR: greatcircresid exited with status " << status << "\n";
+			return(19);
+		      }
+		      tGCR = sqrt(tcrosstrack*tcrosstrack + talongtrack*talongtrack);
+		      // Select points that will represent this tracklet.
+		      instep = (trimmed_overlen-1)/4;
+		      trp1 = instep;
+		      trp2 = trimmed_overlen-1-instep;
+		      if(trp1==trp2) {
+			cerr << "ERROR: both representative points for a tracklet are the same!\n";
+			cerr << "size, instep, trp1, trp2: " << trimmed_overlen << " " << instep << " " << trp1 << " " << trp2 << "\n";
+		      }
+		      // Calculate total angular arc
+		      tdist = 3600.0*distradec01(tfitRA[trp1], tfitDec[trp1], tfitRA[trp2], tfitDec[trp2]);
+		      if(verbose>1) cout << "trimmed_overtrk GCR, angvel, dist: " << tGCR << " " << angvel << " " << tdist << "\n";
+		      overmetric = double(trimmed_overlen) + 1.0 - tGCR/maxgcr;
+		    }
+		    if(tdist<minarc || tangvel<minvel || tangvel>maxvel) {
+		      keep_overtrk=0;
+		      if(verbose>1) cout << "Trimmed tracklet rejected: velocity out-of-range, or arc too short\n";
+		    }
+		    if(keep_overtrk>0) { // Trimmed tracklet appears to be good. Update the relevant output vectors
+		      if(verbose>1) {
+			cout << "PRE-TRIMMING:\n";
+			for(i=0;i<trklnum;i++) {
+			  cerr << " " << pairdets[trkdetind[i]].index << " " << detvec[pairdets[trkdetind[i]].index].image << " " << detvec[pairdets[trkdetind[i]].index].MJD << " " << detvec[pairdets[trkdetind[i]].index].RA << " " << detvec[pairdets[trkdetind[i]].index].Dec << " " << detvec[pairdets[trkdetind[i]].index].index << " " << det2trk[pairdets[trkdetind[i]].index] << "\n";
+			}
+		      }
+		      // Re-assign detvec indices and det2trk entries
+		      for(i=0;i<erasenum;i++) {
+			if(detvec[pairdets[erase_trkdetind[i]].index].index > 0) {
+			  // This detection was previously marked as exclusive. Let it still
+			  // index pairdets, but change the sign to negative, making it non-exclusive.
+			  detvec[pairdets[erase_trkdetind[i]].index].index *= -1;
+			} else if(detvec[pairdets[erase_trkdetind[i]].index].index < 0) {
+			  cerr << "Detection " << pairdets[erase_trkdetind[i]].index << " assigned to exclusive tracklet " << overtrk << ", had negative index" << detvec[pairdets[erase_trkdetind[i]].index].index << "\n";
+			  return(23);
+			  // Note: there is nothing to do here in the case detvec[pairdets[erase_trkdetind[i]].index].index==0, since sign-flipping it has no effect.
+			  // Hence, the meaning of detvec[xxx].index in that one case is ambiguous, but this should not cause any problems.
+			}
+			// Erase exclusive tracklet attribution from the vector det2trk.
+			det2trk[pairdets[erase_trkdetind[i]].index] = -1;
+		      }
+		      if(trimmed_overlen <= max_netl) {
+			// Post-trimming, tracklet is no longer exclusive. Update detvec[xxx].index and det2trk to reflect this
+			for(i=0;i<trimmed_overlen;i++) {
+			  if(detvec[trimmed_overtrk[i].index].index > 0) {
+			    // This detection was previously marked as exclusive. Let it still
+			    // index pairdets, but change the sign to negative, making it non-exclusive.
+			    detvec[trimmed_overtrk[i].index].index *= -1;
+			  } else if(detvec[trimmed_overtrk[i].index].index < 0) {
+			    cerr << "Detection " << trimmed_overtrk[i].index << " assigned to exclusive tracklet " << overtrk << ", had negative index" << detvec[pairdets[erase_trkdetind[i]].index].index << "\n";
+			    return(24);
+			    // Note: there is nothing to do here in the case detvec[trimmed_overtrk[i].index].index==0, since sign-flipping it has no effect.
+			    // Hence, the meaning of detvec[xxx].index in that one case is ambiguous, but this should not cause any problems.
+			  }
+			  // Erase exclusive tracklet attribution from the vector det2trk.
+			  det2trk[trimmed_overtrk[i].index] = -1;
+			}
+		      }
+		      // Update tracklet entry
+		      if(trimmed_overlen==2) {
+			track1 = tracklet(trimmed_overtrk[0].image,trimmed_overtrk[0].RA,trimmed_overtrk[0].Dec,trimmed_overtrk[1].image,trimmed_overtrk[1].RA,trimmed_overtrk[1].Dec,trimmed_overlen,tracklets[overtrk].trk_ID);
+			if(tracklets_min_length[overtrk]>2) {
+			  cerr << "ERROR: writing trimmed tracklet of length 2 when this should be forbidden\n";
+			  return(26);
+			}
+		      } else if(trimmed_overlen>2) track1 = tracklet(trimmed_overtrk[trp1].image,tfitRA[trp1],tfitDec[trp1],trimmed_overtrk[trp2].image,tfitRA[trp2],tfitDec[trp2],trimmed_overlen,tracklets[overtrk].trk_ID);
+		      tracklets[overtrk] = track1;
+		      // Update tracklet_indexmat entry
+		      tracklet_indexmat[overtrk]={};
+		      for(i=0;i<trimmed_overlen;i++) {
+			tracklet_indexmat[overtrk].push_back(trimmed_overtrk[i].index);
+		      }
+		      // Update corresponding entry in tracklet_metrics.
+		      tracklet_metrics[overtrk] = overmetric;
+		      // No need to updatetracklets_min_length, nor to renumber entries in the tracklets vector
+		      // Delete trk2det entries, in reverse order
+		      sort(erase_trkindind.begin(),erase_trkindind.end());
+		      for(i=long(erase_trkindind.size())-1; i>=0; i--) {
+			if(verbose>1) cout << "Erasing trk2det entry " << trk2det[erase_trkindind[i]].i1 << " " << trk2det[erase_trkindind[i]].i2 << "\n";
+			trk2det.erase(trk2det.begin()+erase_trkindind[i]);
+		      }
+		      // No need to re-number subsequent entries in trk2det vector, nor in the det2trk vector
+		      if(verbose>0) {
+			if(verbose>1) cout << "POST-TRIMMING, old trk2det indices:\n";
+			for(i=0;i<trklnum;i++) {
+			  if(verbose>1) cout << " " << pairdets[trkdetind[i]].index << " " << detvec[pairdets[trkdetind[i]].index].image << " " << detvec[pairdets[trkdetind[i]].index].MJD << " " << detvec[pairdets[trkdetind[i]].index].RA << " " << detvec[pairdets[trkdetind[i]].index].Dec << " " << detvec[pairdets[trkdetind[i]].index].index << " " << det2trk[pairdets[trkdetind[i]].index] << "\n";
+			}
+			// Test lookup trimmed tracklet:
+			trklnum = tracklet_lookup_ind(trk2det, overtrk, trkdetind, trkindind);
+			if(verbose>1) cout << "POST-TRIMMING, new trk2det indices:\n";
+			for(i=0;i<trklnum;i++) {
+			  if(verbose>1) cout << " " << pairdets[trkdetind[i]].index << " " << detvec[pairdets[trkdetind[i]].index].image << " " << detvec[pairdets[trkdetind[i]].index].MJD << " " << detvec[pairdets[trkdetind[i]].index].RA << " " << detvec[pairdets[trkdetind[i]].index].Dec << " " << detvec[pairdets[trkdetind[i]].index].index << " " << det2trk[pairdets[trkdetind[i]].index] << "\n";
+			}
+		      }
+		      // Close else if statement confirming the trimmed overlapping tracklet should be retained
+		    }
+		  }
+		  if(keep_overtrk<=0) {
+		    // The overlapping tracklet should be deleted.
+		    if(verbose>0) cout << "In favor of new tracklet " << tracklets.size()-1 << ", with " << trklen << " points and metric " << this_trkmetric << ", deleting " << trklnum << "-point tracket " << overtrk << " with metric " << tracklet_metrics[overtrk] << "\n";
+		    status = delete_tracklet01(overtrk, trkdetind, trkindind, detvec, trk2det, tracklets, pairdets, tracklet_metrics, det2trk, tracklets_min_length, tracklet_indexmat, overlapping_tracklets, verbose); 
+		    if(status!=0) {
+		      cerr << "ERROR: delete_tracklet01 returns error code " << status << "\n";
+		      return(status);
+		    }
+		    if(tracklets_min_length.size() != tracklets.size() || tracklet_metrics.size() != tracklets.size() || tracklet_indexmat.size() != tracklets.size()) {
+		      cerr << "ERROR: tracklet record vector size mismatch: " << tracklets.size() << " " << tracklets_min_length.size() << " " << tracklet_metrics.size() << " " <<  tracklet_indexmat.size() << "\n";
+		      return(27);
+		    }
+
+		    // Renumber any further entries in the overlapping tracklets list
+		    for(long k=j+1; k<long(overlapping_tracklets.size()); k++) {
+		      overlapping_tracklets[k]--;
+		    }
+		  }
+		  // Close loop on tracklets we are deleting
+		}
+		// Close if-statement checking that there were old overlapping tracklets to be deleted.
+	      }
+	      // If we get here, we have a tracklet with more than two points that either
+	      // has no overlap with previous exclusive tracklets, or else supersedes them.
+
+	      // Load tracklet summary with image indices, RA, and Dec, for the representative pair, plus the
+	      // total number of constituent points and the tracklet's eventual index in the output tracklets vector,
+	      // and push to the output trackets vector.
+	      // Note: the index to the tracklets vector is preserved for now in track1.trk_ID.
+	      track1 = tracklet(detvec[Atrkmat2[btrk][rp1]].image,fitRA[rp1],fitDec[rp1],detvec[Atrkmat2[btrk][rp2]].image,fitRA[rp2],fitDec[rp2],trklen,tracklets.size());
+	      // Load it to the output vectors.
+	      tracklets.push_back(track1);
+	      if(trklen<local_mintrkpts && trklen==2) {
+		cerr << "ERROR: writing too-short tracket when this should be forbidden\n";
+		return(24);
+	      }
+	      // Load the tracklet index vector
+	      ivec = {};
+	      for(i=0;i<trklen;i++) ivec.push_back(Atrkmat2[btrk][i]);
+	      tracklet_indexmat.push_back(ivec);
+	      tracklets_min_length.push_back(local_mintrkpts);
+	      tracklet_metrics.push_back(this_trkmetric);
+	      if(tracklets_min_length.size() != tracklets.size() || tracklet_metrics.size() != tracklets.size() || tracklet_indexmat.size() != tracklets.size()) {
+		cerr << "ERROR: tracklet record vector size mismatch: " << tracklets.size() << " " << tracklets_min_length.size() << " " << tracklet_metrics.size() << " " <<  tracklet_indexmat.size() << "\n";
+		return(29);
+	      }
+
+
+	      //DEBUGGING
+	      if(tracklets.size()%10==7 && verbose>1) {
+		bad_reuse_example = 10*floor(double(tracklets.size())/10.0)+5;
+		i = tracklet_lookup_ind(trk2det, bad_reuse_example, trkdetind, trkindind);
+		cerr << "TEST TRACKLET: " << bad_reuse_example << " :\n";
+		for(i=0;i<long(trkdetind.size());i++) {
+		  cerr << " " << pairdets[trkdetind[i]].index << " " << detvec[pairdets[trkdetind[i]].index].image << " " << detvec[pairdets[trkdetind[i]].index].MJD << " " << detvec[pairdets[trkdetind[i]].index].RA << " " << detvec[pairdets[trkdetind[i]].index].Dec << " " << detvec[pairdets[trkdetind[i]].index].index << " " << det2trk[pairdets[trkdetind[i]].index] << "\n";
+		}
+	      }
+	      //DEBUGGING
+
+	      // Write points to the paired detection and the trk2det vectors
+	      if(trklen > max_netl) {
+		// This tracklet is exclusive
+		for(i=0;i<trklen;i++) {
+		  if(detvec[Atrkmat2[btrk][i]].index <= -detnum) {
+		    // This detection has never been used before. Flag it as exclusive
+		    detvec[Atrkmat2[btrk][i]].index = pairdets.size();
+		    // Load the corresponding entry to the trk2det vector
+		    onepair = longpair(track1.trk_ID, pairdets.size());
+		    trk2det.push_back(onepair);
+		    // Load the detection to the pairdets vector.
+		    onedet = detvec[Atrkmat2[btrk][i]];
+		    onedet.index = Atrkmat2[btrk][i];
+		    pairdets.push_back(onedet);
+		  } else if(detvec[Atrkmat2[btrk][i]].index<=0) {
+		    // This detection has previously been used in an non-exclusive tracklet,
+		    // and hence has already been added to pairdets with a negative index to
+		    // the pairdets vector. Load just the trk2det entry
+		    pdct = -detvec[Atrkmat2[btrk][i]].index;
+		    onepair = longpair(track1.trk_ID, pdct);
+		    trk2det.push_back(onepair);
+		    // Re-set the detvec index to flag the point as exclusive
+		    detvec[Atrkmat2[btrk][i]].index = pdct;
+		    // Note: in principle, we should delete any previous tracklets
+		    // that contained this point, since it has been found in an
+		    // 'exclusive' tracklet. In practice, this is not worth the trouble,
+		    // since the case is expected to be rare and benign.
+		  } else {
+		    // This detection has previously been used in an exclusive tracklet.
+		    // Ideally, this would not be possible, but the program's logic does
+		    // permit it under circumstances which should be statistically rare.
+		    // Track the errors:
+		    bad_reuse++;
+		    forbidden_reuses++;
+		    bad_reuse_example = det2trk[Atrkmat2[btrk][i]];
+		    cerr << "Bad reuse of index " << detvec[Atrkmat2[btrk][i]].index << ", previously assigned to exclusive tracklet " << det2trk[Atrkmat2[btrk][i]] << " originally numbered as " << det2trk[Atrkmat2[btrk][i]] << "\n";
+		    cerr << " " << Atrkmat2[btrk][i] << " " << detvec[Atrkmat2[btrk][i]].image << " " << detvec[Atrkmat2[btrk][i]].MJD << " " << detvec[Atrkmat2[btrk][i]].RA << " " << detvec[Atrkmat2[btrk][i]].Dec << " " << detvec[Atrkmat2[btrk][i]].index << " " << det2trk[Atrkmat2[btrk][i]] << "\n";
+		    // And then add it to trk2det anyway.
+		    pdct = detvec[Atrkmat2[btrk][i]].index;
+		    onepair = longpair(track1.trk_ID, pdct);
+		    trk2det.push_back(onepair);
+		  }
+		  // Mark detection i as having been used in an exclusive tracklet
+		  det2trk[Atrkmat2[btrk][i]] = track1.trk_ID;
+		  if(verbose>0) cout << fixed << setprecision(6) << "new tracklet point: " << Atrkmat2[btrk][i] << " " << detvec[Atrkmat2[btrk][i]].image << " " << detvec[Atrkmat2[btrk][i]].MJD << " " << detvec[Atrkmat2[btrk][i]].RA << " " << detvec[Atrkmat2[btrk][i]].Dec << " " << detvec[Atrkmat2[btrk][i]].index << " " << det2trk[Atrkmat2[btrk][i]] << "\n";
+		}
+		if(bad_reuse>0) {
+		  cerr << "WARNING 13: " << bad_reuse << " attempts to use an already-excluded point, tct = " << tct << " of " << best_trk.size() << ", btrk = " << btrk << "\n";
+		  cerr << "NEW TRACKLET:\n";
+		  for(i=0;i<trklen;i++) {
+		    cerr << " " << Atrkmat2[btrk][i] << " " << detvec[Atrkmat2[btrk][i]].image << " " << detvec[Atrkmat2[btrk][i]].MJD << " " << detvec[Atrkmat2[btrk][i]].RA << " " << detvec[Atrkmat2[btrk][i]].Dec << " " << detvec[Atrkmat2[btrk][i]].index << " " << det2trk[Atrkmat2[btrk][i]] << "\n";
+		  }
+		  i = tracklet_lookup_ind(trk2det, bad_reuse_example, trkdetind, trkindind);
+		  cerr << "OLD TRACKLET: " << bad_reuse_example << " :\n";
+		  for(i=0;i<long(trkdetind.size());i++) {
+		    cerr << " " << pairdets[trkdetind[i]].index << " " << detvec[pairdets[trkdetind[i]].index].image << " " << detvec[pairdets[trkdetind[i]].index].MJD << " " << detvec[pairdets[trkdetind[i]].index].RA << " " << detvec[pairdets[trkdetind[i]].index].Dec << " " << detvec[pairdets[trkdetind[i]].index].index << " " << det2trk[pairdets[trkdetind[i]].index] << "\n";
+		  }
+		  return(13);
+		}
+		// Since the tracklet is exclusive, no other tracklets involving
+		// detection detct on image A need be considered.
+		break;
+		// End if-statement checking that the tracklet is exclusive
+	      } else {
+		// The tracklet is not exclusive
+		for(i=0;i<trklen;i++) {
+		  if(detvec[Atrkmat2[btrk][i]].index <= -detnum) {
+		    // This detection has never been used before. Flag it as used
+		    detvec[Atrkmat2[btrk][i]].index = -pairdets.size();
+		    // Load the corresponding entry to the trk2det vector
+		    onepair = longpair(track1.trk_ID, pairdets.size());
+		    trk2det.push_back(onepair);
+		    // Load the detection to the pairdets vector.
+		    onedet = detvec[Atrkmat2[btrk][i]];
+		    onedet.index = Atrkmat2[btrk][i];
+		    pairdets.push_back(onedet);
+		  } else if(detvec[Atrkmat2[btrk][i]].index<=0) {
+		    // This detection has previously been used in an non-exclusive tracklet,
+		    // and hence has already been added to pairdets with a negative index to
+		    // the pairdets vector. Load just the trk2det entry
+		    pdct = -detvec[Atrkmat2[btrk][i]].index;
+		    onepair = longpair(track1.trk_ID, pdct);
+		    trk2det.push_back(onepair);
+		  } else {
+		    // This detection has previously been used in an exclusive tracklet.
+		    // Ideally, this would not be possible, but the program's logic does
+		    // permit it under circumstances which should be statistically rare.
+		    // Track the errors:
+		    bad_reuse++;
+		    forbidden_reuses++;
+		    bad_reuse_example = det2trk[Atrkmat2[btrk][i]];
+		    cerr << "Bad reuse of index " << detvec[Atrkmat2[btrk][i]].index << ", previously assigned to exclusive tracklet " << det2trk[Atrkmat2[btrk][i]] << " originally numbered as " << det2trk[Atrkmat2[btrk][i]] << "\n";
+		    cerr << " " << Atrkmat2[btrk][i] << " " << detvec[Atrkmat2[btrk][i]].image << " " << detvec[Atrkmat2[btrk][i]].MJD << " " << detvec[Atrkmat2[btrk][i]].RA << " " << detvec[Atrkmat2[btrk][i]].Dec << " " << detvec[Atrkmat2[btrk][i]].index << " " << det2trk[Atrkmat2[btrk][i]] << "\n";
+		    // And then add it to trk2det anyway.
+		    pdct = detvec[Atrkmat2[btrk][i]].index;
+		    onepair = longpair(track1.trk_ID, pdct);
+		    trk2det.push_back(onepair);
+		  }
+		}
+		if(bad_reuse>0) {
+		  cerr << "WARNING 12: " << bad_reuse << " attempts to use an already-excluded point, tct = " << tct << " of " << best_trk.size() << ", btrk = " << btrk << "\n";
+		  cerr << "NEW TRACKLET:\n";
+		  for(i=0;i<trklen;i++) {
+		    cerr << " " << Atrkmat2[btrk][i] << " " << detvec[Atrkmat2[btrk][i]].image << " " << detvec[Atrkmat2[btrk][i]].MJD << " " << detvec[Atrkmat2[btrk][i]].RA << " " << detvec[Atrkmat2[btrk][i]].Dec << " " << detvec[Atrkmat2[btrk][i]].index << " " << det2trk[Atrkmat2[btrk][i]] << "\n";
+		  }
+		  i = tracklet_lookup_ind(trk2det, bad_reuse_example, trkdetind, trkindind);
+		  cerr << "OLD TRACKLET: " << bad_reuse_example << " :\n";
+		  for(i=0;i<long(trkdetind.size());i++) {
+		    cerr << " " << pairdets[trkdetind[i]].index << " " << detvec[pairdets[trkdetind[i]].index].image << " " << detvec[pairdets[trkdetind[i]].index].MJD << " " << detvec[pairdets[trkdetind[i]].index].RA << " " << detvec[pairdets[trkdetind[i]].index].Dec << " " << detvec[pairdets[trkdetind[i]].index].index << " " << det2trk[pairdets[trkdetind[i]].index] << "\n";
+		  }
+		  return(12);
+		}
+	      }
+	      // End else-statment checking that the tracklet has more that two points.
+	    }
+	    // End for loop over tracklets involving detection detct on image A.
+	  }
+	  // End if-statement checking that valid tracklets exist involving detection detct on image A
+	}
+	// End loop over all detections on image A
+      }
+      // End if-statement checking if image A has enough overlap
+      // to produce valid tracklets.
+    }
+    // End loop giving each image a chance to be image A
+  }
+  cout << "Exiting find_pairs4 with " << forbidden_reuses << " forbidden re-uses of points from exclusive tracklets\n";
   cout << "Vector sizes: pairdets = " << pairdets.size() << "  trk2det = " << trk2det.size() << "  tracklets = " << tracklets.size() << "\n";
   return(0);
 }
@@ -24655,6 +26760,7 @@ int make_tracklets3(vector <hldet> &detvec, vector <hlimage> &image_log, MakeTra
   cout << "Minimum inter-image time interval: " << config.mintime << " days (" << config.mintime*1440.0 << " minutes)\n";
   cout << "Image radius: " << config.imagerad << " degrees\n";
   cout << "Maximum Great Circle Residual for tracklets with more than two points: " << config.maxgcr << " arcsec\n";
+  cout << "Maximum non-exclusive tracklet length is " << config.max_netl << " points\n";
   if(config.forcerun) {
     cout << "forcerun has been invoked: execution will attempt to push through\n";
     cout << "any errors that are not immediately fatal, including those that\n";
@@ -24782,6 +26888,370 @@ int make_tracklets3(vector <hldet> &detvec, vector <hlimage> &image_log, MakeTra
     }
   }
   
+  return(0);
+}
+
+// make_tracklets4: July 21, 2025: First version to tune minimum tracklet number
+// according to how many tracklets could potentially have existed. This requires
+// two new configuration parameters: config.matchrad and config.trkfrac. The
+// first is a matching radius in degrees (default 0.03) determining how large
+// an area around each input detections will be searched for potential other
+// detections on other images. The second (default 0.2) is the minimum tracklet size
+// as a fraction of the total number of overlapping images within config.maxtime.
+// For example, if 20 images are found to overlap, the minimum tracklet size
+// will be 20*0.2 = 4 points.
+int make_tracklets4(vector <hldet> &detvec, vector <hlimage> &image_log, MakeTrackletsConfig config, vector <hldet> &pairdets,vector <tracklet> &tracklets, vector <longpair> &trk2det)
+{
+  cout << "Inside make_tracklets4\n";
+  long i=0;
+  std::vector <longpair> pairvec;
+  std::vector <vector <long>> indvecs;
+  
+  // Echo config struct
+  cout << "Configuration parameters for new make_tracklets:\n";
+  cout << "Min. number of tracklet points: " << config.mintrkpts << "\n";
+  cout << "Time-tolerance for matching detections on the same image: " << config.imagetimetol << " days (" << config.imagetimetol*SOLARDAY << " seconds)\n";
+  cout << "Maximum angular velocity: " << config.maxvel << " deg/day\n";
+  cout << "Minimum angular velocity: " << config.minvel << " deg/day\n";
+  cout << "Minimum angular arc: " << config.minarc << " arcsec\n";
+  cout << "Maximum inter-image time interval: " << config.maxtime << " days (" << config.maxtime*1440.0 << " minutes)\n";
+  cout << "Minimum inter-image time interval: " << config.mintime << " days (" << config.mintime*1440.0 << " minutes)\n";
+  cout << "Image radius: " << config.imagerad << " degrees\n";
+  cout << "Maximum Great Circle Residual for tracklets with more than two points: " << config.maxgcr << " arcsec\n";
+  cout << "Maximum non-exclusive tracklet length is " << config.max_netl << " points\n";
+  if(config.forcerun) {
+    cout << "forcerun has been invoked: execution will attempt to push through\n";
+    cout << "any errors that are not immediately fatal, including those that\n";
+    cout << "could produce inaccurate final results.\n";
+  }
+  if(config.verbose) cout << "Verbose output has been requested\n";
+  
+  int status = load_image_indices(image_log, detvec, config.imagetimetol, config.forcerun);
+  if(status!=0) {
+    cerr << "ERROR: failed to load_image_indices from detection vector\n";
+    return(status);
+  }
+  
+  // Echo detection vector
+  //for(i=0;i<detvec.size();i++) {
+  //  cout << "det " << i << " " << detvec[i].MJD << " " << detvec[i].RA << " " << detvec[i].Dec << " " << detvec[i].mag  << " " << detvec[i].obscode << " " << detvec[i].image << "\n";
+  //}
+  if(config.verbose) {
+    // Echo image log
+    for(i=0;i<long(image_log.size());i++) {
+      cout << "image " << i << " " << image_log[i].MJD << " " << image_log[i].RA << " " << image_log[i].Dec << " " << image_log[i].X << " " << image_log[i].obscode  << " " << image_log[i].startind  << " " << image_log[i].endind << "\n";
+    }
+  }
+   
+  // Create pairs, output a vector pairdets of type hldet; a vector indvecs of type vector <long>,
+  // with the same length as pairdets, giving the indices of all the detections paired with a given detection;
+  // and the vector pairvec of type longpair, giving all the pairs of detections.
+  cout << "About to call find_pairs2\n";
+  status = find_pairs2(detvec, image_log, pairdets, tracklets, trk2det, config.mintrkpts, config.max_netl, config.mintime, config.maxtime, config.imagetimetol, config.imagerad, config.minvel, config.maxvel, config.minarc, config.matchrad, config.trkfrac, config.maxgcr, config.verbose);
+
+  cout << "find_pairs2 completed with status " << status << "\n";
+  return(status);
+  if(status!=0) {
+    cerr << "ERROR: find_pairs2 reports failure status " << status << "\n";
+    return(status);
+  }
+  return(0);
+}
+
+// make_tracklets5: July 25, 2025: Like make_tracklets4, but retains overlapping
+// exclusive tracklets in order to choose the best of them.
+int make_tracklets5(vector <hldet> &detvec, vector <hlimage> &image_log, MakeTrackletsConfig config, vector <hldet> &pairdets,vector <tracklet> &tracklets, vector <longpair> &trk2det)
+{
+  cout << "Inside make_tracklets5\n";
+  long i=0;
+  std::vector <longpair> pairvec;
+  std::vector <vector <long>> indvecs;
+  
+  // Echo config struct
+  cout << "Configuration parameters for new make_tracklets:\n";
+  cout << "Min. number of tracklet points: " << config.mintrkpts << "\n";
+  cout << "Time-tolerance for matching detections on the same image: " << config.imagetimetol << " days (" << config.imagetimetol*SOLARDAY << " seconds)\n";
+  cout << "Maximum angular velocity: " << config.maxvel << " deg/day\n";
+  cout << "Minimum angular velocity: " << config.minvel << " deg/day\n";
+  cout << "Minimum angular arc: " << config.minarc << " arcsec\n";
+  cout << "Maximum inter-image time interval: " << config.maxtime << " days (" << config.maxtime*1440.0 << " minutes)\n";
+  cout << "Minimum inter-image time interval: " << config.mintime << " days (" << config.mintime*1440.0 << " minutes)\n";
+  cout << "Image radius: " << config.imagerad << " degrees\n";
+  cout << "Maximum Great Circle Residual for tracklets with more than two points: " << config.maxgcr << " arcsec\n";
+  cout << "Maximum non-exclusive tracklet length is " << config.max_netl << " points\n";
+  if(config.forcerun) {
+    cout << "forcerun has been invoked: execution will attempt to push through\n";
+    cout << "any errors that are not immediately fatal, including those that\n";
+    cout << "could produce inaccurate final results.\n";
+  }
+  if(config.verbose) cout << "Verbose output has been requested\n";
+  
+  int status = load_image_indices(image_log, detvec, config.imagetimetol, config.forcerun);
+  if(status!=0) {
+    cerr << "ERROR: failed to load_image_indices from detection vector\n";
+    return(status);
+  }
+  
+  // Echo detection vector
+  //for(i=0;i<detvec.size();i++) {
+  //  cout << "det " << i << " " << detvec[i].MJD << " " << detvec[i].RA << " " << detvec[i].Dec << " " << detvec[i].mag  << " " << detvec[i].obscode << " " << detvec[i].image << "\n";
+  //}
+  if(config.verbose) {
+    // Echo image log
+    for(i=0;i<long(image_log.size());i++) {
+      cout << "image " << i << " " << image_log[i].MJD << " " << image_log[i].RA << " " << image_log[i].Dec << " " << image_log[i].X << " " << image_log[i].obscode  << " " << image_log[i].startind  << " " << image_log[i].endind << "\n";
+    }
+  }
+   
+  // Create pairs, output a vector pairdets of type hldet; a vector indvecs of type vector <long>,
+  // with the same length as pairdets, giving the indices of all the detections paired with a given detection;
+  // and the vector pairvec of type longpair, giving all the pairs of detections.
+  cout << "About to call find_pairs3\n";
+  status = find_pairs3(detvec, image_log, pairdets, tracklets, trk2det, config.mintrkpts, config.max_netl, config.mintime, config.maxtime, config.imagetimetol, config.imagerad, config.minvel, config.maxvel, config.minarc, config.matchrad, config.trkfrac, config.maxgcr, config.verbose);
+
+  cout << "find_pairs3 completed with status " << status << "\n";
+  return(status);
+  if(status!=0) {
+    cerr << "ERROR: find_pairs3 reports failure status " << status << "\n";
+    return(status);
+  }
+  return(0);
+}
+
+// make_tracklets6: July 31, 2025: Like make_tracklets5, but resolves conflicts between
+// overlapping exclusive trackles on a point-by-point basis, instead of discarding the
+// inferior tracklet of an overlapping pair in its entirety.
+int make_tracklets6(vector <hldet> &detvec, vector <hlimage> &image_log, MakeTrackletsConfig config, vector <hldet> &pairdets,vector <tracklet> &tracklets, vector <longpair> &trk2det)
+{
+  cout << "Inside make_tracklets6\n";
+  long i=0;
+  std::vector <longpair> pairvec;
+  std::vector <vector <long>> indvecs;
+  
+  // Echo config struct
+  cout << "Configuration parameters for new make_tracklets:\n";
+  cout << "Min. number of tracklet points: " << config.mintrkpts << "\n";
+  cout << "Time-tolerance for matching detections on the same image: " << config.imagetimetol << " days (" << config.imagetimetol*SOLARDAY << " seconds)\n";
+  cout << "Maximum angular velocity: " << config.maxvel << " deg/day\n";
+  cout << "Minimum angular velocity: " << config.minvel << " deg/day\n";
+  cout << "Minimum angular arc: " << config.minarc << " arcsec\n";
+  cout << "Maximum inter-image time interval: " << config.maxtime << " days (" << config.maxtime*1440.0 << " minutes)\n";
+  cout << "Minimum inter-image time interval: " << config.mintime << " days (" << config.mintime*1440.0 << " minutes)\n";
+  cout << "Image radius: " << config.imagerad << " degrees\n";
+  cout << "Maximum Great Circle Residual for tracklets with more than two points: " << config.maxgcr << " arcsec\n";
+  cout << "Maximum non-exclusive tracklet length is " << config.max_netl << " points\n";
+  if(config.forcerun) {
+    cout << "forcerun has been invoked: execution will attempt to push through\n";
+    cout << "any errors that are not immediately fatal, including those that\n";
+    cout << "could produce inaccurate final results.\n";
+  }
+  if(config.verbose) cout << "Verbose output has been requested\n";
+  
+  int status = load_image_indices(image_log, detvec, config.imagetimetol, config.forcerun);
+  if(status!=0) {
+    cerr << "ERROR: failed to load_image_indices from detection vector\n";
+    return(status);
+  }
+  
+  // Echo detection vector
+  //for(i=0;i<detvec.size();i++) {
+  //  cout << "det " << i << " " << detvec[i].MJD << " " << detvec[i].RA << " " << detvec[i].Dec << " " << detvec[i].mag  << " " << detvec[i].obscode << " " << detvec[i].image << "\n";
+  //}
+  if(config.verbose) {
+    // Echo image log
+    for(i=0;i<long(image_log.size());i++) {
+      cout << "image " << i << " " << image_log[i].MJD << " " << image_log[i].RA << " " << image_log[i].Dec << " " << image_log[i].X << " " << image_log[i].obscode  << " " << image_log[i].startind  << " " << image_log[i].endind << "\n";
+    }
+  }
+   
+  // Create pairs, output a vector pairdets of type hldet; a vector indvecs of type vector <long>,
+  // with the same length as pairdets, giving the indices of all the detections paired with a given detection;
+  // and the vector pairvec of type longpair, giving all the pairs of detections.
+  cout << "About to call find_pairs4\n";
+  status = find_pairs4(detvec, image_log, pairdets, tracklets, trk2det, config.mintrkpts, config.max_netl, config.mintime, config.maxtime, config.imagetimetol, config.imagerad, config.minvel, config.maxvel, config.minarc, config.matchrad, config.trkfrac, config.maxgcr, config.verbose);
+
+  cout << "find_pairs4 completed with status " << status << "\n";
+  return(status);
+  if(status!=0) {
+    cerr << "ERROR: find_pairs4 reports failure status " << status << "\n";
+    return(status);
+  }
+  return(0);
+}
+
+// make_tracklets7: August 01, 2025: Like make_tracklets5, but resolves conflicts between
+// overlapping exclusive trackles on a point-by-point basis, instead of discarding the
+// inferior tracklet of an overlapping pair in its entirety.
+int make_tracklets7(vector <hldet> &detvec, vector <hlimage> &image_log, MakeTrackletsConfig config, vector <hldet> &pairdets,vector <tracklet> &tracklets, vector <longpair> &trk2det)
+{
+  cout << "Inside make_tracklets7\n";
+  long i=0;
+  std::vector <longpair> pairvec;
+  std::vector <vector <long>> indvecs;
+  
+  // Echo config struct
+  cout << "Configuration parameters for new make_tracklets:\n";
+  cout << "Min. number of tracklet points: " << config.mintrkpts << "\n";
+  cout << "Time-tolerance for matching detections on the same image: " << config.imagetimetol << " days (" << config.imagetimetol*SOLARDAY << " seconds)\n";
+  cout << "Maximum angular velocity: " << config.maxvel << " deg/day\n";
+  cout << "Minimum angular velocity: " << config.minvel << " deg/day\n";
+  cout << "Minimum angular arc: " << config.minarc << " arcsec\n";
+  cout << "Maximum inter-image time interval: " << config.maxtime << " days (" << config.maxtime*1440.0 << " minutes)\n";
+  cout << "Minimum inter-image time interval: " << config.mintime << " days (" << config.mintime*1440.0 << " minutes)\n";
+  cout << "Image radius: " << config.imagerad << " degrees\n";
+  if(config.use_lowmem==1) {
+    cout << "The more sophisticated, memory-efficient algorithm will be used\n";
+    cout << "Matching radius for image overlap calculation: " << config.matchrad << " degrees\n";
+    cout << "Min. number of tracklet points as a fraction of image overlap: " << config.trkfrac << "\n";
+  }
+  cout << "Maximum Great Circle Residual for tracklets with more than two points: " << config.maxgcr << " arcsec\n";
+  cout << "Maximum non-exclusive tracklet length is " << config.max_netl << " points\n";
+  if(config.forcerun) {
+    cout << "forcerun has been invoked: execution will attempt to push through\n";
+    cout << "any errors that are not immediately fatal, including those that\n";
+    cout << "could produce inaccurate final results.\n";
+  }
+  if(config.verbose) cout << "Verbose output has been requested\n";
+  
+  int status = load_image_indices(image_log, detvec, config.imagetimetol, config.forcerun);
+  if(status!=0) {
+    cerr << "ERROR: failed to load_image_indices from detection vector\n";
+    return(status);
+  }
+  
+  // Echo detection vector
+  //for(i=0;i<detvec.size();i++) {
+  //  cout << "det " << i << " " << detvec[i].MJD << " " << detvec[i].RA << " " << detvec[i].Dec << " " << detvec[i].mag  << " " << detvec[i].obscode << " " << detvec[i].image << "\n";
+  //}
+  if(config.verbose) {
+    // Echo image log
+    for(i=0;i<long(image_log.size());i++) {
+      cout << "image " << i << " " << image_log[i].MJD << " " << image_log[i].RA << " " << image_log[i].Dec << " " << image_log[i].X << " " << image_log[i].obscode  << " " << image_log[i].startind  << " " << image_log[i].endind << "\n";
+    }
+  }
+
+  if(config.use_lowmem==1) {
+    // USE THE NEW (July 31, 2025) memory-efficient algorithms implemented in find_pairs4.
+    // NOTE: little difference is expected between the algorithms except in the case of deep drilling fields.
+    // Create pairs, output a vector pairdets of type hldet; a vector indvecs of type vector <long>,
+    // with the same length as pairdets, giving the indices of all the detections paired with a given detection;
+    // and the vector pairvec of type longpair, giving all the pairs of detections.
+    cout << "About to call find_pairs4\n";
+    status = find_pairs4(detvec, image_log, pairdets, tracklets, trk2det, config.mintrkpts, config.max_netl, config.mintime, config.maxtime, config.imagetimetol, config.imagerad, config.minvel, config.maxvel, config.minarc, config.matchrad, config.trkfrac, config.maxgcr, config.verbose);
+
+    cout << "find_pairs4 completed with status " << status << "\n";
+    return(status);
+    if(status!=0) {
+      cerr << "ERROR: find_pairs4 reports failure status " << status << "\n";
+      return(status);
+    }
+  } else {
+    // USE THE OLDER, SIMPLER, and (possibly) more robust algorithms,
+    // first fully implemented in make_tracklets3 on about September 13, 2024.
+    if(config.mintrkpts==2) {
+      // Simply output to main pairdets vector:
+      // there will be no need to revise pairdets afterwards.
+
+      // Create pairs, output a vector pairdets of type hldet; a vector indvecs of type vector <long>,
+      // with the same length as pairdets, giving the indices of all the detections paired with a given detection;
+      // and the vector pairvec of type longpair, giving all the pairs of detections.
+      status = find_pairs(detvec, image_log, pairdets, indvecs, pairvec, config.mintime, config.maxtime, config.imagerad, config.maxvel, config.verbose);
+  
+      if(status!=0) {
+	cerr << "ERROR: find_pairs reports failure status " << status << "\n";
+	return(status);
+      }
+
+      // Sanity-check indvecs
+      cout << "make_tracklets is sanity-checking indvecs\n";
+      long detnum = indvecs.size();
+      long detct=0;
+      for(detct=0; detct<detnum; detct++) {
+	for(i=0; i<long(indvecs[detct].size()); i++) {
+	  if(indvecs[detct][i]<0 || indvecs[detct][i]>=detnum) {
+	    cerr << "ERROR: indvecs[" << detct << "][" << i << "] out of range: " << indvecs[detct][i] << "\n";
+	    cerr << "Acceptable range is 0 to " << detnum << "\n";
+	    return(9);
+	  }
+	}
+      }
+      cout << "Sanity-check finished\n";
+  
+      status = merge_pairs2(pairdets, indvecs, pairvec, tracklets, trk2det, config.mintrkpts, config.max_netl, config.maxgcr, config.minarc, config.minvel, config.maxvel, config.verbose);
+
+      if(status!=0) {
+	cerr << "ERROR: merge_pairs reports failure status " << status << "\n";
+	return(status);
+      } else cout << "merge_pairs finished OK\n";
+    } else {
+      // The minimum number of tracklet points is more than two, so pairdets will
+      // need to be culled after its initial construction, to eliminate detections
+      // that didn't contribute to a tracklet with more than two points. Hence, we
+      // load a temporary version of pairdets, which must be culled afterwards.
+
+      vector <hldet> pairdets_temp;
+    
+      // Create pairs, output a vector pairdets of type hldet; a vector indvecs of type vector <long>,
+      // with the same length as pairdets, giving the indices of all the detections paired with a given detection;
+      // and the vector pairvec of type longpair, giving all the pairs of detections.
+      status = find_pairs(detvec, image_log, pairdets_temp, indvecs, pairvec, config.mintime, config.maxtime, config.imagerad, config.maxvel, config.verbose);
+  
+      if(status!=0) {
+	cerr << "ERROR: find_pairs reports failure status " << status << "\n";
+	return(status);
+      }
+
+      // Sanity-check indvecs
+      cout << "make_tracklets is sanity-checking indvecs\n";
+      long detnum = indvecs.size();
+      long detct=0;
+      for(detct=0; detct<detnum; detct++) {
+	for(i=0; i<long(indvecs[detct].size()); i++) {
+	  if(indvecs[detct][i]<0 || indvecs[detct][i]>=detnum) {
+	    cerr << "ERROR: indvecs[" << detct << "][" << i << "] out of range: " << indvecs[detct][i] << "\n";
+	    cerr << "Acceptable range is 0 to " << detnum << "\n";
+	    return(9);
+	  }
+	}
+      }
+      cout << "Sanity-check finished\n";
+  
+      status = merge_pairs2(pairdets_temp, indvecs, pairvec, tracklets, trk2det, config.mintrkpts, config.max_netl, config.maxgcr, config.minarc, config.minvel, config.maxvel, config.verbose);
+
+      if(status!=0) {
+	cerr << "ERROR: merge_pairs reports failure status " << status << "\n";
+	return(status);
+      } else cout << "merge_pairs finished OK\n";
+
+      // Load culled version of pairdets_temp into the final pairdets vector,
+      // and re-write the indices of the trk2det vector accordingly
+    
+      // Create a vector of -1s, of the same length as pairdets_temp.
+      vector <long> detloaded;
+      for(i=0; i<long(pairdets_temp.size()); i++) detloaded.push_back(-1);
+      if(detloaded.size() != pairdets_temp.size()) {
+	cerr << "ERROR: length mismatch between detloaded and pairdets_temp!\n";
+	return(5);
+      }
+      pairdets={};
+      for(i=0; i<long(trk2det.size()); i++) {
+	long thisdet = trk2det[i].i2;
+	if(detloaded[thisdet]==-1) {
+	  // This detection has not yet been loaded. Load it now.
+	  pairdets.push_back(pairdets_temp[thisdet]);
+	  // Re-assign the trk2det index appropriately
+	  trk2det[i].i2 = long(pairdets.size()-1);
+	  // Mark it as loaded.
+	  detloaded[thisdet] = trk2det[i].i2;
+	} else {
+	  // This detection has already been loaded to the pairdets vector.
+	  // Re-assign the trk2det index appropriately.
+	  trk2det[i].i2 = detloaded[thisdet];
+	}
+      }
+    }
+  }
+
   return(0);
 }
 
@@ -27214,7 +29684,6 @@ int trk2statevec_omp2(const vector <hlimage> &image_log, const vector <tracklet>
 }
 
 
-
 // tracklet_lookup: Given a vector of type longpair that is a catalog
 // of the form trk2det, find and return all of the entries corresponding
 // to tracklet number trknum. The form of the input catalog is that it
@@ -27330,6 +29799,65 @@ vector <unsigned int> uint_lookup(const vector <uint_pair> &trk2det, unsigned in
   return(outvec);
 }
 
+// tracklet_lookup_ind: Given a vector of type longpair that is a catalog
+// of the form trk2det, find all of the entries corresponding to tracklet
+// number trknum, and return them in the vector trkdet. Also return the
+// indices of these entries in the vector trkind.
+// The form of the input catalog is that it
+// is monotonically sorted by the first index (e.g. tracklet count), but
+// with the number of entries of the same tracklet count -- and hence,
+// the vector index where a given tracklet trknum will start -- not known ahead of time. 
+int tracklet_lookup_ind(const vector <longpair> &trk2det, long trknum, vector <long> &trkdet, vector <long> &trkind)
+{
+  trkdet = trkind = {};
+  long catnum = trk2det.size();
+  long i=catnum/2;
+  long ilo=0;
+  long ihi=catnum-1;
+  int itnum=0;
+  long trksize=0;
+
+  if(DEBUG>=2) cout << "Looking up tracklet " << trknum << "\n";
+		
+  while(itnum<BINSEARCHMAX && trk2det[i].i1 != trknum) {
+    if(trk2det[i].i1 < trknum) {
+      if(DEBUG>=2) cout << "Guess = " << i << " trknum = " << trk2det[i].i1 << ": too low\n";
+      // Guess is too low. Make it the new lower bound
+      ilo = i;
+      // Reset to midway between the current low and high bounds
+      i = (ilo+ihi)/2;
+      itnum++;
+      if(i<0) i=0;
+      else if(i>=catnum) i=catnum-1;
+    } else if(trk2det[i].i1 > trknum) {
+      if(DEBUG>=2) cout << "Guess = " << i << " trknum = " << trk2det[i].i1 << ": too high\n";
+      // Guess is too high. Make it the new upper bound
+      ihi = i;
+      // Reset to midway between the current low and high bounds
+      i = (ilo+ihi)/2;
+      itnum++;
+      if(i<0) i=0;
+      else if(i>=catnum) i=catnum-1;
+    } 
+  }
+  if(trk2det[i].i1 != trknum) {
+    cerr << "ERROR: lookup failed for tracklet number " << trknum <<"\n";
+    return(-1);
+  }
+  // If we get here, we must have found the tracklet. Move upward to find where it begins.
+  while(i>=0 && trk2det[i].i1 == trknum) i--;
+  // Now point i+1 must be the start of the tracklet
+  i+=1;
+  if(DEBUG>0) cout << "Tracklet " << trknum << " begins at line number " << i << "\n";
+  while(i<catnum && trk2det[i].i1 == trknum) {
+    if(DEBUG>0) cout << "Loading point " << trkdet.size() << " of tracklet " << trknum << ", which corresponds to detection " << trk2det[i].i2 << "\n";
+    trkdet.push_back(trk2det[i].i2);
+    trkind.push_back(i);
+    i++;
+  }
+  trksize = trkdet.size();
+  return(trksize);
+}
 
 // earthpos01: March 28, 2023: wrapper to get an old-style 3D
 // position for the Earth from a vector of the new EarthState struct.
@@ -37370,9 +39898,17 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
   cout << "Maximum out-of-plane RMS in km: " << config.max_oop << "\n";
   if(config.useorbMJD>0) cout << "Epoch-of-orbit MJD will be used as MJDref, if available.\n";
   else  cout << "Old reference MJD from heliolinc will be used as MJDref\n";
-  cout << "In calculating the cluster quality metric, the number of\nunique points will be raised to the power of " << config.ptpow << ";\n";
-  cout << "the number of unique nights will be raised to the power of " << config.nightpow << ";\n";
-  cout << "the total timespan will be raised to the power of " << config.timepow << ";\n";
+  if(config.ptpow>=0 && config.nightpow>=0) {
+    cout << "In calculating the cluster quality metric, the number of\nunique points will be raised to the power of " << config.ptpow << " and\n";
+    cout << "the number of unique nights will be raised to the power of " << config.nightpow << ".\n";
+  } else {
+    cout << "Because the cluster-metric exponent for the number of unique points (which is set to " << config.ptpow << ") and/or\n";
+    cout << "the corresponding exponent for the number of unique nights (which is set to " << config.nightpow << ") is negative,\n";
+    cout << "a special (and recommended) case is triggered in which the cluster metric\n";
+    cout << "will be the product of the numbers of unique detections on every night that had some detections.\n";
+    cout << "E.g., an object observed twice per night on three nights would get a metric of 2*2*2 = 8.\n";
+  }
+  cout << "The total timespan will be raised to the power of " << config.timepow << ";\n";
   cout << "and the astrometric RMS will be raised to the power of (negative) " << config.rmspow << "\n";
   if(config.verbose>=1) cout << "verbose output has been selected\n";
   if(config.use_heliovane==1) cout << "Using heliovane parameterization\n";
@@ -37953,7 +40489,34 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
       onecluster.uniquepoints = ptnum;
       onecluster.obsnights = obsnights;
       // Recalculate clustermetric
-      clustmetric = intpowD(double(onecluster.uniquepoints),config.ptpow)*intpowD(double(onecluster.obsnights),config.nightpow)*intpowD(onecluster.timespan,config.timepow);	  
+      if(config.ptpow>=0 && config.nightpow>=0) {
+	// Calculate the cluster metric normally
+	clustmetric = intpowD(double(onecluster.uniquepoints),config.ptpow)*intpowD(double(onecluster.obsnights),config.nightpow)*intpowD(onecluster.timespan,config.timepow);
+      } else {
+	// New option copied from link_purify on August 01, 2025:
+	// Setting config.ptpow or config.nightpow to any negative value
+	// triggers a new sort of metric, equal to the products of all
+	// the observations per night multiplied together.
+	vector <int> obs_per_night;
+	int obs_this_night=1;
+	int first_obs_tonight=0;
+	for(ptct=1;ptct<ptnum;ptct++) {
+	  if((clusterdets[ptct].MJD-clusterdets[ptct-1].MJD)<NIGHTSTEP && (clusterdets[ptct].MJD-clusterdets[first_obs_tonight].MJD)<1.0) {
+	    // Detection ptct is on the same night as ptct-1. Augment the count of observations for this night.
+	    obs_this_night++;
+	  } else {
+	    // We've transitioned to a new night. Record the number of observations on the last night
+	    obs_per_night.push_back(obs_this_night);
+	    obs_this_night=1;
+	    first_obs_tonight=ptct;
+	  }
+	}
+	// Handle a final night
+	obs_per_night.push_back(obs_this_night);
+	clustmetric = double(obs_per_night[0]);
+	for(i=1;i<long(obs_per_night.size());i++) clustmetric*=double(obs_per_night[i]);
+	clustmetric*=intpowD(onecluster.timespan,config.timepow);
+      }
       // Include the astrometric RMS value in the cluster metric and the RMS vector
       onecluster.astromRMS = astromrms; // rmsvec[3]: astrometric rms in arcsec.
       onecluster.metric = clustmetric/intpowD(astromrms,config.rmspow); // Under the default value rmspow=2, this is equivalent
@@ -38134,7 +40697,34 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
 	  onecluster.uniquepoints = ptnum;
 	  onecluster.obsnights = obsnights;
 	  // Recalculate clustermetric
-	  clustmetric = intpowD(double(onecluster.uniquepoints),config.ptpow)*intpowD(double(onecluster.obsnights),config.nightpow)*intpowD(onecluster.timespan,config.timepow);	  
+	  if(config.ptpow>=0 && config.nightpow>=0) {
+	    // Calculate the cluster metric normally
+	    clustmetric = intpowD(double(onecluster.uniquepoints),config.ptpow)*intpowD(double(onecluster.obsnights),config.nightpow)*intpowD(onecluster.timespan,config.timepow);
+	  } else {
+	    // New option added April 16, 2025:
+	    // Setting config.ptpow or config.nightpow to any negative value
+	    // triggers a new sort of metric, equal to the products of all
+	    // the observations per night multiplied together.
+	    vector <int> obs_per_night;
+	    int obs_this_night=1;
+	    int first_obs_tonight=0;
+	    for(ptct=1;ptct<ptnum;ptct++) {
+	      if((clusterdets[ptct].MJD-clusterdets[ptct-1].MJD)<NIGHTSTEP && (clusterdets[ptct].MJD-clusterdets[first_obs_tonight].MJD)<1.0) {
+		// Detection ptct is on the same night as ptct-1. Augment the count of observations for this night.
+		obs_this_night++;
+	      } else {
+		// We've transitioned to a new night. Record the number of observations on the last night
+		obs_per_night.push_back(obs_this_night);
+		obs_this_night=1;
+		first_obs_tonight=ptct;
+	      }
+	    }
+	    // Handle a final night
+	    obs_per_night.push_back(obs_this_night);
+	    clustmetric = double(obs_per_night[0]);
+	    for(i=1;i<long(obs_per_night.size());i++) clustmetric*=double(obs_per_night[i]);
+	    clustmetric*=intpowD(onecluster.timespan,config.timepow);
+	  }
 	  // Include the astrometric RMS value in the cluster metric and the RMS vector
 	  onecluster.astromRMS = astromrms; // rmsvec[3]: astrometric rms in arcsec.
 	  onecluster.metric = clustmetric/intpowD(astromrms,config.rmspow); // Under the default value rmspow=2, this is equivalent
@@ -39810,7 +42400,7 @@ int greatcircfit(const vector <hldet> &trackvec, double &poleRA, double &poleDec
 // and along-track RMS residuals relative to constant velocity motion. 
 // Angle outputs are in degrees, except for the RMS residuals and the residuals vector,
 // which are in arcseconds; and the velocity is in degrees per day.*/
-int greatcircresid(const vector <hldet> &trackvec, double &poleRA, double &poleDec,double &angvel,double &pa,double &crosstrack,double &alongtrack, vector <double> &fitRA, vector <double> &fitDec, vector <double> &residuals)
+int greatcircresid(const vector <hldet> &trackvec, double &poleRA, double &poleDec,double &angvel,double &pa,double &crosstrack,double &alongtrack, vector <double> &fitRA, vector <double> &fitDec, vector <double> &residuals, int verbose)
 {
   // Wipe output vectors
   fitRA=fitDec=residuals={};
@@ -39823,7 +42413,6 @@ int greatcircresid(const vector <hldet> &trackvec, double &poleRA, double &poleD
   vector <double> projx;
   vector <double> projy;
   vector <double> timevec;
-  vector <double> altravec;
   vector <double> newRA;
   vector <double> newDec;
   vector <double> RAfit;
@@ -39880,21 +42469,25 @@ int greatcircresid(const vector <hldet> &trackvec, double &poleRA, double &poleD
   vecnorm3d(p3avg);
   // Convert this back to RA and Dec
   celedeproj01(p3avg, &meanRA, &meanDec);
-
+  if(!isnormal(meanRA)) meanRA=0.0;
+  if(!isnormal(meanDec)) meanDec=0.0;
+  
   // Project all points relative to this mean position, using arc projection,
   // and load time vector
   altramean=altranorm=0.0;
-  projx = projy = altravec = {};
+  projx = projy = {};
   timevec={};
   for(i=0;i<npoints;i++) {
     distradec02(meanRA,meanDec,trackvec[i].RA,trackvec[i].Dec,&dist,&tpa);
+    if(!isnormal(dist)) dist=tpa=0.0;
     x = dist/3600.0l * -sin(tpa/DEGPRAD);
     y = dist/3600.0l * cos(tpa/DEGPRAD);
     projx.push_back(x);
     projy.push_back(y);
     // Load RA for alternative PA determination*/
-    altra = atan(x/y)*DEGPRAD;
-    altravec.push_back(altra);
+    if(y==0.0 && x>=0.0) altra=90.0;
+    else if(y==0.0 && x<0.0) altra=-90.0;
+    else altra = atan(x/y)*DEGPRAD;
     altramean += altra*dist;
     altranorm += dist;
     // Load time vector
@@ -39903,11 +42496,16 @@ int greatcircresid(const vector <hldet> &trackvec, double &poleRA, double &poleD
   // Save celestial PA of last point relative to mean position
   lastpa=tpa;
   // Calculate alternative mean RA
-  altramean = altramean/altranorm;
-
+  if(isnormal(altranorm)) altramean = altramean/altranorm;
+  else altramean = 0.0;
+  
   // Perform linear fit on projected x and y
   linfituw01(timevec, projx, slopex, interceptx);
+  if(!isnormal(slopex)) slopex=0.0;
+  if(!isnormal(interceptx)) interceptx=0.0;
   linfituw01(timevec, projy, slopey, intercepty);
+  if(!isnormal(slopey)) slopey=0.0;
+  if(!isnormal(intercepty)) intercepty=0.0;
   if(slopex==0.0l && slopey>=0.0l) tpa = 0.0l;
   else if(slopex==0.0l && slopey<0.0l) tpa=180.0;
   else if(slopex>0.0l) tpa = 270.0 +  DEGPRAD*atan(slopey/slopex);
@@ -39922,7 +42520,9 @@ int greatcircresid(const vector <hldet> &trackvec, double &poleRA, double &poleD
   tpa-=90.0;
   if(tpa<0.0) tpa+=360.0;
   arc2cel01(meanRA,meanDec,90.0l,tpa,tpoleRA,tpoleDec);
-
+  if(!isnormal(tpoleRA)) tpoleRA=0.0;
+  if(!isnormal(tpoleDec)) tpoleDec=0.0;
+  
   // Transform all points to a coordinate system whose
   // pole is the Great Circle pole. Thus the tracklet should
   // lie along the equator.*/
@@ -39963,6 +42563,9 @@ int greatcircresid(const vector <hldet> &trackvec, double &poleRA, double &poleD
     newRA[i] += unwrapping;
   }
   linfituw01(timevec, newRA, tangvel, interceptx);
+  if(!isnormal(tangvel)) tangvel=0.0;
+  if(!isnormal(interceptx)) interceptx=0.0;
+    
   talong = 0.0;
   // Calculate the along-track RMS, and load the model vectors
   RAfit = Decfit = {};
@@ -39975,6 +42578,8 @@ int greatcircresid(const vector <hldet> &trackvec, double &poleRA, double &poleD
     while(tempRA<0.0) tempRA+=360.0;
     oldpolera=tpoleRA;
     poleswitch02(tempRA, tempDec, 0.0, tpoleDec, oldpolera, gcRA, gcDec);
+    if(!isnormal(gcRA)) gcRA=0.0;
+    if(!isnormal(gcDec)) gcDec=0.0;
     RAfit.push_back(gcRA);
     Decfit.push_back(gcDec);
   }
@@ -40010,6 +42615,8 @@ int greatcircresid(const vector <hldet> &trackvec, double &poleRA, double &poleD
   tpa-=90.0;
   if(tpa<0.0) tpa+=360.0;
   arc2cel01(meanRA,meanDec,90.0l,tpa,tpoleRA,tpoleDec);
+  if(!isnormal(tpoleRA)) tpoleRA=0.0;
+  if(!isnormal(tpoleDec)) tpoleDec=0.0;
 
   // Transform all points to a coordinate system whose
   // pole is the Great Circle pole. Thus the tracklet should
@@ -40018,6 +42625,8 @@ int greatcircresid(const vector <hldet> &trackvec, double &poleRA, double &poleD
   for(i=0;i<npoints;i++) {
     oldpolera=0.0;
     poleswitch02(trackvec[i].RA, trackvec[i].Dec, tpoleRA, tpoleDec, oldpolera, RA, Dec);
+    if(!isnormal(RA)) RA=0.0;
+    if(!isnormal(Dec)) Dec=0.0;
     newRA.push_back(RA);
     newDec.push_back(Dec);
    }
@@ -40051,6 +42660,8 @@ int greatcircresid(const vector <hldet> &trackvec, double &poleRA, double &poleD
     newRA[i] += unwrapping;
   }
   linfituw01(timevec, newRA, tangvel, interceptx);
+  if(!isnormal(tangvel)) tangvel=0.0;
+  if(!isnormal(interceptx)) interceptx=0.0;
   talong = 0.0;
   altRAfit = altDecfit = {};
   for(i=0;i<npoints;i++) {
@@ -40062,6 +42673,8 @@ int greatcircresid(const vector <hldet> &trackvec, double &poleRA, double &poleD
     while(tempRA<0.0) tempRA+=360.0;
     oldpolera=tpoleRA;
     poleswitch02(tempRA, tempDec, 0.0, tpoleDec, oldpolera, gcRA, gcDec);
+    if(!isnormal(gcRA)) gcRA=0.0;
+    if(!isnormal(gcDec)) gcDec=0.0;
     altRAfit.push_back(gcRA);
     altDecfit.push_back(gcDec);
   }
@@ -40079,7 +42692,7 @@ int greatcircresid(const vector <hldet> &trackvec, double &poleRA, double &poleD
     poleDec = tpoleDec;
     fitRA = altRAfit;
     fitDec = altDecfit;
-    cout << "Used case 2 fit\n";
+    if(verbose>0) cout << "Used case 2 fit in greatcircresid\n";
   } 
   residuals={};
   for(i=0;i<npoints;i++) {

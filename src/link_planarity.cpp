@@ -174,7 +174,7 @@ int main(int argc, char *argv[])
 	i++;
       }
       else {
-	cerr << "Max astrometric RMS keyword supplied with no corresponding argument\n";
+	cerr << "Max RMS out-of-plane distance keyword supplied with no corresponding argument\n";
 	show_usage();
 	return(1);
       }
@@ -361,20 +361,28 @@ int main(int argc, char *argv[])
   if(default_minpointnum==1) cout << ", which is the default.\n";
   else cout << ", as specified by the user\n";
 
-  cout << "In calculating the cluster quality metric, the number of\n";
-  cout << "unique points will be raised to the power of " << config.ptpow << ",\n";
-  if(default_ptpow==1) cout << "which is the default.\n";
-  else cout << "as specified by the user.\n";
-  cout << "The number of unique nights will be raised to the power of " << config.nightpow << ",\n";
-  if(default_nightpow==1) cout << "which is the default.\n";
-  else cout << "as specified by the user.\n";
+  if(config.ptpow>=0 && config.nightpow>=0) {
+    cout << "In calculating the cluster quality metric, the number of\n";
+    cout << "unique points will be raised to the power of " << config.ptpow << ",\n";
+    if(default_ptpow==1) cout << "which is the default.\n";
+    else cout << "as specified by the user.\n";
+    cout << "The number of unique nights will be raised to the power of " << config.nightpow << ",\n";
+    if(default_nightpow==1) cout << "which is the default.\n";
+    else cout << "as specified by the user.\n";
+  } else {
+    cout << "Because the cluster-metric exponent for the number of unique points (which is set to " << config.ptpow << ") and/or\n";
+    cout << "the corresponding exponent for the number of unique nights (which is set to " << config.nightpow << ") is negative,\n";
+    cout << "a special (and recommended) case is triggered in which the cluster metric\n";
+    cout << "will be the product of the numbers of unique detections on every night that had some detections.\n";
+    cout << "E.g., an object observed twice per night on three nights would get a metric of 2*2*2 = 8.\n";
+  }
   cout << "The total timespan will be raised to the power of " << config.timepow << ",\n";
   if(default_timepow==1) cout << "which is the default.\n";
   else cout << "as specified by the user.\n";
   cout << "Finally, the astrometric RMS will be raised to the power of (negative) " << config.rmspow << ",\n";
   if(default_rmspow==1) cout << "which is the default.\n";
   else cout << "as specified by the user.\n\n";
-  
+ 
   if(default_maxrms==1) cout << "Defaulting to maximum cluster RMS = " << config.maxrms << " km\n";
   else cout << "User-specified maximum cluster RMS is " << config.maxrms << " km\n";
   if(default_max_oop==1) cout << "Defaulting to maximum out-of-plane RMS = " << config.max_oop << " km\n";

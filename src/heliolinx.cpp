@@ -561,12 +561,15 @@ PYBIND11_MODULE(heliolinx, m) {
       .def_readwrite("maxtime", &MakeTrackletsConfig::maxtime)
       .def_readwrite("mintime", &MakeTrackletsConfig::mintime)
       .def_readwrite("imagerad", &MakeTrackletsConfig::imagerad)
+      .def_readwrite("matchrad", &MakeTrackletsConfig::matchrad)
+      .def_readwrite("trkfrac", &MakeTrackletsConfig::trkfrac)
       .def_readwrite("maxgcr", &MakeTrackletsConfig::maxgcr)
       .def_readwrite("exptime", &MakeTrackletsConfig::exptime)
       .def_readwrite("siglenscale", &MakeTrackletsConfig::siglenscale)
       .def_readwrite("sigpascale", &MakeTrackletsConfig::sigpascale)
       .def_readwrite("max_netl", &MakeTrackletsConfig::max_netl)
       .def_readwrite("time_offset", &MakeTrackletsConfig::time_offset)
+      .def_readwrite("use_lowmem", &MakeTrackletsConfig::use_lowmem)
       .def_readwrite("forcerun", &MakeTrackletsConfig::forcerun)
       .def_readwrite("verbose", &MakeTrackletsConfig::verbose);
 
