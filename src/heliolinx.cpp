@@ -288,7 +288,7 @@ std::tuple<py::array, py::array, py::array> makeTracklets(
   std::vector <tracklet> tracklets;
   std::vector <longpair> trk2det;  
   
-  make_tracklets3(detvec,image_log,config,pairdets,tracklets,trk2det);
+  make_tracklets7(detvec,image_log,config,pairdets,tracklets,trk2det);
   
   auto py_detout1 = vec_to_ndarray<hldet>(pairdets);
   cout << "loaded pairdets\n";
@@ -357,7 +357,7 @@ std::tuple<py::array, py::array>heliolinc(
   std::vector <hlclust> outclust;
   std::vector <longpair> clust2det;
      
-  status = heliolinc_alg_all(image_log, detvec, tracklets, trk2det, radhyp, earthpos, config, outclust, clust2det);
+  status = heliolinc_alg_lowmem(image_log, detvec, tracklets, trk2det, radhyp, earthpos, config, outclust, clust2det);
   if(status!=0) {
     cerr << "ERROR: heliolinc returned failure status " << status << "\n";
     auto py_clustout = vec_to_ndarray<hlclust>({});
