@@ -23,6 +23,7 @@
 #include <cstdio>
 #include <cassert>
 #include <climits>
+#include <chrono>
 
 #include <omp.h>
 

@@ -22774,7 +22774,9 @@ int find_pairs4(vector <hldet> &detvec, const vector <hlimage> &img_log, vector 
       cerr << "ERROR: size mismatch in image overlap vector: " << imct << " " << image_overlap.size() << "\n";
       return(2);
     }
-    if(verbose>0) cout << amedian << " overlapping images found for image " << imct << "\n";
+    const auto system_time = chrono::system_clock::now();
+    const time_t realtime = chrono::system_clock::to_time_t(system_time);
+    cout << amedian << " overlapping images found for image " << imct << "; current time is " << ctime(&realtime) << "\n";
     // Close loop over images for image A
   }
   for(imct=0;imct<imnum;imct++) {
@@ -22826,6 +22828,9 @@ int find_pairs4(vector <hldet> &detvec, const vector <hlimage> &img_log, vector 
       }
     }
     cout << "Creating tracklets that start on image " << imct << " of " << imnum << ", which has " << axyvec.size() << " good detections and min tracklet length = " << local_mintrkpts << "\n";
+    const auto system_time = chrono::system_clock::now();
+    const time_t realtime = chrono::system_clock::to_time_t(system_time);
+    cout << "Current time is " << ctime(&realtime) << "\n";
     if(verbose>0) cout << axyvec.size() << " detections successfully projected; " << imatchnum << " potentially matching images will be explored\n";
     if(imatchnum >= local_mintrkpts-1 && axyvec.size()>0) {
       // There are enough matching images to create tracklets of at least the minimum length,
@@ -40227,6 +40232,7 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
 	if(config.verbose>0 || inclustct%1000==0) cout << "Cluster " << inclustct << " of " << inclustnum << " is too small: REJECTED.\n";
 	continue; // This cluster needs culling, but is too small to survive any. Skip it.
       }
+      if(config.verbose>=1 || inclustct%1000==0) cout << "Trying to purify cluster " << inclustct << " with " << ptnum << " points, using planarity\n";
       // Iteratively remove outliers from the mean plane, or remove time duplicates
       // Setup for the main while loop:
       rejnum = 0;
@@ -40543,6 +40549,7 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
 	if(config.verbose>0 || inclustct%1000==0) cout << "Cluster " << inclustct << " of " << inclustnum << " is too small: REJECTED.\n";
 	continue; // This cluster needs culling, but is too small to survive any. Skip it.
       }
+      if(config.verbose>=1 || inclustct%1000==0) cout << "Trying to purify cluster " << inclustct << " with " << ptnum << " points, using orbit-fitting\n";
       // Iteratively remove astrometric outliers, or remove time duplicates
       // Setup for the main while loop:
       rejnum = 0;
