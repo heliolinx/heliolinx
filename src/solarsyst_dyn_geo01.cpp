@@ -22961,7 +22961,7 @@ int find_pairs4(vector <hldet> &detvec, const vector <hlimage> &img_log, vector 
 	    return(4);
 	  }
 	  GCR = sqrt(crosstrack*crosstrack + alongtrack*alongtrack);
-	  if(!isnormal(GCR)) {
+	  if(!isnormal(GCR) && GCR!=0.0) {
 	    cerr << "ERROR: GCR = " << GCR << "\n";
 	    cout << "Offending tracklet:\n";
 	    for(i=0;i<long(Atrkmat[tct].size());i++) {
