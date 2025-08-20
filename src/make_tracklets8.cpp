@@ -693,7 +693,7 @@ int main(int argc, char *argv[])
     outstream1 << img_log[imct].startind << " " << img_log[imct].endind << " " << img_log[imct].exptime << "\n";
   }
   outstream1.close();
-  make_tracklets7(detvec, img_log, config, pairdets, tracklets, trk2det);
+  make_tracklets6c(detvec, img_log, config, pairdets, tracklets, trk2det);
 
   cout << "Output image catalog " << outimfile << ", with " << img_log.size() << " lines, has been written\n";
   // Write paired detection file
