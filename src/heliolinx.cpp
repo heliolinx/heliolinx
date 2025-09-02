@@ -501,7 +501,16 @@ std::tuple<py::array, py::array>findGlintsRadec(
 
 template <typename S>
 py::array_t<S> create_recarray(size_t n) {
-    return py::array_t<S>(n);
+  // create an empty array
+  py::array_t<S> arr(n);
+
+  // zero-initialize it
+  auto buf = arr.template mutable_unchecked<1>();
+  for (size_t i = 0; i < n; ++i) {
+    buf(i) = S{}; // Default-initialize to zero (assuming S has no user-defined constructor)
+  }
+
+  return arr;
 }
 #define NDARRAY_FACTORY(S) m.def("create_" #S, &create_recarray<S>);
 

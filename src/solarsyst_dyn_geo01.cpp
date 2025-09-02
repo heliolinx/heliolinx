@@ -5,7 +5,13 @@
 
 #include "solarsyst_dyn_geo01.h"
 #include "cmath"
+
+#ifdef _OPENMP
 #include <omp.h>
+#else
+inline int omp_get_thread_num() { return 0; }
+inline int omp_get_num_threads() { return 1; }
+#endif
 
 // stringncopy01: March 09, 2022:
 // like library function strncpy, but works the way I want it to.
