@@ -3579,6 +3579,26 @@ int get_sv_string01(const string &lnfromfile, string &outstring, int startpoint)
   else return(-1); // Error code
 }
 
+// get_psv_string01: Given a line read from a file with values
+// separated by a pipe, and a starting point along that line, read the next value,
+// and put it into the output string, STRIPPING OUT ANY SPACES.
+// If the read was successful, return the line index of the pipe, newline,
+// or EOF at the end of the value read.
+// Otherwise, return -1 as an error code.
+int get_psv_string01(const string &lnfromfile, string &outstring, int startpoint)
+{
+  unsigned int i=startpoint;
+  char c='0';
+  outstring="";
+  while(i<lnfromfile.size() && c!='|' && c!='\n' && c!='\v' && c!='\f' && c!='\r' && c!=EOF) {
+    c=lnfromfile[i];
+    if(c!='|' && c!='\n' && c!=' ' && c!=EOF) outstring.push_back(c);
+    i++;
+  }
+  return(i-1);
+}
+
+
 // read_horizons_file: November 2021:
 // Given an input state-vector ephemeris file downloaded directly
 // from JPL Horizons, read it into position and velocity vectors.

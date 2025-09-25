@@ -747,6 +747,13 @@ public:
   }
 };
 
+class imgsort_hldet{
+public:
+  inline bool operator() (const hldet& o1, const hldet& o2) {
+    return(o1.image < o2.image || (o1.image == o2.image && o1.Dec < o2.Dec) || (o1.image == o2.image && o1.Dec == o2.Dec && o1.RA < o2.RA));
+  }
+};
+
 class early_imlg2{
 public:
   inline bool operator() (const img_log02& i1, const img_log02& i2) {
@@ -1694,6 +1701,7 @@ int celestial_to_cartunit(double RA, double Dec,point3d &cartvec);
 int cart_to_celestial(const point3d &invec, double *RA, double *Dec);
 int get_csv_string01(const string &lnfromfile, string &outstring, int startpoint);
 int get_sv_string01(const string &lnfromfile, string &outstring, int startpoint);
+int get_psv_string01(const string &lnfromfile, string &outstring, int startpoint);
 int read_horizons_file(string infile, vector <double> &mjdvec, vector <point3d> &pos, vector <point3d> &vel);
 int read_horizons_fileLD(string infile, vector <long double> &mjdvec, vector <point3LD> &pos, vector <point3LD> &vel);
 int read_horizons_csv(string infile, vector <double> &mjdvec, vector <point3d> &pos, vector <point3d> &vel);
