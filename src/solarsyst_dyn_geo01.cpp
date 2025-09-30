@@ -26059,6 +26059,15 @@ int merge_pairs2(const vector <hldet> &pairdets, vector <vector <long>> &indvecs
 	    GCR = sqrt(GCR/double(timevec.size()));
 	  }
 	}
+	// Recalculate istimedup, now that the loop is finished.
+	istimedup=0;
+	j=1;
+	while(j<long(timevec.size()) && istimedup==0) {
+	  if(fabs(timevec[j] - timevec[j-1]) < IMAGETIMETOL/SOLARDAY) {
+	    istimedup=1; // Point j and j-1 are time-duplicates.
+	  }
+	  j++;
+	}
 	// Find worst error.  
 	worsterr = 0.0l;
 	for(j=0; j<long(timevec.size()); j++) {
@@ -26123,6 +26132,7 @@ int merge_pairs2(const vector <hldet> &pairdets, vector <vector <long>> &indvecs
 	    istracklet=1;
 	  }
 	}
+	if(istimedup>0) istracklet=0; // Could not eliminate time-duplicates, tracklet is no good.
 	if(istracklet==1 && worsterr<=maxgcr && timevec.size()>=3 && long(timevec.size())>=mintrkpts) {
 	  // We succeeded in finding a tracklet with no time-duplicates, and
 	  // no outliers beyond maxgcr, and we have not rejected the anchor point.
@@ -26215,7 +26225,11 @@ int merge_pairs2(const vector <hldet> &pairdets, vector <vector <long>> &indvecs
   // Sort the vector ldivec, which will put the detections that
   // anchor tracklets with many detections and low GCR at the end.
   sort(ldivec.begin(), ldivec.end(), lower_longpd_index());
-
+  if(verbose>=2) {
+    for(i=0;i<long(ldivec.size());i++) {
+      cout << "ldivec[" << i << "]: " << ldivec[i].lelem << " " << ldivec[i].delem << " " << ldivec[i].index << "\n";
+    }
+  }
   // LOOP BACK FOR FINAL WRITING OF TRACKLETS WITH MORE THAN TWO POINTS
   for(i=long(ldivec.size()-1); i>=0; i--) {
     pdct = ldivec[i].index;
@@ -26306,6 +26320,9 @@ int merge_pairs2(const vector <hldet> &pairdets, vector <vector <long>> &indvecs
 	  // Write out representative pair, followed by RA, Dec and the total number of constituent points
 	  track1 = tracklet(pairdets[detindexvec[rp1]].image,outra1,outdec1,pairdets[detindexvec[rp2]].image,outra2,outdec2,detindexvec.size(),tracklets.size());
 	  tracklets.push_back(track1);
+	  if(verbose>=2) {
+	    cout << "Writing tracklet " << tracklets.size() << " " << pairdets[detindexvec[rp1]].image << " " << outra1 << " " << outdec1 << " " << detindexvec.size() << "\n";
+	  }
 	  for(j=0; j<long(detindexvec.size()); j++) {
 	    onepair = longpair(tracklets[tracklets.size()-1].trk_ID,detindexvec[j]);
 	    // Wipe indvecs entry for all sources, if tracklet is long enough to be exclusive.
@@ -26632,7 +26649,16 @@ int merge_pairs3(const vector <hldet> &pairdets, vector <vector <long>> &indvecs
 	    GCR = sqrt(GCR/double(timevec.size()));
 	  }
 	}
-	// Find worst error.  
+	// Recalculate istimedup, now that the loop is finished.
+	istimedup=0;
+	j=1;
+	while(j<long(timevec.size()) && istimedup==0) {
+	  if(fabs(timevec[j] - timevec[j-1]) < IMAGETIMETOL/SOLARDAY) {
+	    istimedup=1; // Point j and j-1 are time-duplicates.
+	  }
+	  j++;
+	}
+	// Find worst error
 	worsterr = 0.0l;
 	for(j=0; j<long(timevec.size()); j++) {
 	  if(fiterr[j]>worsterr) {
@@ -26696,7 +26722,16 @@ int merge_pairs3(const vector <hldet> &pairdets, vector <vector <long>> &indvecs
 	    istracklet=1;
 	  }
 	}
-	if(istimedup>0) istracklet=0; // Could not eliminate time-duplicates, tracklet is no good.
+	if(istimedup>0) {
+	  istracklet=0; // Could not eliminate time-duplicates, tracklet is no good.
+	  if(verbose==2) {
+	    cout << "istimedup = " << istimedup << "\n";
+	    trkptnum=timevec.size();
+	    for(j=0; j<trkptnum; j++) {
+	      cout << "j=" << j << " " << timevec[j] << " " << xvec[j] << " " << yvec[j] << " " << detindexvec[j] << "\n";
+	    }
+	  }
+	}
 	if(istracklet==1 && worsterr<=maxgcr && timevec.size()>=3 && long(timevec.size())>=local_mintrkpts) {
 	  // We succeeded in finding a tracklet with no time-duplicates, and
 	  // no outliers beyond maxgcr, and we have not rejected the anchor point.
@@ -26790,10 +26825,16 @@ int merge_pairs3(const vector <hldet> &pairdets, vector <vector <long>> &indvecs
   // anchor tracklets with many detections and low GCR at the end.
   sort(ldivec.begin(), ldivec.end(), lower_longpd_index());
 
+  sort(ldivec.begin(), ldivec.end(), lower_longpd_index());
+  if(verbose>=2) {
+    for(i=0;i<long(ldivec.size());i++) {
+      cout << "ldivec[" << i << "]: " << ldivec[i].lelem << " " << ldivec[i].delem << " " << ldivec[i].index << "\n";
+    }
+  }
   // LOOP BACK FOR FINAL WRITING OF TRACKLETS WITH MORE THAN TWO POINTS
   for(i=long(ldivec.size()-1); i>=0; i--) {
     pdct = ldivec[i].index;
-    local_mintrkpts = double(image_overlap[pairdets[pdct].image])*trkfrac + 0.5;;
+    local_mintrkpts = double(image_overlap[pairdets[pdct].image])*trkfrac + 0.5;
     if(local_mintrkpts < mintrkpts) local_mintrkpts = mintrkpts;
     // Load vectors for linear fitting
     if(long(indvecs2[pdct].size()) >= local_mintrkpts && indvecs2[pdct].size()>=3) {
@@ -26882,6 +26923,9 @@ int merge_pairs3(const vector <hldet> &pairdets, vector <vector <long>> &indvecs
 	  // Write out representative pair, followed by RA, Dec and the total number of constituent points
 	  track1 = tracklet(pairdets[detindexvec[rp1]].image,outra1,outdec1,pairdets[detindexvec[rp2]].image,outra2,outdec2,detindexvec.size(),tracklets.size());
 	  tracklets.push_back(track1);
+	  if(verbose>=2) {
+	    cout << "Writing tracklet " << tracklets.size() << " " << pairdets[detindexvec[rp1]].image << " " << outra1 << " " << outdec1 << " " << detindexvec.size() << "\n";
+	  }
 	  for(j=0; j<long(detindexvec.size()); j++) {
 	    onepair = longpair(tracklets[tracklets.size()-1].trk_ID,detindexvec[j]);
 	    // Wipe indvecs entry for all sources, if tracklet is long enough to be exclusive.
@@ -29313,11 +29357,11 @@ int make_tracklets6c(vector <hldet> &detvec, vector <hlimage> &image_log, MakeTr
 
 // make_tracklets7: August 20, 2025: Combines the options avaialable
 // in make_tracklets6b and make_tracklets6c, with selection via the
-// config.lowmem parameter. Operation of the parameter is as follows:
-// config.lowmem=0  --- equivalent to config.lowmem=0 in make_tracklets6c
-// config.lowmem=1  --- equivalent to config.lowmem=1 in make_tracklets6c
-// config.lowmem=2  --- equivalent to config.lowmem=0 in make_tracklets6b (and to make_tracklets3)
-// config.lowmem=3  --- equivalent to config.lowmem=1 in make_tracklets6b
+// config.use_lowmem parameter. Operation of the parameter is as follows:
+// config.use_lowmem=0  --- equivalent to config.use_lowmem=0 in make_tracklets6c
+// config.use_lowmem=1  --- equivalent to config.use_lowmem=1 in make_tracklets6c
+// config.use_lowmem=2  --- equivalent to config.use_lowmem=0 in make_tracklets6b (and to make_tracklets3)
+// config.use_lowmem=3  --- equivalent to config.use_lowmem=1 in make_tracklets6b
 int make_tracklets7(vector <hldet> &detvec, vector <hlimage> &image_log, MakeTrackletsConfig config, vector <hldet> &pairdets,vector <tracklet> &tracklets, vector <longpair> &trk2det)
 {
   cout << "Inside make_tracklets8\n";

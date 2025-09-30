@@ -362,7 +362,7 @@ struct MakeTrackletsConfig {
                                 // PA uncertainty, using sigPA = DEGPRAD*sigpascale/trail_len
   int max_netl = 2;             // maximum non-exclusive tracklet length (all longer tracklets are exclusive).
   double time_offset = 0.0;     // Offset in seconds to be ADDED to observing times to get UTC, e.g., -37.0 for TAI
-  int use_lowmem = 1; // Uses a more complex, memory-efficient algorithm with better handling of deep-drilling data
+  int use_lowmem = 0; // If set to 1, uses a more complex, memory-efficient algorithm with better handling of deep-drilling data
   int forcerun = 0; // Pushes through all but the immediately fatal errors.
   int verbose = 0;  // Prints monitoring output
 };
