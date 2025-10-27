@@ -198,7 +198,7 @@ void make_LDvec(int nx, vector <long double> &ldvec)
 {
   int i=0;
   ldvec={};
-  for(i=0;i<nx;i++) ldvec.push_back(0.0);
+  for(i=0;i<nx;i++) ldvec.push_back(0.0l);
 }
 
 void make_LDmat(int nx, int ny, vector <vector <long double>> &ldmat)
@@ -210,7 +210,7 @@ void make_LDmat(int nx, int ny, vector <vector <long double>> &ldmat)
   
   for(i=0;i<nx;i++) {
     tvec={};
-    for(j=0;j<ny;j++) tvec.push_back(0.0);
+    for(j=0;j<ny;j++) tvec.push_back(0.0l);
     ldmat.push_back(tvec);
   }
 }
@@ -1657,6 +1657,307 @@ int kdrange_4d_index(const vector <KD_point4d_index> &kdvec, const point4d_index
     }
   }
   return(0);
+}
+
+// kdnearest_4d_index_verbose: October 22, 2025:
+// Given a k-d tree vector kdvec created by kdtree_4d_index,
+// find the nearest neighbor to the specified point.
+// Assumes that kdvec[0] is the root of the k-d tree.
+long kdnearest_4d_index_verbose(const vector <KD_point4d_index> &kdvec, const point4d_index &querypoint)
+{
+  int notdone=1;
+  int dim=1;
+  long currentpoint=0;
+  long leftpoint=0;
+  long rightpoint=0;
+  long i=0;
+  double pointdiff = kdvec[currentpoint].point.t - querypoint.t;
+  double pdist2 = point4d_index_dist2(querypoint,kdvec[currentpoint].point);
+  vector <long> checkit;
+  vector <long> checkit_temp;
+  vector <double> checkdist;
+  vector <double> checkdist_temp;
+  point4d_index limits = point4d_index(0,0,0,0,0);
+  long checknum=0;
+  double mindist = pdist2;
+  long bestpoint=currentpoint;
+  int hitleaf=0;
+  
+  while(notdone>0) {
+    // Climb to the top of the k-d tree, keeping track
+    // of potentially interesting unexplored branches
+    // in the vector checkit.
+    while(leftpoint>=0 || rightpoint>=0) {
+      // Previous step did not end on a leaf.
+      leftpoint = kdvec[currentpoint].left;
+      rightpoint = kdvec[currentpoint].right;
+      dim = kdvec[currentpoint].dim;
+      if(dim%4==1) pointdiff = kdvec[currentpoint].point.t - querypoint.t;
+      else if(dim%4==2) pointdiff = kdvec[currentpoint].point.x - querypoint.x;
+      else if(dim%4==3) pointdiff = kdvec[currentpoint].point.y - querypoint.y;
+      else if(dim%4==0) pointdiff = kdvec[currentpoint].point.z - querypoint.z;
+      cout << "querypoint = " << querypoint.t << " " << querypoint.x << " " << querypoint.y << " " << querypoint.z << ", checkit size = " << checkit.size() << " dist = " << pdist2 << " hitleaf = " << hitleaf << "\n";
+      cout << "Current point = " << currentpoint << " " << kdvec[currentpoint].point.t << " " << kdvec[currentpoint].point.x << " " << kdvec[currentpoint].point.y << " " << kdvec[currentpoint].point.z << ", dim = " << dim << " pointdiff = " << pointdiff << "\n";
+      cout << "Limits = " << limits.t << " "  << limits.x << " "  << limits.y << " "  << limits.z << "\n";
+      
+      if(pointdiff<=0.0 && rightpoint>=0) {
+	// The right looks more promising; go that way first
+	cout << "Exploring rightward\n";
+	if(dim%4==1 && hitleaf==0) limits.t = kdvec[currentpoint].point.t;
+	else if(dim%4==2 && hitleaf==0) limits.x = kdvec[currentpoint].point.x;
+	else if(dim%4==3 && hitleaf==0) limits.y = kdvec[currentpoint].point.y;
+	else if(dim%4==0 && hitleaf==0) limits.z = kdvec[currentpoint].point.z;
+	currentpoint = rightpoint;
+	pdist2 = point4d_index_dist2(querypoint,kdvec[currentpoint].point);
+	if(pdist2 < mindist) {
+	  mindist = pdist2;
+	  bestpoint = currentpoint;
+	  cout << "Current point is the new best, at distance " << mindist << "\n";
+	}
+      	if(leftpoint>=0) {
+	  // Leftward branch may also be explored later
+	  checkit.push_back(leftpoint);
+	  checkdist.push_back(fabs(pointdiff));
+	}
+      } else if(pointdiff>0.0 && leftpoint>=0) {
+	// The left looks more promising; go that way first
+	cout << "Exploring leftward\n";
+	if(dim%4==1 && hitleaf==0) limits.t = kdvec[currentpoint].point.t;
+	else if(dim%4==2 && hitleaf==0) limits.x = kdvec[currentpoint].point.x;
+	else if(dim%4==3 && hitleaf==0) limits.y = kdvec[currentpoint].point.y;
+	else if(dim%4==0 && hitleaf==0) limits.z = kdvec[currentpoint].point.z;
+	currentpoint = leftpoint;
+	pdist2 = point4d_index_dist2(querypoint,kdvec[currentpoint].point);
+	if(pdist2 < mindist) {
+	  mindist = pdist2;
+	  bestpoint = currentpoint;
+	  cout << "Current point is the new best, at distance " << mindist << "\n";
+	}
+ 	if(rightpoint>=0) {
+	  // Rightward branch may also be explored later
+	  checkit.push_back(rightpoint);
+	  checkdist.push_back(fabs(pointdiff));
+	}
+      } else if(pointdiff<=0.0 && rightpoint<0 && leftpoint>=0) {
+	// The right looks more promising, but is a dead end.
+	if(fabs(pointdiff)<mindist) {
+	  // Still worth trying the left
+	  cout << "Right is a dead end, but left is worth trying\n";
+	  currentpoint = leftpoint;
+	  pdist2 = point4d_index_dist2(querypoint,kdvec[currentpoint].point);
+	  if(pdist2 < mindist) {
+	    mindist = pdist2;
+	    bestpoint = currentpoint;
+	    cout << "Current point is the new best, at distance " << mindist << "\n";
+	  }
+	} else {
+	  // Nearest point cannot lie to the left. Give up this climb.
+	  leftpoint=-1;
+	}
+      } else if(pointdiff>0.0 && leftpoint<0 && rightpoint>=0) {
+	// The left looks more promising, but is a dead end.
+	if(fabs(pointdiff)<mindist) {
+	  cout << "Left is a dead end, but right is worth trying\n";
+	  currentpoint = rightpoint;
+	  pdist2 = point4d_index_dist2(querypoint,kdvec[currentpoint].point);
+	  if(pdist2 < mindist) {
+	    mindist = pdist2;
+	    bestpoint = currentpoint;
+	    cout << "Current point is the new best, at distance " << mindist << "\n";
+	  }
+	} else {
+	  // Nearest point cannot lie to the right. Give up this climb.
+	  rightpoint=-1;
+	}
+      } else if(leftpoint<0 && rightpoint<0) {
+	// We have naturally arrived at a leaf.
+	cout << "Both directions are dead ends: we have arrived at a leaf\n";
+      } else {
+	// Program concluded it should go neither left nor right.
+	// The likely cause is that it encountered a NAN. Give up on this point.
+	leftpoint=rightpoint=-1;
+	cerr << "WARNING: ENCOUNTERED NAN CASE!\n";
+	cerr << "Query point:\n";
+	cerr << querypoint.t << ", " << querypoint.x << ", " << querypoint.y << ", " << querypoint.z << " dist = " << pdist2 << " hitleaf = " << hitleaf << "\n";
+	cerr << "Target point:\n";
+ 	cerr << kdvec[currentpoint].point.t << ", " << kdvec[currentpoint].point.x << ", " << kdvec[currentpoint].point.y << ", " << kdvec[currentpoint].point.z << "\n";
+      }
+      // Close while-loop checking if we've hit a leaf.
+    }
+    hitleaf = 1;
+    // We have climbed up the tree to a leaf. Go backwards through
+    // the checkit vector and see if there is anything to check.
+    checkit_temp={};
+    checkdist_temp={};
+    checknum=checkit.size();
+    for(i=0;i<checknum;i++) {
+      if(checkdist[i]<mindist) {
+	checkit_temp.push_back(checkit[i]);
+	checkdist_temp.push_back(checkdist[i]);
+      }
+    }
+    checkdist = checkdist_temp;
+    checkit = checkit_temp;
+    checknum=checkit.size();
+    if(checknum<=0) {
+      //There were no valid entries to check: we're done.
+      notdone=0;
+    } else {
+      //Set currentpoint to the last valid entry in checkit
+      currentpoint = checkit[checknum-1];
+      pdist2 = point4d_index_dist2(querypoint,kdvec[currentpoint].point);
+      cerr << "Query point:\n";
+      cerr << querypoint.t << ", " << querypoint.x << ", " << querypoint.y << ", " << querypoint.z << " dist = " << pdist2 << " hitleaf = " << hitleaf << "\n";
+      cerr << "Check point number " << checknum-1 << ":\n";
+      cerr << kdvec[currentpoint].point.t << ", " << kdvec[currentpoint].point.x << ", " << kdvec[currentpoint].point.y << ", " << kdvec[currentpoint].point.z << "\n";
+      if(pdist2 < mindist) {
+	mindist = pdist2;
+	bestpoint = currentpoint;
+	cout << "Current point is the new best, at distance " << mindist << "\n";
+      }
+      //Mark this point as used.
+      checkdist[checknum-1] = LARGERR2;
+      leftpoint=rightpoint=0;
+    }
+  }
+  return(bestpoint);
+}
+
+// kdnearest_4d_index: October 23, 2025:
+// Given a k-d tree vector kdvec created by kdtree_4d_index,
+// find the nearest neighbor to the specified point.
+// Assumes that kdvec[0] is the root of the k-d tree.
+long kdnearest_4d_index(const vector <KD_point4d_index> &kdvec, const point4d_index &querypoint)
+{
+  int notdone=1;
+  int dim=1;
+  long currentpoint=0;
+  long leftpoint=0;
+  long rightpoint=0;
+  long i=0;
+  double pointdiff = kdvec[currentpoint].point.t - querypoint.t;
+  double pdist2 = point4d_index_dist2(querypoint,kdvec[currentpoint].point);
+  vector <long> checkit;
+  vector <long> checkit_temp;
+  vector <double> checkdist;
+  vector <double> checkdist_temp;
+  long checknum=0;
+  double mindist = pdist2;
+  long bestpoint=currentpoint;
+  int hitleaf=0;
+  
+  while(notdone>0) {
+    // Climb to the top of the k-d tree, keeping track
+    // of potentially interesting unexplored branches
+    // in the vector checkit.
+    while(leftpoint>=0 || rightpoint>=0) {
+      // Previous step did not end on a leaf.
+      leftpoint = kdvec[currentpoint].left;
+      rightpoint = kdvec[currentpoint].right;
+      dim = kdvec[currentpoint].dim;
+      if(dim%4==1) pointdiff = kdvec[currentpoint].point.t - querypoint.t;
+      else if(dim%4==2) pointdiff = kdvec[currentpoint].point.x - querypoint.x;
+      else if(dim%4==3) pointdiff = kdvec[currentpoint].point.y - querypoint.y;
+      else if(dim%4==0) pointdiff = kdvec[currentpoint].point.z - querypoint.z;
+      if(pointdiff<=0.0 && rightpoint>=0) {
+	// The right looks more promising; go that way first
+	currentpoint = rightpoint;
+	pdist2 = point4d_index_dist2(querypoint,kdvec[currentpoint].point);
+	if(pdist2 < mindist) {
+	  mindist = pdist2;
+	  bestpoint = currentpoint;
+	}
+      	if(leftpoint>=0) {
+	  // Leftward branch may also be explored later
+	  checkit.push_back(leftpoint);
+	  checkdist.push_back(fabs(pointdiff));
+	}
+      } else if(pointdiff>0.0 && leftpoint>=0) {
+	// The left looks more promising; go that way first
+	currentpoint = leftpoint;
+	pdist2 = point4d_index_dist2(querypoint,kdvec[currentpoint].point);
+	if(pdist2 < mindist) {
+	  mindist = pdist2;
+	  bestpoint = currentpoint;
+	}
+ 	if(rightpoint>=0) {
+	  // Rightward branch may also be explored later
+	  checkit.push_back(rightpoint);
+	  checkdist.push_back(fabs(pointdiff));
+	}
+      } else if(pointdiff<=0.0 && rightpoint<0 && leftpoint>=0) {
+	// The right looks more promising, but is a dead end.
+	if(fabs(pointdiff)<mindist) {
+	  // Still worth trying the left
+	  currentpoint = leftpoint;
+	  pdist2 = point4d_index_dist2(querypoint,kdvec[currentpoint].point);
+	  if(pdist2 < mindist) {
+	    mindist = pdist2;
+	    bestpoint = currentpoint;
+	  }
+	} else {
+	  // Nearest point cannot lie to the left. Give up this climb.
+	  leftpoint=-1;
+	}
+      } else if(pointdiff>0.0 && leftpoint<0 && rightpoint>=0) {
+	// The left looks more promising, but is a dead end.
+	if(fabs(pointdiff)<mindist) {
+	  currentpoint = rightpoint;
+	  pdist2 = point4d_index_dist2(querypoint,kdvec[currentpoint].point);
+	  if(pdist2 < mindist) {
+	    mindist = pdist2;
+	    bestpoint = currentpoint;
+	  }
+	} else {
+	  // Nearest point cannot lie to the right. Give up this climb.
+	  rightpoint=-1;
+	}
+      } else if(leftpoint<0 && rightpoint<0) {
+	// We have naturally arrived at a leaf.
+      } else {
+	// Program concluded it should go neither left nor right.
+	// The likely cause is that it encountered a NAN. Give up on this point.
+	leftpoint=rightpoint=-1;
+	cerr << "WARNING: ENCOUNTERED NAN CASE!\n";
+	cerr << "Query point:\n";
+	cerr << querypoint.t << ", " << querypoint.x << ", " << querypoint.y << ", " << querypoint.z << " dist = " << pdist2 << " hitleaf = " << hitleaf << "\n";
+	cerr << "Target point:\n";
+ 	cerr << kdvec[currentpoint].point.t << ", " << kdvec[currentpoint].point.x << ", " << kdvec[currentpoint].point.y << ", " << kdvec[currentpoint].point.z << "\n";
+      }
+      // Close while-loop checking if we've hit a leaf.
+    }
+    hitleaf = 1;
+    // We have climbed up the tree to a leaf. Go backwards through
+    // the checkit vector and see if there is anything to check.
+    checkit_temp={};
+    checkdist_temp={};
+    checknum=checkit.size();
+    for(i=0;i<checknum;i++) {
+      if(checkdist[i]<mindist) {
+	checkit_temp.push_back(checkit[i]);
+	checkdist_temp.push_back(checkdist[i]);
+      }
+    }
+    checkdist = checkdist_temp;
+    checkit = checkit_temp;
+    checknum=checkit.size();
+    if(checknum<=0) {
+      //There were no valid entries to check: we're done.
+      notdone=0;
+    } else {
+      //Set currentpoint to the last valid entry in checkit
+      currentpoint = checkit[checknum-1];
+      pdist2 = point4d_index_dist2(querypoint,kdvec[currentpoint].point);
+      if(pdist2 < mindist) {
+	mindist = pdist2;
+	bestpoint = currentpoint;
+      }
+      //Mark this point as used.
+      checkdist[checknum-1] = LARGERR2;
+      leftpoint=rightpoint=0;
+    }
+  }
+  return(bestpoint);
 }
 
 long medind_6LDx2(const vector <point6LDx2> &pointvec, int dim)
@@ -3452,6 +3753,30 @@ int celestial_to_statevec(double RA, double Dec,double delta,point3d &baryvec)
   return(0);
 }
 
+// celestial_to_statevec2: October 14, 2025:
+// Like celestial_to_statevec, but output a regular vector
+// of type double, rather than using the point3d class
+int celestial_to_statevec2(double RA, double Dec,double delta, vector <double> &baryvec)
+{
+  double x,y,z,theta,phi,thetapole,phipole;
+  x = y = z = theta = phi = thetapole = phipole = 0.0;
+  theta = Dec/DEGPRAD;
+  phi = RA/DEGPRAD;
+  thetapole = NEPDEC/DEGPRAD;
+  make_dvec(3,baryvec);
+      
+  x = -cos(theta)*sin(phi); // sin(phi) and cos(phi) are switched here
+  y = cos(theta)*cos(phi);  // because we're rotating by 270 degrees: that's
+  z = sin(theta);           // the RA of the Ecliptic Pole.
+  baryvec[0] = delta*y;
+  baryvec[1] = delta*(-x*sin(thetapole) + z*cos(thetapole));
+  baryvec[2] = delta*(x*cos(thetapole) + z*sin(thetapole));
+  // -x and y are switched above becuase we are rotating by 90 degrees
+  // after the pole-switch, to get the old North Celestial Pole
+  // on the +y axis where it should be.
+  return(0);
+}
+
 int celestial_to_statevecLD(long double RA, long double Dec,long double delta,point3LD &baryvec)
 {
   long double x,y,z,theta,phi,thetapole,phipole;
@@ -3486,6 +3811,28 @@ int celestial_to_stateunit(double RA, double Dec,point3d &baryvec)
   baryvec.x = y;
   baryvec.y = -x*sin(thetapole) + z*cos(thetapole);
   baryvec.z = x*cos(thetapole) + z*sin(thetapole);
+  // -x and y are switched above because we are rotating by 90 degrees
+  // after the pole-switch, to get the old North Celestial Pole
+  // on the +y axis where it should be.
+  return(0);
+}
+
+int celestial_to_SVunit(double RA, double Dec, vector <double> &baryvec)
+{
+  double x,y,z,theta,phi,thetapole,phipole;
+  x = y = z = theta = phi = thetapole = phipole = 0.0;
+  theta = Dec/DEGPRAD;
+  phi = RA/DEGPRAD;
+  thetapole = NEPDEC/DEGPRAD;
+  baryvec={};
+  make_dvec(3,baryvec);
+      
+  x = -cos(theta)*sin(phi); // sin(phi) and cos(phi) are switched here
+  y = cos(theta)*cos(phi);  // because we're rotating by 270 degrees: that's
+  z = sin(theta);           // the RA of the Ecliptic Pole.
+  baryvec[0] = y;
+  baryvec[1] = -x*sin(thetapole) + z*cos(thetapole);
+  baryvec[2] = x*cos(thetapole) + z*sin(thetapole);
   // -x and y are switched above because we are rotating by 90 degrees
   // after the pole-switch, to get the old North Celestial Pole
   // on the +y axis where it should be.
@@ -3969,6 +4316,267 @@ int read_horizons_fileLD(string infile, vector <long double> &mjdvec, vector <po
   else return(reachedeof);
 }
 
+// read_horizons_statevec: October 01, 2025
+// Like read_horizons_file(), but outputs simple vector arrays
+// instead of the point3d vectors. General description of both
+// programs: given an input state-vector ephemeris file downloaded
+// directly from JPL Horizons, read it into a state vector array
+// Note that the default unit convention is km for positions and
+// km/sec for velocities. Note also that JPL state-vector
+// ephemerides use dynamical TT, which is ahead of UT1 by about
+// 70 seconds in 2022. This program does NOT correct TT to UT1,
+// but programs making use of the ouput mjd, position, and velocity
+// vectors might need to.
+int read_horizons_statevec(string infile, vector <double> &mjdvec, vector <vector <double>> &statevecs)
+{
+  ifstream instream1 {infile};
+  vector <double> onestatevec;
+  int reachedeof=0;
+  int ondata=0;
+  unsigned int i=0;
+  int reachedend=0;
+  string teststring, lnfromfile;
+  double ldval = 0.0l;
+
+  mjdvec={};
+  statevecs={};
+  onestatevec={};
+  
+  if(!instream1) {
+    cerr << "ERROR: can't open input file " << infile << "\n";
+    return(1);
+  }
+  while(reachedeof==0 && !reachedend) {
+    while(!ondata && !reachedend) {
+      // See if this line contains the code for start-of-data.
+      lnfromfile = "";
+      teststring = "";
+      getline(instream1,lnfromfile);
+      if(instream1.eof()) reachedeof=1; //End of file, fine.
+      else if(instream1.fail()) reachedeof=-1; //Something wrong, warn
+      else if(instream1.bad()) reachedeof=-2; //Worse problem, warn
+ 
+      if(lnfromfile.size()>=5) {
+	for(i=0;i<5;i++) {
+	  teststring.push_back(lnfromfile[i]);
+	}
+	if(teststring == "$$SOE") ondata=1;
+	else if(teststring == "$$EOE") reachedend=1;
+      }
+    }
+    while(ondata && !reachedend && reachedeof==0) {
+      lnfromfile = "";
+      teststring = "";
+      getline(instream1,lnfromfile);
+      if(instream1.eof()) reachedeof=1; //End of file, fine.
+      else if(instream1.fail()) reachedeof=-1; //Something wrong, warn
+      else if(instream1.bad()) reachedeof=-2; //Worse problem, warn
+      if(lnfromfile.size()>=5) {
+	for(i=0;i<5;i++) {
+	  teststring.push_back(lnfromfile[i]);
+	}
+	if(teststring == "$$EOE") reachedend=1;
+      }
+      if(!reachedend && reachedeof==0) {
+	//Attempt to read entire four-line block.
+	//First line has MJD
+	try { ldval=stold(lnfromfile); }
+	catch(...) { cerr << "ERROR: cannot read MJD from line " << lnfromfile << "\n";
+	  return(1); }
+	mjdvec.push_back(ldval-MJDOFF);
+	//Next line has x,y,z positions
+	onestatevec={};
+	lnfromfile = "";
+	getline(instream1,lnfromfile);
+	if(instream1.eof()) reachedeof=1; //End of file, fine.
+	else if(instream1.fail()) reachedeof=-1; //Something wrong, warn
+	else if(instream1.bad()) reachedeof=-2; //Worse problem, warn
+	//Read the x, y, and z positions, each of which follows an equals sign
+	for(long j=0; j<3; j++) {
+	  while(lnfromfile.size()>0 && lnfromfile[0]!='=') lnfromfile.erase(lnfromfile.begin());
+	  // Erase once more to get the equals sign itself
+	  lnfromfile.erase(lnfromfile.begin());
+	  try { ldval=stold(lnfromfile); }
+	  catch(...) { cerr << "ERROR: cannot read position component " << teststring << " from line " << lnfromfile << "\n";
+	    return(1); }
+	  onestatevec.push_back(ldval);
+	  teststring = "";
+	}
+	//Next line has x,y,z velocities
+	lnfromfile = "";
+	teststring = "";
+	getline(instream1,lnfromfile);
+	if(instream1.eof()) reachedeof=1; //End of file, fine.
+	else if(instream1.fail()) reachedeof=-1; //Something wrong, warn
+	else if(instream1.bad()) reachedeof=-2; //Worse problem, warn
+	for(long j=0; j<3; j++) {
+	  while(lnfromfile.size()>0 && lnfromfile[0]!='=') lnfromfile.erase(lnfromfile.begin());
+	  // Erase once more to get the equals sign itself
+	  lnfromfile.erase(lnfromfile.begin());
+	  try { ldval=stold(lnfromfile); }
+	  catch(...) { cerr << "ERROR: cannot read velocity component " << teststring << " from line " << lnfromfile << "\n";
+	    return(1); }
+	  onestatevec.push_back(ldval);
+	  teststring = "";
+	}
+	if(onestatevec.size()!=6 && reachedeof == 0) {
+	  cerr << "ERROR: read only " << onestatevec.size() << " values for statevec " << statevecs.size() << "\n";
+	  return(1);
+	}
+	// Load output vectors
+	statevecs.push_back(onestatevec);
+	// Next line is of no current interest: read and discard
+	lnfromfile = "";
+	teststring = "";
+	getline(instream1,lnfromfile);
+	if(instream1.eof()) reachedeof=1; //End of file, fine.
+	else if(instream1.fail()) reachedeof=-1; //Something wrong, warn
+	else if(instream1.bad()) reachedeof=-2; //Worse problem, warn
+      }
+    }
+  }
+  if(reachedeof==1 && ondata==1) {
+    //Read file successfully to the end.
+    return(0);
+  }
+  else if(reachedeof==1) {
+    //Did not find any data
+    return(1);
+  }
+  else return(reachedeof);
+}
+
+// read_horizons_statevecLD: October 01, 2025
+// Like read_horizons_fileLD(), but outputs simple vector arrays
+// instead of the point3LD vectors. General description of both
+// programs: given an input state-vector ephemeris file downloaded
+// directly from JPL Horizons, read it into a state vector array
+// Note that the default unit convention is km for positions and
+// km/sec for velocities. Note also that JPL state-vector
+// ephemerides use dynamical TT, which is ahead of UT1 by about
+// 70 seconds in 2022. This program does NOT correct TT to UT1,
+// but programs making use of the ouput mjd, position, and velocity
+// vectors might need to.
+int read_horizons_statevecLD(string infile, vector <long double> &mjdvec, vector <vector <long double>> &statevecs)
+{
+  ifstream instream1 {infile};
+  vector <long double> onestatevec;
+  int reachedeof=0;
+  int ondata=0;
+  unsigned int i=0;
+  int reachedend=0;
+  string teststring, lnfromfile;
+  long double ldval = 0.0l;
+
+  mjdvec={};
+  statevecs={};
+  onestatevec={};
+  
+  if(!instream1) {
+    cerr << "ERROR: can't open input file " << infile << "\n";
+    return(1);
+  }
+  while(reachedeof==0 && !reachedend) {
+    while(!ondata && !reachedend) {
+      // See if this line contains the code for start-of-data.
+      lnfromfile = "";
+      teststring = "";
+      getline(instream1,lnfromfile);
+      if(instream1.eof()) reachedeof=1; //End of file, fine.
+      else if(instream1.fail()) reachedeof=-1; //Something wrong, warn
+      else if(instream1.bad()) reachedeof=-2; //Worse problem, warn
+ 
+      if(lnfromfile.size()>=5) {
+	for(i=0;i<5;i++) {
+	  teststring.push_back(lnfromfile[i]);
+	}
+	if(teststring == "$$SOE") ondata=1;
+	else if(teststring == "$$EOE") reachedend=1;
+      }
+    }
+    while(ondata && !reachedend && reachedeof==0) {
+      lnfromfile = "";
+      teststring = "";
+      getline(instream1,lnfromfile);
+      if(instream1.eof()) reachedeof=1; //End of file, fine.
+      else if(instream1.fail()) reachedeof=-1; //Something wrong, warn
+      else if(instream1.bad()) reachedeof=-2; //Worse problem, warn
+      if(lnfromfile.size()>=5) {
+	for(i=0;i<5;i++) {
+	  teststring.push_back(lnfromfile[i]);
+	}
+	if(teststring == "$$EOE") reachedend=1;
+      }
+      if(!reachedend && reachedeof==0) {
+	//Attempt to read entire four-line block.
+	//First line has MJD
+	try { ldval=stold(lnfromfile); }
+	catch(...) { cerr << "ERROR: cannot read MJD from line " << lnfromfile << "\n";
+	  return(1); }
+	mjdvec.push_back(ldval-MJDOFF);
+	//Next line has x,y,z positions
+	onestatevec={};
+	lnfromfile = "";
+	getline(instream1,lnfromfile);
+	if(instream1.eof()) reachedeof=1; //End of file, fine.
+	else if(instream1.fail()) reachedeof=-1; //Something wrong, warn
+	else if(instream1.bad()) reachedeof=-2; //Worse problem, warn
+	//Read the x, y, and z positions, each of which follows an equals sign
+	for(long j=0; j<3; j++) {
+	  while(lnfromfile.size()>0 && lnfromfile[0]!='=') lnfromfile.erase(lnfromfile.begin());
+	  // Erase once more to get the equals sign itself
+	  lnfromfile.erase(lnfromfile.begin());
+	  try { ldval=stold(lnfromfile); }
+	  catch(...) { cerr << "ERROR: cannot read position component " << teststring << " from line " << lnfromfile << "\n";
+	    return(1); }
+	  onestatevec.push_back(ldval);
+	  teststring = "";
+	}
+	//Next line has x,y,z velocities
+	lnfromfile = "";
+	teststring = "";
+	getline(instream1,lnfromfile);
+	if(instream1.eof()) reachedeof=1; //End of file, fine.
+	else if(instream1.fail()) reachedeof=-1; //Something wrong, warn
+	else if(instream1.bad()) reachedeof=-2; //Worse problem, warn
+	for(long j=0; j<3; j++) {
+	  while(lnfromfile.size()>0 && lnfromfile[0]!='=') lnfromfile.erase(lnfromfile.begin());
+	  // Erase once more to get the equals sign itself
+	  lnfromfile.erase(lnfromfile.begin());
+	  try { ldval=stold(lnfromfile); }
+	  catch(...) { cerr << "ERROR: cannot read velocity component " << teststring << " from line " << lnfromfile << "\n";
+	    return(1); }
+	  onestatevec.push_back(ldval);
+	  teststring = "";
+	}
+	if(onestatevec.size()!=6 && reachedeof == 0) {
+	  cerr << "ERROR: read only " << onestatevec.size() << " values for statevec " << statevecs.size() << "\n";
+	  return(1);
+	}
+	// Load output vectors
+	statevecs.push_back(onestatevec);
+	// Next line is of no current interest: read and discard
+	lnfromfile = "";
+	teststring = "";
+	getline(instream1,lnfromfile);
+	if(instream1.eof()) reachedeof=1; //End of file, fine.
+	else if(instream1.fail()) reachedeof=-1; //Something wrong, warn
+	else if(instream1.bad()) reachedeof=-2; //Worse problem, warn
+      }
+    }
+  }
+  if(reachedeof==1 && ondata==1) {
+    //Read file successfully to the end.
+    return(0);
+  }
+  else if(reachedeof==1) {
+    //Did not find any data
+    return(1);
+  }
+  else return(reachedeof);
+}
+
+
 // read_horizons_csv: April 19, 2023:
 // Given an input state-vector ephemeris file downloaded directly
 // from JPL Horizons, WITH THE OPTIONAL CSV FORMAT SELECTED,
@@ -4267,6 +4875,80 @@ int read_horizons_csv(string infile, vector <EarthState> &earthpos)
     cerr << "ERROR: Stopped reading file " << infile << " before the end\n";
     cerr << "Last point " << earthpos.size() << ", last line " << lnfromfile << "\n";
     return(1);
+  } else return(reachedeof);
+}
+
+// read_t6text_statevec: October 11, 2025
+// Given an input ephemeris file with no header, wherein each line gives
+// the time (MJD) and then the six-element state vector (x, y, z, vx, vy, vz)
+// for a single planet, read the file into an mjd vector and a state vector array.
+// The input file is expected to be space-delimited.
+// Note that the default unit convention is km for positions and
+// km/sec for velocities. Note also that JPL state-vector
+// ephemerides use dynamical TT, which is ahead of UT1 by about
+// 70 seconds in 2022. This program does NOT correct TT to UT1,
+// but programs making use of the ouput mjd, position, and velocity
+// vectors might need to.
+int read_t6text_statevec(string infile, vector <double> &mjdvec, vector <vector <double>> &statevecs)
+{
+  ifstream instream1 {infile};
+  vector <double> onestatevec;
+  int reachedeof=0;
+  unsigned int i=0;
+  string stest, lnfromfile;
+  double ldval = 0.0l;
+  double mjdval = 0.0l;
+  int startpoint=0;
+  int endpoint=0;
+  int badread=0;
+
+  mjdvec={};
+  statevecs={};
+  onestatevec={};
+  
+  if(!instream1) {
+    cerr << "ERROR: can't open input file " << infile << "\n";
+    return(1);
+  }
+  while(!instream1.eof() && !instream1.fail() && !instream1.bad()) {
+    lnfromfile = "";
+    getline(instream1,lnfromfile);
+    if(instream1.eof()) reachedeof=1; //End of file, fine.
+    else if(instream1.fail()) reachedeof=-1; //Something wrong, warn
+    else if(instream1.bad()) reachedeof=-2; //Worse problem, warn
+    else {
+      // Attempt to read the seven elements (MJD, x, y, z, vx, vy, vz) from this line
+      startpoint=0;
+      onestatevec={};
+      mjdval = 0.0;
+      if(badread==0) endpoint = get_sv_string01(lnfromfile,stest,startpoint);
+      if(endpoint>0) {
+	try { mjdval = stod(stest); }
+	catch(...) { cerr << "ERROR: cannot read MJD " << stest << " from line " << lnfromfile << "\n";
+	  badread = 1; }
+      } else badread=1;
+      if(badread==0) {
+	for(i=0;i<6;i++) {
+	  ldval = 0.0;
+	  startpoint = endpoint+1;
+	  if(badread==0) endpoint = get_sv_string01(lnfromfile,stest,startpoint);
+	  if(endpoint>0) {
+	    try { ldval = stod(stest); }
+	    catch(...) { cerr << "ERROR: cannot read state vector component " << i << " from line " << lnfromfile << "\n";
+	      badread = 1; }
+	    if(badread==0) onestatevec.push_back(ldval);
+	  } else badread=1;
+	}
+      }
+      if(badread==0) {
+	mjdvec.push_back(mjdval);
+	statevecs.push_back(onestatevec);
+      }
+    }
+  }
+  if(reachedeof==1) {
+    //Read file successfully to the end.
+    return(0);
   } else return(reachedeof);
 }
 
@@ -4847,7 +5529,7 @@ int solvematrix01(const vector <vector <double>> &inmat, int eqnum, vector <doub
 
   eqhi=termhi=eqct=termct=i=j=0;
   max=pivot=0.0;
-     
+  if(verbose>=1) cout << "solvematrix01 called with dimensions " << inmat.size() << " by " << inmat[0].size() << "\n";
   if(eqnum==1)
     {
       if(inmat[0][1]!=0.0)
@@ -5088,6 +5770,38 @@ int solvematrix01LD(const vector <vector <long double>> &inmat, int eqnum, vecto
       outvec[termhi-1]=-coeffvec[0];
       for(i=0;i<eqnum-1;i++) outvec[termhi-1]-=coeffvec[i+1]*outvec2[i];
     }
+  return(0);
+}
+
+// invertmatrix01: October 15, 2025
+// Given an NxN matrix, find its inverse, or report the matrix as singular.
+int invertmatrix01(const vector <vector <double>> &inmat, int N, vector <vector <double>> &outmat, int verbose)
+{
+  vector <vector <double>> solvemat;
+  vector <double> xvec;
+  long i,j,k,status;
+  i=j=k=status=0;
+  
+  make_dmat(N,N+1,solvemat);
+  make_dmat(N,N,outmat);
+
+  for(k=0;k<N;k++) {
+    // Solve for the kth column of the output matrix
+    for(i=0;i<N;i++) {
+      solvemat[i][0] = 0.0;
+      for(j=0;j<N;j++) solvemat[i][1+j] = inmat[i][j];
+    }
+    solvemat[k][0] = -1.0;
+    xvec={};
+    make_dvec(N,xvec);
+    status = solvematrix01(solvemat, N, xvec, verbose);
+    cout << "solvematrix finished OK, xvec = " << xvec[0] << " " << xvec[1] << "\n";
+    if(status!=0) {
+      cerr << "ERROR: solvematrix01, called from invertmatrix01, returns error code " << status << "\n";
+      return(status);
+    }
+    for(i=0;i<N;i++) outmat[i][k] = xvec[i];
+  }
   return(0);
 }
 
@@ -5726,6 +6440,155 @@ int planetposvel01LD(long double detmjd, int polyorder, const vector <long doubl
   return(0);
 }
 
+// planetpos02LD: October 03, 2025:
+// Like planetposvel01LD, but returns results in simple vector
+// arrays instead of using the point3LD class.
+// Calculates positions and velocities for A single planet
+// given an input vector planet_statvecs with one row per entry
+// in planetmjd, and 6 columns, giving x, y, z, vx, vy, vz
+// for a planet 0. Returns the same information in the same
+// format, evaluated at just one point in time, in the output vector
+// outstatevecs.
+int planetpos02LD(long double nowmjd, int polyorder, const vector <long double> &planetmjd, const vector <vector <long double>> &planet_statevecs, vector <long double> &outstatevecs)
+{
+  int fitnum = polyorder+1;
+  int mjdsize = planetmjd.size();
+  int posvecsize = planet_statevecs.size(); 
+  int pointsbefore = fitnum - fitnum/2;
+  int pbf=0;
+  int svct=0;
+  vector <long double> xvec;
+  vector <long double> yvec;
+  vector <long double> fitvec;
+  long double tdelt=0l;
+  long double sumvar=0l;
+  long double posval=0l;
+  int i=0;
+  int j=0;
+  int k=0;
+  make_LDvec(fitnum,fitvec);
+
+  if(mjdsize != posvecsize) {
+    cout << "ERROR: vector sizes do not match in planetpos02LD!\n";
+    cout << "Got a size of " << posvecsize << " for the planet_statevecs vector\n";
+    cout << "and an mjd vector size of " << mjdsize << "\n";
+    return(-1);
+  }
+  
+  // Identify the point pbf that is a bit before the specified
+  // time nowmjd, and is the appropriate point to start the interpolation.
+  // The number of timesteps pbf should be before nowmjd depends on
+  // the order of the polynomial interpolation. For higher-order interpolations,
+  // we need a larger number of total points, and nowmjd should always be
+  // near the center of the set of point being considered.
+  pbf=0;
+  i=mjdsize;
+  while(i>0 && pbf<pointsbefore)
+    {
+      i--;
+      if(planetmjd[i]<nowmjd) pbf++;
+    }
+  pbf=i;
+
+  //Interpolate to find the exact position of each planet at nowmjd.
+  xvec={};
+  for(i=pbf;i<pbf+fitnum;i++) xvec.push_back(planetmjd[i]-planetmjd[pbf]);
+  tdelt = nowmjd-planetmjd[pbf];
+  outstatevecs={};
+  for(svct=0; svct<6; svct++) {
+    yvec={};
+    // Load vectors to fit x-coordinate of the planet's position.
+    for(i=pbf;i<pbf+fitnum;i++) yvec.push_back(planet_statevecs[i][svct]);
+    // Solve for polynomial interpolation
+    perfectpoly01LD(xvec,yvec,fitvec);
+    // Calculate interpolated position.
+    posval = fitvec[0];
+    for(j=1;j<fitnum;j++) {
+      sumvar = fitvec[j]*tdelt;
+      for(k=2;k<=j;k++) sumvar*=tdelt;
+      posval += sumvar;
+    }
+    outstatevecs.push_back(posval);
+  }
+  return(0);
+}
+
+// planetpos02: October 14, 2025:
+// Like planetpos02LD, but at only double precision rather than
+// long double. 
+// Calculates positions and velocities for a single planet
+// given an input vector planet_statvecs with one row per entry
+// in planetmjd, and 6 columns, giving x, y, z, vx, vy, vz
+// for a planet 0. Returns the same information in the same
+// format, evaluated at just one point in time, in the output vector
+// outstatevecs.
+int planetpos02(double nowmjd, int polyorder, const vector <double> &planetmjd, const vector <vector <double>> &planet_statevecs, vector <double> &outstatevecs)
+{
+  int fitnum = polyorder+1;
+  int mjdsize = planetmjd.size();
+  int posvecsize = planet_statevecs.size(); 
+  int pointsbefore = fitnum - fitnum/2;
+  int pbf=0;
+  int svct=0;
+  vector <double> xvec;
+  vector <double> yvec;
+  vector <double> fitvec;
+  double tdelt=0l;
+  double sumvar=0l;
+  double posval=0l;
+  int i=0;
+  int j=0;
+  int k=0;
+  make_dvec(fitnum,fitvec);
+
+  if(mjdsize != posvecsize) {
+    cout << "ERROR: vector sizes do not match in planetpos02LD!\n";
+    cout << "Got a size of " << posvecsize << " for the planet_statevecs vector\n";
+    cout << "and an mjd vector size of " << mjdsize << "\n";
+    return(-1);
+  }
+  if(nowmjd<planetmjd[0] || nowmjd>planetmjd[planetmjd.size()-1]) {
+    cerr << "ERROR: planetpos02 called with mjd " << nowmjd << " not within the " << planetmjd[0] << " to " << planetmjd[planetmjd.size()-1] << " of its input state vector ephemerides\n";
+    return(2);
+  }
+  
+  // Identify the point pbf that is a bit before the specified
+  // time nowmjd, and is the appropriate point to start the interpolation.
+  // The number of timesteps pbf should be before nowmjd depends on
+  // the order of the polynomial interpolation. For higher-order interpolations,
+  // we need a larger number of total points, and nowmjd should always be
+  // near the center of the set of point being considered.
+  pbf=0;
+  i=mjdsize;
+  while(i>0 && pbf<pointsbefore)
+    {
+      i--;
+      if(planetmjd[i]<nowmjd) pbf++;
+    }
+  pbf=i;
+
+  //Interpolate to find the exact position of each planet at nowmjd.
+  xvec={};
+  for(i=pbf;i<pbf+fitnum;i++) xvec.push_back(planetmjd[i]-planetmjd[pbf]);
+  tdelt = nowmjd-planetmjd[pbf];
+  outstatevecs={};
+  for(svct=0; svct<6; svct++) {
+    yvec={};
+    // Load vectors to fit x-coordinate of the planet's position.
+    for(i=pbf;i<pbf+fitnum;i++) yvec.push_back(planet_statevecs[i][svct]);
+    // Solve for polynomial interpolation
+    perfectpoly01(xvec,yvec,fitvec);
+    // Calculate interpolated position.
+    posval = fitvec[0];
+    for(j=1;j<fitnum;j++) {
+      sumvar = fitvec[j]*tdelt;
+      for(k=2;k<=j;k++) sumvar*=tdelt;
+      posval += sumvar;
+    }
+    outstatevecs.push_back(posval);
+  }
+  return(0);
+}
 
 // nplanetpos01LD: November 30, 2021:
 // like planetpos01LD, but calculates positions for
@@ -5834,6 +6697,80 @@ int nplanetpos01LD(long double detmjd, int planetnum, int polyorder, const vecto
   }
   return(0);
 }
+
+// nplanetpos02: October 03, 2025:
+// Calculates positions and velocities for planetnum different planets,
+// given an input vector planet_statvecs with one row per entry
+// in planetmjd, and 6*planetnum columns, giving x, y, z, vx, vy, vz
+// for planet 0, followed by the same quantities for planet 1,
+// then planet 2, etc. Returns the same information in the same
+// format, evaluated at just one point in time, in the output vector
+// outstatevecs.
+int nplanetpos02(double nowmjd, int planetnum, int polyorder, const vector <double> &planetmjd, const vector <vector <double>> &planet_statevecs, vector <double> &outstatevecs)
+{
+  int fitnum = polyorder+1;
+  int mjdsize = planetmjd.size();
+  int posvecsize = planet_statevecs.size(); 
+  int pointsbefore = fitnum - fitnum/2;
+  int pbf=0;
+  int planetct=0;
+  vector <double> xvec;
+  vector <double> yvec;
+  vector <double> fitvec;
+  double tdelt=0l;
+  double sumvar=0l;
+  double posval=0l;
+  int i=0;
+  int j=0;
+  int k=0;
+  make_dvec(fitnum,fitvec);
+
+  if(mjdsize != posvecsize) {
+    cout << "ERROR: vector sizes do not match in nplanetpos02!\n";
+    cout << "Got a size of " << posvecsize << " for the planet_statevecs vector\n";
+    cout << "and an mjd vector size of " << mjdsize << "\n";
+    return(-1);
+  }
+  
+  // Identify the point pbf that is a bit before the specified
+  // time nowmjd, and is the appropriate point to start the interpolation.
+  // The number of timesteps pbf should be before nowmjd depends on
+  // the order of the polynomial interpolation. For higher-order interpolations,
+  // we need a larger number of total points, and nowmjd should always be
+  // near the center of the set of point being considered.
+  pbf=0;
+  i=mjdsize;
+  while(i>0 && pbf<pointsbefore)
+    {
+      i--;
+      if(planetmjd[i]<nowmjd) pbf++;
+    }
+  pbf=i;
+
+  //Interpolate to find the exact position of each planet at nowmjd.
+  xvec={};
+  for(i=pbf;i<pbf+fitnum;i++) xvec.push_back(planetmjd[i]-planetmjd[pbf]);
+  tdelt = nowmjd-planetmjd[pbf];
+  outstatevecs={};
+  for(planetct=0; planetct<planetnum*6; planetct++) {
+    yvec={};
+    // Load vectors to fit x-coordinate of the planet's position.
+    for(i=pbf;i<pbf+fitnum;i++) yvec.push_back(planet_statevecs[i][planetct]);
+    // Solve for polynomial interpolation
+    perfectpoly01(xvec,yvec,fitvec);
+    // Calculate interpolated position.
+    posval = fitvec[0];
+    for(j=1;j<fitnum;j++) {
+      sumvar = fitvec[j]*tdelt;
+      for(k=2;k<=j;k++) sumvar*=tdelt;
+      posval += sumvar;
+    }
+    outstatevecs.push_back(posval);
+  }
+  return(0);
+}
+
+
 
 // nplanetgrab01LD: December01, 2021:
 // Simply grab positions for every planet at a given, specified
@@ -6289,6 +7226,103 @@ int observer_geocoords01(double detmjd, double lon, double obscos, double obssin
   // crad is the distance from the geocenter to the observer, in AU.
   return(0);
 }
+
+// observer_barystate01: October 14, 2025:
+// Like observer_baryvel01, but uses pure vectors for input
+// and output, rather than the point3d class
+// Note that the handling of Earth's rotation assumes that the
+// input MJD is UT1, while the ephemeris vectors Earth_mjd
+// and Earth_statevec are in dynamical TT. Hence, after calculating
+// aspects related to Earth's rotation with detmjd as input,
+// planetpos02 is called with time detmjd+TTDELTAT/SOLARDAY,
+// thus converting the input UT1 into TT.
+int observer_barystate01(double detmjd, int polyorder, double lon, double obscos, double obssine, const vector <double> &Earth_mjd, const vector <vector <double>> &Earth_statevec, vector <double> &outstate, int verbose)
+{
+  double gmst=0;
+  double djdoff = detmjd-51544.5l;
+  double zenithRA=0.0l;
+  double zenithDec=0.0l;
+  double velRA=0.0l; // RA of the observer's geocentric velocity vector
+  double velDec=0.0l; // Dec of the observer's geocentric velocity vector, always 0.
+  double junkRA=0.0l;
+  double junkDec=0.0l;
+  double crad = sqrt(obscos*obscos + obssine*obssine)*EARTHEQUATRAD;
+  double cvel = 2.0l*M_PI*obscos*EARTHEQUATRAD/SIDEREALDAY;
+  vector <double> obs_from_geocen;
+  vector <double> vel_from_geocen;
+  vector <double> geocen_state;
+  long i=0;
+  int status=0;
+
+  make_dvec(3,obs_from_geocen);
+  make_dvec(3,vel_from_geocen);
+  make_dvec(6,geocen_state);
+  make_dvec(6,outstate);
+  
+  gmst = 18.697374558l + 24.06570982441908l*djdoff;
+  // Add the longitude, converted to hours.
+  // Note: at this point it stops being gmst.
+  gmst += lon/15.0l;
+  // Get a value between 0 and 24.0.
+  while(gmst>=24.0l) gmst-=24.0l;
+  while(gmst<0.0l) gmst+=24.0l;
+  // Convert to degrees
+  zenithRA = gmst * 15.0l;
+  // Get zenithDec    
+  if(obscos!=0.0l) {
+    zenithDec = atan(obssine/obscos)*DEGPRAD;
+  } else if(obssine>=0.0l) {
+    zenithDec = 90.0l;
+  } else {
+    zenithDec=-90.0l;
+  }
+  // Calculate RA and Dec of the observer's geocentric velocity vector.
+  velRA = zenithRA+90.0l;
+  if(velRA >= 360.0l) velRA -= 360.0l;
+  velDec = 0.0l;
+  
+  // Now zenithRA and zenithDec are epoch-of-date coordinates.
+  // If you want them in J2000.0, this is the place to convert them.
+  int precesscon=-1; //Precess epoch-of-date to J2000.0
+  junkRA = zenithRA/DEGPRAD;
+  junkDec = zenithDec/DEGPRAD;
+  precess01a(junkRA,junkDec,detmjd,&zenithRA,&zenithDec,precesscon);
+  zenithRA*=DEGPRAD;
+  zenithDec*=DEGPRAD;
+  if(verbose>0) cout << "Calling celestial_to_statevec2\n";
+  celestial_to_statevec2(zenithRA,zenithDec,crad,obs_from_geocen);
+  if(verbose>0) cout << "Celestial_to_statevec2 returns obs_from_geocen = " << obs_from_geocen[0] << " "  << obs_from_geocen[1] << " "  << obs_from_geocen[2] << "\n";
+  // crad is the distance from the geocenter to the observer, in AU.
+  // Now velRA and velDec are also epoch-of-date coordinates,
+  // and hence should be converted to J2000.0.
+  junkRA = velRA/DEGPRAD;
+  junkDec = velDec/DEGPRAD;
+  precess01a(junkRA,junkDec,detmjd,&velRA,&velDec,precesscon);
+  velRA*=DEGPRAD;
+  velDec*=DEGPRAD;
+  if(verbose>0) cout << "Calling celestial_to_statevec2\n";
+  celestial_to_statevec2(velRA,velDec,cvel,vel_from_geocen);
+  if(verbose>0) cout << "Celestial_to_statevec2 returns vel_from_geocen = " << vel_from_geocen[0] << " "  << vel_from_geocen[1] << " "  << vel_from_geocen[2] << "\n";
+  // cvel is the Earth's rotation velocity at the latitude of
+  // the observer, in km/sec.
+
+  if(verbose>0) cout << "Calling planetpos02 with " << Earth_mjd.size() << " " << Earth_statevec.size() << "\n";
+  status = planetpos02(detmjd+TTDELTAT/SOLARDAY,polyorder,Earth_mjd,Earth_statevec,geocen_state);
+  if(verbose>0) cout << "planetpos02 returns " << geocen_state[0] << " " << geocen_state[1] << " " << geocen_state[2] << " " << geocen_state[3] << " " << geocen_state[4] << " " << geocen_state[5] << "\n";
+  if(status!=0) {
+    cerr << "ERROR: planetpos02 returned error status " << status << " when called by observer_barystate01\n";
+    return(status);
+  }
+
+  for(i=0;i<3;i++) outstate[i] = geocen_state[i] + obs_from_geocen[i];
+  for(i=3;i<6;i++) outstate[i] = geocen_state[i] + vel_from_geocen[i-3];
+ 
+  //cout << "spinvel: " << vel_from_geocen.x << " " << vel_from_geocen.y << " " << vel_from_geocen.z << "\n";
+  //cout << "orbvel: " << vel_from_barycen.x << " " << vel_from_barycen.y << " " << vel_from_barycen.z << "\n";
+  //cout << "total: " << outvel.x << " " << outvel.y << " " << outvel.z << "\n";
+  return(0);
+}
+
 
 // helioproj01: November 26, 2021
 int helioproj01(point3d unitbary, point3d obsbary,double heliodist,double &geodist, point3d &projbary)
@@ -7531,6 +8565,139 @@ int Kepler_univ_int(const double MGsun, const double mjdstart, const point3d &st
   return(0);
 }
 
+// Kepler_univ_int_SV: October 17, 2025:
+// Like Kepler_univ_int, but uses pure double-precision vectors instead of
+// the point3d class.
+// Description of ancestor program Kepler_univ_int:
+// Solves the same problem as Keplerint,
+// (at double precision only), but uses Keplerian universal variables as
+// described in Fundamentals of Celestial Mechanics (J. M. A. Danby),
+// Sections 6.9 and 6.10.
+// Integrate an orbit assuming we have a Keplerian 2-body problem
+// with all the mass in the Sun, and the input position and velocity
+// are relative to the Sun.
+int Kepler_univ_int_SV(const double MGsun, const double mjdstart, const vector <double> &starting_statevec, const double mjdend, vector <double> &out_statevec, int verbose)
+{
+  long k;
+  if(mjdend==mjdstart) {
+    for(k=0;k<6;k++) out_statevec[k] = starting_statevec[k];
+    return(0);
+  }
+  double r0 = sqrt(starting_statevec[0]*starting_statevec[0] + starting_statevec[1]*starting_statevec[1] + starting_statevec[2]*starting_statevec[2]);
+  double v0 = sqrt(starting_statevec[3]*starting_statevec[3] + starting_statevec[4]*starting_statevec[4] + starting_statevec[5]*starting_statevec[5]);
+  double u = starting_statevec[0]*starting_statevec[3] + starting_statevec[1]*starting_statevec[4] + starting_statevec[2]*starting_statevec[5];
+  double a = r0*MGsun/(2.0l*MGsun-v0*v0*r0);
+  if(!isnormal(a)) {
+    cerr << "ERROR: Kepler_univ_int finds a = " << a << ", unable to proceed\n";
+    return(1);
+  }
+  double alpha = MGsun/a;
+  double deltat = SOLARDAY*(mjdend-mjdstart);
+  double s=0.0l;
+
+  // Select an initial guess for solving the universal-variable
+  // for of the Kepler Equation.
+
+  if(alpha>0.0l) {
+    double n = sqrt(MGsun/a/a/a);
+    double EC = 1.0l - r0/a;
+    double ES = u/n/a/a;
+    double e = sqrt(EC*EC + ES*ES);
+    double sinM,x;
+    sinM=x=0.0l;
+    if(e<0.1l) x = n*deltat;
+    else {
+      sinM = (ES*cos(n*deltat - ES) + EC*sin(n*deltat - ES))/e;
+      x = n*deltat + (sinM/fabs(sinM))*DANBYK_689*e - ES;
+    }
+    s = x/sqrt(alpha);
+  } else if(alpha<0.0l) {
+    double CH = 1.0l - r0/a;
+    double SH = u/sqrt(-MGsun*a);
+    double e = sqrt(CH*CH - SH*SH);
+    double deltaM = deltat*sqrt(-MGsun/a/a/a);
+    double deltaF = 0.0l;
+
+    if(deltaM>=0) deltaF = log((2.0l*deltaM + DANBYK_6935*e)/(CH+SH));
+    else if(deltaM<0) deltaF = -log((-2.0l*deltaM + DANBYK_6935*e)/(CH-SH));
+    s = deltaF/sqrt(-alpha);
+  }
+  if(!isnormal(s) && s!=0.0l) {
+    if(verbose>0) cerr << "WARNING: initial guess with alpha = " << alpha << " produced non-normal s = " << s << "\n";
+    s=deltat/r0;
+    if(verbose>0) cerr << "Re-assigning rescue value s = " << s << "\n";
+  }
+
+  double f,fp,ds,c0,c1,c2,c3,fold,fpold;
+  f = fp = ds = c0 = c1 = c2 = c3 = fold = fpold = 0.0l;
+  int itct=0;
+  int status=0;
+
+  // Newton's Method solution for s
+  if(!isnormal(alpha*s*s) && alpha*s*s != 0.0l) {
+    cerr << "input catch alpha = " << alpha << ", s = " << s << ", alpha*s^2 = " << alpha*s*s << "\n";
+  }
+  status = Stumpff_func(alpha*s*s, &c0, &c1, &c2, &c3);
+  if(status!=0) {
+    cerr << "ERROR: Stumpff_func() failed on initial run, with status " << status << ".\n";
+    cerr << "input was alpha = " << alpha << ", s = " << s << ", alpha*s^2 = " << alpha*s*s << "\n";
+    return(status);
+  }
+  f = r0*s*c1 + u*s*s*c2 + MGsun*s*s*s*c3 - deltat;
+  fp = r0*c0 + u*s*c1 + MGsun*s*s*c2;
+  while(fabs(f/fp)>HYPTRANSTOL && itct<KEPTRANSITMAX) {
+    fpold=fp;
+    fp = r0*c0 + u*s*c1 + MGsun*s*s*c2;
+    if(!isnormal(f) || !isnormal(fp)) {
+      if(verbose>0) cerr << "ERROR: universal variable minimization function f, fp = " << f << "," << fp << "\n";
+      if(verbose>0) cerr << "c0,c1,c2,c3: " << c0 << "," << c1 << "," << c2 << "," << c3 << "\n";
+      if(verbose>0) cerr << "alpha = " << alpha << ", s = " << s << ", alpha*s^2 = " << alpha*s*s << ", fold,fpold = " << fold << "," << fpold << "\n";
+      s=deltat/r0;
+      if(verbose>0) cerr << "Re-assigning rescue value s = " << s << "\n";
+      status = Stumpff_func(alpha*s*s, &c0, &c1, &c2, &c3);
+      if(status!=0) {
+	cerr << "ERROR: Stumpff_func() failed in rescue, with status " << status << ".\n";
+	cerr << "input was alpha = " << alpha << ", s = " << s << ", alpha*s^2 = " << alpha*s*s << ", f,fp = " << f << "," << fp << "\n";
+	return(status);
+      }
+      fold=f;
+      f = r0*s*c1 + u*s*s*c2 + MGsun*s*s*s*c3 - deltat;
+      fpold=fp;
+      fp = r0*c0 + u*s*c1 + MGsun*s*s*c2;
+    }
+    ds = -f/fp;
+    while(fabs(ds/s)>2.0l) ds/=2.0l; // Don't change s too much at one go.
+    s += ds;
+    // cout << "itct, f, fp, s, ds: " << itct << " " << f << " " << fp << " " << s << " " << ds << "\n";
+    status = Stumpff_func(alpha*s*s, &c0, &c1, &c2, &c3);
+    if(status!=0) {
+      cerr << "ERROR: Stumpff_func() failed within loop, with status " << status << ".\n";
+      cerr << "input was alpha = " << alpha << ", s = " << s << ", alpha*s^2 = " << alpha*s*s << ", f,fp = " << f << "," << fp << "\n";
+      return(status);
+    }
+    fold=f;
+    f = r0*s*c1 + u*s*s*c2 + MGsun*s*s*s*c3 - deltat;
+    itct++;
+  }
+  if(fabs(f/fp)>HYPTRANSTOL && verbose>=1) {
+    cerr << "WARNING: Kepler_univ_int() failed to converge by iteration " << itct << ", f/fp = " << f/fp << " vs tolerance of " << HYPTRANSTOL << "\n";
+  }
+  
+  out_statevec={};
+  make_dvec(6,out_statevec);
+  
+  double kepf = 1.0l - (MGsun/r0)*s*s*c2;
+  double kepg = r0*s*c1 + u*s*s*c2;
+  for(k=0;k<3;k++) out_statevec[k] = kepf*starting_statevec[k] + kepg*starting_statevec[3+k];
+  double r = sqrt(out_statevec[0]*out_statevec[0] + out_statevec[1]*out_statevec[1] + out_statevec[2]*out_statevec[2]);
+  double fdot = -MGsun/r/r0*s*c1;
+  double gdot = 1.0l - (MGsun/r)*s*s*c2;
+  for(k=0;k<3;k++) out_statevec[3+k] = fdot*starting_statevec[k] + gdot*starting_statevec[3+k];
+
+  return(0);
+}
+
+
 // Kepler_univ_vec: May 17, 2024:
 // Like Kepler_univ_int, but calculates a vector of positions and velocities,
 // corresponding to a vector of input times in mjdvec, rather than just
@@ -7682,6 +8849,156 @@ int Kepler_univ_vec(const double MGsun, const double mjdstart, const point3d &st
 
       outpos.push_back(nowpos);
       outvel.push_back(nowvel);
+    }
+  }
+  return(0);
+}
+
+// Kepler_univ_vec_SV: October 17, 2025:
+// Like Kepler_univ_vec, but uses pure double-precision vectors instead of
+// the point3d class.
+// Description of ancestor program Kepler_univ_vec:
+// Like Kepler_univ_int, but calculates a vector of positions and velocities,
+// corresponding to a vector of input times in mjdvec, rather than just
+// a single time as in Kepler_univ_int.
+// Description of Kepler_univ_int: Solves the same problem as Keplerint,
+// (at double precision only), but uses Keplerian universal variables as
+// described in Fundamentals of Celestial Mechanics (J. M. A. Danby),
+// Sections 6.9 and 6.10.
+// Integrate an orbit assuming we have a Keplerian 2-body problem
+// with all the mass in the Sun, and the input position and velocity
+// are relative to the Sun.
+int Kepler_univ_vec_SV(const double MGsun, const double mjdstart, const vector <double> &starting_statevec, const vector <double> &mjdvec, vector <vector <double>> &out_statevecs, int verbose)
+{
+  double r0 = sqrt(starting_statevec[0]*starting_statevec[0] + starting_statevec[1]*starting_statevec[1] + starting_statevec[2]*starting_statevec[2]);
+  double v0 = sqrt(starting_statevec[3]*starting_statevec[3] + starting_statevec[4]*starting_statevec[4] + starting_statevec[5]*starting_statevec[5]);
+  double u = starting_statevec[0]*starting_statevec[3] + starting_statevec[1]*starting_statevec[4] + starting_statevec[2]*starting_statevec[5];
+  double a = r0*MGsun/(2.0l*MGsun-v0*v0*r0);
+  if(!isnormal(a)) {
+    cerr << "ERROR: Kepler_univ_vec finds a = " << a << ", unable to proceed\n";
+    return(1);
+  }
+  double alpha = MGsun/a;
+  double deltat = 0.0l;
+  double s=0.0l;
+  long pnum = mjdvec.size();
+  long i=0;
+  long k=0;
+  vector <double> svec_now;
+  double f,fp,ds,c0,c1,c2,c3,fold,fpold;
+  f = fp = ds = c0 = c1 = c2 = c3 = fold = fpold = 0.0l;
+  int itct=0;
+  int status=0;
+
+  out_statevecs={};
+  make_dvec(6,svec_now);
+  for(i=0;i<pnum;i++) {
+    if(mjdvec[i]==mjdstart) {
+      // No need to integrate anything for this point: we'll just return
+      // the input values
+      out_statevecs.push_back(starting_statevec);
+    } else { // We do have to perform an integration
+      deltat = SOLARDAY*(mjdvec[i]-mjdstart);
+      // Select an initial guess for solving the universal-variable
+      // form of the Kepler Equation.
+      if(alpha>0.0l) {
+	// Use the formulation for a bound orbit
+	double n = sqrt(MGsun/a/a/a);
+	double EC = 1.0l - r0/a;
+	double ES = u/n/a/a;
+	double e = sqrt(EC*EC + ES*ES);
+	double sinM,x;
+	sinM=x=0.0l;
+	if(e<0.1l) x = n*deltat;
+	else {
+	  sinM = (ES*cos(n*deltat - ES) + EC*sin(n*deltat - ES))/e;
+	  x = n*deltat + (sinM/fabs(sinM))*DANBYK_689*e - ES;
+	}
+	s = x/sqrt(alpha);
+	if(!isnormal(s) && s!=0.0l) {
+	  if(verbose>0) cerr << "WARNING: initial guess with alpha = " << alpha << " produced non-normal s = " << s << "\n";
+	  s=deltat/r0;
+	  if(verbose>0) cerr << "Re-assigning rescue value s = " << s << "\n";
+	}
+      } else if(alpha<0.0l) {
+	// Use the formulation for an unbound, hyperbolic (e.g., insterstellar) orbit
+	double CH = 1.0l - r0/a;
+	double SH = u/sqrt(-MGsun*a);
+	double e = sqrt(CH*CH - SH*SH);
+	double deltaM = deltat*sqrt(-MGsun/a/a/a);
+	double deltaF = 0.0l;
+	if(deltaM>=0) deltaF = log((2.0l*deltaM + DANBYK_6935*e)/(CH+SH));
+	else if(deltaM<0) deltaF = -log((-2.0l*deltaM + DANBYK_6935*e)/(CH-SH));
+	s = deltaF/sqrt(-alpha);
+	if(!isnormal(s) && s!=0.0l) {
+	  if(verbose>0) cerr << "WARNING: initial guess with alpha = " << alpha << " produced non-normal s = " << s << "\n";
+	  s=deltat/r0;
+	  if(verbose>0) cerr << "Re-assigning rescue value s = " << s << "\n";
+	}
+      } else if(alpha==0.0l || !isnormal(alpha)) {
+	cerr << "ERROR: Kepler_univ_vec found alpha = " << alpha << ": unable to proceed\n";
+	return(2);
+      }
+      f = fp = ds = c0 = c1 = c2 = c3 = fold = fpold = 0.0l;
+      itct=status=0;
+      // Newton's Method solution for s
+      if(!isnormal(alpha*s*s) && alpha*s*s != 0.0l) {
+	cerr << "input catch alpha = " << alpha << ", s = " << s << ", alpha*s^2 = " << alpha*s*s << "\n";
+      }
+      status = Stumpff_func(alpha*s*s, &c0, &c1, &c2, &c3);
+      if(status!=0) {
+	cerr << "ERROR: Stumpff_func() failed on initial run, with status " << status << ".\n";
+	cerr << "input was alpha = " << alpha << ", s = " << s << ", alpha*s^2 = " << alpha*s*s << "\n";
+	return(status);
+      }
+      f = r0*s*c1 + u*s*s*c2 + MGsun*s*s*s*c3 - deltat;
+      fp = r0*c0 + u*s*c1 + MGsun*s*s*c2;
+      while(fabs(f/fp)>HYPTRANSTOL && itct<KEPTRANSITMAX) {
+	fpold=fp;
+	fp = r0*c0 + u*s*c1 + MGsun*s*s*c2;
+	if(!isnormal(f) || !isnormal(fp)) {
+	  if(verbose>0) cerr << "ERROR: universal variable minimization function f, fp = " << f << "," << fp << "\n";
+	  if(verbose>0) cerr << "c0,c1,c2,c3: " << c0 << "," << c1 << "," << c2 << "," << c3 << "\n";
+	  if(verbose>0) cerr << "alpha = " << alpha << ", s = " << s << ", alpha*s^2 = " << alpha*s*s << ", fold,fpold = " << fold << "," << fpold << "\n";
+	  s=deltat/r0;
+	  if(verbose>0) cerr << "Re-assigning rescue value s = " << s << "\n";
+	  status = Stumpff_func(alpha*s*s, &c0, &c1, &c2, &c3);
+	  if(status!=0) {
+	    cerr << "ERROR: Stumpff_func() failed in rescue, with status " << status << ".\n";
+	    cerr << "input was alpha = " << alpha << ", s = " << s << ", alpha*s^2 = " << alpha*s*s << ", f,fp = " << f << "," << fp << "\n";
+	    return(status);
+	  }
+	  fold=f;
+	  f = r0*s*c1 + u*s*s*c2 + MGsun*s*s*s*c3 - deltat;
+	  fpold=fp;
+	  fp = r0*c0 + u*s*c1 + MGsun*s*s*c2;
+	}
+	ds = -f/fp;
+	while(fabs(ds/s)>2.0l) ds/=2.0l; // Don't change s too much at one go.
+	s += ds;
+	// cout << "itct, f, fp, s, ds: " << itct << " " << f << " " << fp << " " << s << " " << ds << "\n";
+	status = Stumpff_func(alpha*s*s, &c0, &c1, &c2, &c3);
+	if(status!=0) {
+	  cerr << "ERROR: Stumpff_func() failed within loop, with status " << status << ".\n";
+	  cerr << "input was alpha = " << alpha << ", s = " << s << ", alpha*s^2 = " << alpha*s*s << ", f,fp = " << f << "," << fp << "\n";
+	  return(status);
+	}
+	fold=f;
+	f = r0*s*c1 + u*s*s*c2 + MGsun*s*s*s*c3 - deltat;
+	itct++;
+      }
+      if(fabs(f/fp)>HYPTRANSTOL) {
+	cerr << "WARNING: Kepler_univ_vec() failed to converge by iteration " << itct << ", f/fp = " << f/fp << " vs tolerance of " << HYPTRANSTOL << "\n";
+      }
+
+      double kepf = 1.0l - (MGsun/r0)*s*s*c2;
+      double kepg = r0*s*c1 + u*s*s*c2;
+      for(k=0;k<3;k++) svec_now[k] = kepf*starting_statevec[k] + kepg*starting_statevec[3+k];
+      double r = sqrt(svec_now[0]*svec_now[0] + svec_now[1]*svec_now[1] + svec_now[2]*svec_now[2]);
+      double fdot = -MGsun/r/r0*s*c1;
+      double gdot = 1.0l - (MGsun/r)*s*s*c2;
+      for(k=0;k<3;k++) svec_now[3+k] = fdot*starting_statevec[k] + gdot*starting_statevec[3+k];
+      out_statevecs.push_back(svec_now);
     }
   }
   return(0);
@@ -9245,6 +10562,7 @@ int readconfigLD(ifstream &instream1, long double *ldval)
   }
 }
 
+
 // readconfigd: December 2021
 // Read a single double-precision parameter from a file stream, where
 // the calling function guarantees that every line in the input file
@@ -10394,6 +11712,144 @@ int stateunitLD_to_celestial(point3LD &baryvec, long double &RA, long double &De
   return(0);
 }
 
+// statevec_to_celestial: October 15, 2025
+// Given an input non-normalized vector in the solar system barycentric coordinate
+// system (as an ordinary, double-precision vector, not the point3d class),
+// calculate the RA, Dec coordinates to which it points.
+// Example: if the input vector is the position of an asteroid relative
+// to an observer in the barycentric system, the output will be the
+// asteroid's RA and Dec in the sky as seen by that observer.
+int statevec_to_celestial(const vector <double> &baryvec, double &RA, double &Dec)
+{
+  double poleDec,zc,yc;
+  double r = nvecabs(baryvec);
+
+  poleDec = NEPDEC/DEGPRAD;
+  zc = baryvec[1]*sin(poleDec) - baryvec[2]*cos(poleDec);
+  yc = baryvec[1]*cos(poleDec) + baryvec[2]*sin(poleDec);
+
+  if(zc==0 && baryvec[0]>=0) RA = 0.0;
+  else if(zc==0 && baryvec[0]<0) RA = M_PI;
+  else if(zc>0) RA = M_PI/2.0L - atan(baryvec[0]/zc);
+  else if(zc<0) RA = 3.0L*M_PI/2.0L - atan(baryvec[0]/zc);
+  else {
+    //Logically excluded case
+    cerr << "Logically excluded case in statevec_to_celestial\n";
+    cerr << "baryvec[0] = " << baryvec[0] << " zc = " << zc << "\n";
+    cerr << "baryvec: " << baryvec[0] << " " << baryvec[1] << " " << baryvec[2] << ", poleDec = " << poleDec << "\n";
+    return(1);
+  }
+
+  if(yc/r>1.0) {
+    if(WARN_INVERSE_TRIG>0) cerr << "Warning: statevec_to_celestial attempting to take arcsin of 1 + " << yc/r-1.0L << "\n";
+    Dec = M_PI/2.0L;
+  } else if(yc/r<-1.0) {
+    if(WARN_INVERSE_TRIG>0) cerr << "Warning: statevec_to_celestial attempting to take arcsin of -1 - " << yc/r+1.0L << "\n";
+    Dec = -M_PI/2.0L;
+  } else {
+    Dec = asin(yc/r);
+  }
+
+  RA *= DEGPRAD;
+  Dec *= DEGPRAD;
+  return(0);
+}
+
+// statevec_to_celederiv: October 15, 2025
+// Given an input non-normalized vector in the solar system barycentric coordinate
+// system (as an ordinary, double-precision vector, not the point3d class),
+// calculate the RA, Dec coordinates to which it points, and the derivatives
+// of the RA and Dec with respect to each component of the vector:
+// that is, dRA/dx, dRA/dy, dRA/dz, and dDec/dx, dDec/dy, and dDec/dz.
+// Example: if the input vector is the position of an asteroid relative
+// to an observer in the barycentric system, the output will be the
+// asteroid's RA and Dec in the sky as seen by that observer.
+#define POLARXRAD 1.0e-4
+int statevec_to_celederiv(const vector <double> &baryvec, double &RA, double &Dec, vector <double> &RA_deriv, vector <double> &Dec_deriv)
+{
+  double poleDec,zc,yc;
+  double dradx,drady,dradz,ddecdx,ddecdy,ddecdz;
+  double ra_denom_inv,dec_denom_inv;
+  double r = nvecabs(baryvec);
+  RA_deriv = Dec_deriv = {};
+  if(!isnormal(r) || r<0.0) {
+    cerr << "ERROR: statevec_to_celederiv() called with position vector of zero or undefined length\n";
+    RA = Dec = 0.0;
+    return(1);
+  }
+  poleDec = NEPDEC/DEGPRAD;
+  zc = baryvec[1]*sin(poleDec) - baryvec[2]*cos(poleDec);
+  yc = baryvec[1]*cos(poleDec) + baryvec[2]*sin(poleDec);
+
+  if(zc==0 && baryvec[0]>=0) RA = 0.0;
+  else if(zc==0 && baryvec[0]<0) RA = M_PI;
+  else if(zc>0) RA = M_PI/2.0L - atan(baryvec[0]/zc);
+  else if(zc<0) RA = 3.0L*M_PI/2.0L - atan(baryvec[0]/zc);
+  else {
+    //Logically excluded case
+    cerr << "Logically excluded case in statevec_to_celederiv\n";
+    cerr << "baryvec[0] = " << baryvec[0] << " zc = " << zc << "\n";
+    cerr << "baryvec: " << baryvec[0] << " " << baryvec[1] << " " << baryvec[2] << ", poleDec = " << poleDec << "\n";
+    return(2);
+  }
+
+  if(yc/r>1.0) {
+    if(WARN_INVERSE_TRIG>0) cerr << "Warning: statevec_to_celestial attempting to take arcsin of 1 + " << yc/r-1.0L << "\n";
+    Dec = M_PI/2.0L;
+  } else if(yc/r<-1.0) {
+    if(WARN_INVERSE_TRIG>0) cerr << "Warning: statevec_to_celestial attempting to take arcsin of -1 - " << yc/r+1.0L << "\n";
+    Dec = -M_PI/2.0L;
+  } else {
+    Dec = asin(yc/r);
+  }
+  RA *= DEGPRAD;
+  Dec *= DEGPRAD;
+
+  ra_denom_inv = 1.0/(zc*zc + baryvec[0]*baryvec[0]);
+  if(!isnormal(ra_denom_inv)) {
+    cerr << "ERROR: logically excluded case in statevec_to_celederiv: ra_denom_inv is singular\n";
+    RA = Dec = 0.0;
+    return(3);
+  }
+  dradx = -zc * ra_denom_inv;
+  drady = baryvec[0]*sin(poleDec) * ra_denom_inv;
+  dradz = -baryvec[0]*cos(poleDec) * ra_denom_inv;
+
+  dec_denom_inv = 1.0/(r*r*sqrt(r*r - yc*yc));
+  if(isnormal(dec_denom_inv)) {
+    ddecdx = -baryvec[0]*yc * dec_denom_inv;
+    ddecdy = (r*r*cos(poleDec) - baryvec[1]*yc) * dec_denom_inv;
+    ddecdz = (r*r*sin(poleDec) - baryvec[2]*yc) * dec_denom_inv;
+  } else {
+    // We probably have a polar declination case, in which
+    // case the derivatives really are singular. Attempt to
+    // rescue the situation by fudging the x coordinate to
+    // move us slightly off the pole.
+    cerr << "WARNING: statevec_to_celederiv finds dec_denom_inv to be non-normal\n";
+    vector <double> fakevec;
+    fakevec.push_back(baryvec[0]+POLARXRAD*r);
+    fakevec.push_back(baryvec[1]);
+    fakevec.push_back(baryvec[2]);
+    double r = nvecabs(fakevec);
+    dec_denom_inv = 1.0/(r*r*sqrt(r*r - yc*yc));
+    if(!isnormal(dec_denom_inv)) {
+      cerr << "ERROR: statevec_to_celederiv finds dec_denom_inv singular even after rescue attempt\n";
+      RA = Dec = 0.0;
+      return(4);
+    }
+    ddecdx = fakevec[0]*yc * dec_denom_inv;
+    ddecdy = (r*r*cos(poleDec) - fakevec[1]*yc) * dec_denom_inv;
+    ddecdz = (r*r*sin(poleDec) - fakevec[2]*yc) * dec_denom_inv;
+  }
+  RA_deriv.push_back(dradx*DEGPRAD);
+  RA_deriv.push_back(drady*DEGPRAD);
+  RA_deriv.push_back(dradz*DEGPRAD);
+  Dec_deriv.push_back(ddecdx*DEGPRAD);
+  Dec_deriv.push_back(ddecdy*DEGPRAD);
+  Dec_deriv.push_back(ddecdz*DEGPRAD);
+  return(0);
+}
+#undef POLARXRAD
 
 #define DEBUG 0
 
@@ -12837,7 +14293,439 @@ int integrate_orbit05LD(int polyorder, int planetnum, const vector <long double>
   }
   return(0);
 }
- 
+
+// integrate_statevec_LDFW01: October 02, 2025
+// Attempts to duplicate the functionality of integrate_orbit05LD(),
+// for forward integration only, with
+// more flexible architecture: specifically, with state vectors stored
+// as regular long double vectors instead of more sophisticated classes.
+// Can handle both backward and forward integration. The initial
+// conditions provided in starting_statevec apply to startpoint.
+int integrate_statevec_LDFW01(int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <vector <long double>> &planet_statevecs, const vector <long double> &starting_statevec, int startpoint, int endpoint, vector <long double> &outMJD,  vector <vector <long double>> &targ_statevecs)
+{
+  vector <vector <long double>> targaccel;
+  vector <vector <long double>> accelfit;
+  vector <vector <long double>> targpos;
+  vector <vector <long double>> targvel;
+  vector <vector <long double>> accelmod;
+  vector <long double> temptime;
+  vector <long double> ppxvec;
+  vector <long double> ppyvec;
+  vector <long double> ppfitvec;
+  vector <long double> accelslope;
+  long i,j,k;
+  i=j=k=0;
+  int outnum = endpoint-startpoint+1;
+  int latestpoint=0;
+  int stepsin=0;
+  long double dt0=0L;
+  long double dt2=0L;
+  long double timemult=0L;
+  
+  if(DEBUG>0) {
+    cout << "Inside integrate_statevec_LDFW01()\n";
+    cout << "Input state vector: " << starting_statevec[0] << " "  << starting_statevec[1] << " "  << starting_statevec[2] << " "  << starting_statevec[3] << " "  << starting_statevec[4] << " "  << starting_statevec[5] << "\n";
+  }
+
+  if(polyorder<2) {
+    cerr << "ERROR: integrate_statevec_LDFW01 called with polyorder = " << polyorder << "\n";
+    cerr << "polyorder must be at least 4!\n";
+    return(1);
+  }
+  
+  if(endpoint<startpoint) {
+    cerr << "ERROR: integrate_statevec_LDFW01 called with end point (" << endpoint << ") before starting point (" << startpoint << ")\n";
+    return(1);
+  } else if(startpoint<0 || endpoint>=long(planetmjd.size())) {
+    cerr << "ERROR: integrate_statevec01LD called with starting point " << startpoint << " or endpoint" << endpoint << " outside range of planet vectors (0 - " << planetmjd.size() << ")\n";
+    return(1);
+  } 
+  make_LDvec(outnum, outMJD);
+  make_LDmat(outnum, 6, targ_statevecs);
+  // Load outMJD with the actual output times
+  for(i=0;i<outnum;i++) outMJD[i] = planetmjd[startpoint+i];
+  
+  // Make sure that relevant vectors for the polynomial fitting
+  // are all large enough.
+  make_LDmat(polyorder+2, 3, targaccel);
+  make_LDmat(polyorder+2, 3, accelfit);
+  make_LDmat(polyorder+2, 3, targpos);
+  make_LDmat(polyorder+2, 3, targvel);
+  make_LDmat(polyorder+2, 3, accelmod);
+  make_LDvec(polyorder+2, temptime);
+  make_LDvec(polyorder+2, ppfitvec);
+  make_LDvec(3, accelslope);
+  
+  if(DEBUG>0) cout << "Allocated vectors OK\n";
+  if(DEBUG>0) cout << "Beginning forward integration, " << startpoint << " to " << endpoint << "\n";
+  // Load the initial time vector
+  for(j=0;j<=polyorder+1;j++) temptime[j] = planetmjd[startpoint+j];
+  // Load starting position and velocity
+  for(k=0;k<3;k++) {
+    targpos[0][k] = starting_statevec[k];
+    targvel[0][k] = starting_statevec[3+k];
+  }
+  // Bootstrap up to a fit of order polyorder.
+  // Calculate acceleration at starting point, loading planet positions from big vector.
+  accelcalc02LD(planetnum, planetmasses, planet_statevecs[startpoint], targpos[0], targaccel[0]); // Acceleration is exact
+  dt0 = (temptime[1]-temptime[0])*SOLARDAY;
+
+  if(DEBUG>0) cout << "Calculated starting acceleration\n";
+
+  // First Approx: estimate next position, assuming constant acceleration.
+  for(k=0;k<3;k++) targpos[1][k] = targpos[0][k] + targvel[0][k]*dt0 + targaccel[0][k]*0.5L*dt0*dt0;
+
+  // Calculate acceleration at this new position.
+  accelcalc02LD(planetnum, planetmasses, planet_statevecs[startpoint+1], targpos[1], targaccel[1]);
+
+  if(DEBUG>0) cout << "Proceeding to second approximation: linearly varying acceleration.\n";
+  // Second approx: linearly varying acceleration.
+  for(k=0;k<3;k++) accelslope[k] = (targaccel[1][k]-targaccel[0][k])/dt0;
+
+  // Improved position for next time step.
+  for(k=0;k<3;k++) targpos[1][k] = targpos[0][k] + targvel[0][k]*dt0 + targaccel[0][k]*0.5L*dt0*dt0 + accelslope[k]*dt0*dt0*dt0/6.0L;
+
+  // Re-calculate acceleration at this improved position.
+  accelcalc02LD(planetnum, planetmasses, planet_statevecs[startpoint+1], targpos[1], targaccel[1]);
+
+  // Re-calculate improved acceleration slope.
+  for(k=0;k<3;k++) accelslope[k] = (targaccel[1][k]-targaccel[0][k])/dt0;
+  
+  // Improved velocity for next time step
+  for(k=0;k<3;k++) targvel[1][k] = targvel[0][k] + targaccel[0][k]*dt0 + accelslope[k]*0.5L*dt0*dt0;
+
+  // Use linearly extrapolated acceleration to estimate position for
+  // the next time step.
+  dt0 = (temptime[2]-temptime[1])*SOLARDAY;
+  for(k=0;k<3;k++) targpos[2][k] = targpos[1][k] + targvel[1][k]*dt0 + targaccel[1][k]*0.5L*dt0*dt0 + accelslope[k]*dt0*dt0*dt0/6.0L;
+  // Calculate acceleration for this extrapolated position.
+  accelcalc02LD(planetnum, planetmasses, planet_statevecs[startpoint+2], targpos[2], targaccel[2]);
+
+  // Now we have three acceleration points: can load for a full polynomial fit.
+  if(DEBUG>0) cout << "Loading for a full polynomial fit.\n";
+  for(stepsin=3;stepsin<=polyorder+1;stepsin++) {
+    if(DEBUG>0) cout << "Working on preliminary polynomial fit of order " << stepsin << "\n";
+    ppxvec={};
+    for(i=0;i<stepsin;i++) ppxvec.push_back((temptime[i] - temptime[0])*SOLARDAY/dt0);
+    for(k=0;k<3;k++) {
+      // Fit for the kth component of acceleration.
+      ppyvec={};
+      for(i=0;i<stepsin;i++) ppyvec.push_back(targaccel[i][k]);
+      // Perform fit, and store in accelfit.
+      if(DEBUG>0) {
+	cout << "Running perfectpoly01LD with sizes " << ppxvec.size() << " and " << ppyvec.size() << "\n";
+	for(i=0;i<stepsin;i++) cout << "x = " << ppxvec[i] << ", y = " << ppyvec[i] << "\n";
+      }
+      perfectpoly01LD(ppxvec,ppyvec,ppfitvec);
+      for(i=0;i<stepsin;i++) accelfit[i][k] = ppfitvec[i];
+    }
+    // Re-calculate all of the positions and velocities using this fit.
+    for(j=1;j<=stepsin;j++) {
+      dt2 = (temptime[j]-temptime[0])*SOLARDAY;
+      // Positions
+      for(k=0;k<3;k++) targpos[j][k] = targpos[0][k] + targvel[0][k]*dt2;
+      for(i=0;i<stepsin;i++) {
+	timemult = intpowLD(dt2,2+i)*factorialLD(i)/factorialLD(2+i)/intpowLD(dt0,i);
+	for(k=0;k<3;k++) targpos[j][k] += accelfit[i][k]*timemult;
+      }
+      // Velocities
+      for(k=0;k<3;k++) targvel[j][k] = targvel[0][k];
+      for(i=0;i<stepsin;i++) {
+	timemult = intpowLD(dt2,1+i)/intpowLD(dt0,i)/((long double)(1+i));
+	for(k=0;k<3;k++) targvel[j][k] += accelfit[i][k]*timemult;
+      }
+      // Accelerations
+      for(k=0;k<3;k++) accelmod[j][k] = 0L;
+      for(i=0;i<stepsin;i++) {
+	timemult = intpowLD(dt2,i)/intpowLD(dt0,i);
+	for(k=0;k<3;k++) accelmod[j][k] += accelfit[i][k]*timemult;
+      }
+    }
+    // Re-calculate accelerations using these revised positions
+    for(j=1;j<=stepsin;j++) accelcalc02LD(planetnum, planetmasses, planet_statevecs[startpoint+j], targpos[j], targaccel[j]);
+    cout.precision(17);
+  
+    // Perform new fits to revised accelerations
+    ppxvec={};
+    for(i=0;i<stepsin;i++) ppxvec.push_back((temptime[i] - temptime[0])*SOLARDAY/dt0);
+    for(k=0;k<3;k++) {
+      ppyvec={};
+      for(i=0;i<stepsin;i++) ppyvec.push_back(targaccel[i][k]);
+      // Perform fit, and store in accelfit.
+      if(DEBUG>0) {
+	cout << "Running perfectpoly01LD with sizes " << ppxvec.size() << " and " << ppyvec.size() << "\n";
+	for(i=0;i<stepsin;i++) cout << "x = " << ppxvec[i] << ", y = " << ppyvec[i] << "\n";
+      }
+      perfectpoly01LD(ppxvec,ppyvec,ppfitvec);
+      for(i=0;i<stepsin;i++) accelfit[i][k] = ppfitvec[i];
+    }
+    // Re-calculate all of the positions and velocities using this fit.
+    for(j=1;j<=stepsin;j++) {
+      dt2 = (temptime[j]-temptime[0])*SOLARDAY;
+      // Positions
+      for(k=0;k<3;k++) targpos[j][k] = targpos[0][k] + targvel[0][k]*dt2;
+      for(i=0;i<stepsin;i++) {
+	timemult = intpowLD(dt2,2+i)*factorialLD(i)/factorialLD(2+i)/intpowLD(dt0,i);
+	for(k=0;k<3;k++) targpos[j][k] += accelfit[i][k]*timemult;
+      }
+      // Velocities
+      for(k=0;k<3;k++) targvel[j][k] = targvel[0][k];
+      for(i=0;i<stepsin;i++) {
+	timemult = intpowLD(dt2,1+i)/intpowLD(dt0,i)/((long double)(1+i));
+	for(k=0;k<3;k++) targvel[j][k] += accelfit[i][k]*timemult;
+      }
+      // Accelerations
+      for(k=0;k<3;k++) accelmod[j][k] = 0L;
+      for(i=0;i<stepsin;i++) {
+	timemult = intpowLD(dt2,i)/intpowLD(dt0,i);
+	for(k=0;k<3;k++) accelmod[j][k] += accelfit[i][k]*timemult;
+      }
+    }
+    // Re-calculate accelerations using these revised positions
+    for(j=1;j<=stepsin;j++) {
+      accelcalc02LD(planetnum, planetmasses, planet_statevecs[startpoint+j], targpos[j], targaccel[j]);
+    }
+  }
+
+  // We are now set up for a full-order polynomial integration.
+  // We have valid positions in targpos, targvel, and temptime
+  // for indices from 0 to polyorder+1.
+  if(DEBUG>0) cout << "Launching full-order polynomial integration, polyorder = " << polyorder << "\n";
+  // Load already calculated points into the output vectors
+  for(i=0;i<=polyorder+1;i++) {
+    if(i < outnum) {
+      for(k=0;k<3;k++) {
+	targ_statevecs[i][k] = targpos[i][k];
+	targ_statevecs[i][3+k] = targvel[i][k];
+      }
+    }
+  }
+  // Define the current reference point.
+  latestpoint=polyorder+1;
+  // Proceed with the full polynomial integration.
+  while(latestpoint < outnum-1) {
+    latestpoint++;
+    // Cycle the dynamical vectors
+    for(i=0;i<polyorder+1;i++) {
+      temptime[i] = temptime[i+1];
+      targaccel[i] = targaccel[i+1];
+      targvel[i] = targvel[i+1];
+      targpos[i] = targpos[i+1];
+    }
+    // Load a new point into temptime
+    temptime[polyorder+1] = outMJD[latestpoint];
+    // Fit for acceleration
+    ppxvec={};
+    for(i=0;i<polyorder+1;i++) ppxvec.push_back((temptime[i] - temptime[0])*SOLARDAY/dt0);
+    for(k=0;k<3;k++) {
+      ppyvec={};
+      for(i=0;i<polyorder+1;i++) ppyvec.push_back(targaccel[i][k]);
+      // Perform fit, and store in accelfit.
+      if(DEBUG>0) {
+	cout << "Running perfectpoly01LD with sizes " << ppxvec.size() << " and " << ppyvec.size() << "\n";
+	for(i=0;i<polyorder+1;i++) cout << "x = " << ppxvec[i] << ", y = " << ppyvec[i] << "\n";
+      }
+      perfectpoly01LD(ppxvec,ppyvec,ppfitvec);
+      for(i=0;i<polyorder+1;i++) accelfit[i][k] = ppfitvec[i];
+    }
+    // Re-calculate all of the positions and velocities using this fit.
+    for(j=1;j<=polyorder+1;j++) {
+      dt2 = (temptime[j]-temptime[0])*SOLARDAY;
+      // Positions
+      for(k=0;k<3;k++) targpos[j][k] = targpos[0][k] + targvel[0][k]*dt2;
+      for(i=0;i<polyorder+1;i++) {
+	timemult = intpowLD(dt2,2+i)*factorialLD(i)/factorialLD(2+i)/intpowLD(dt0,i);
+	for(k=0;k<3;k++) targpos[j][k] += accelfit[i][k]*timemult;
+      }
+      // Velocities
+      for(k=0;k<3;k++) targvel[j][k] = targvel[0][k];
+      for(i=0;i<polyorder+1;i++) {
+	timemult = intpowLD(dt2,1+i)/intpowLD(dt0,i)/((long double)(1+i));
+	for(k=0;k<3;k++) targvel[j][k] += accelfit[i][k]*timemult;
+      }
+      // Accelerations
+      for(k=0;k<3;k++) accelmod[j][k] = 0L;
+      for(i=0;i<polyorder+1;i++) {
+	timemult = intpowLD(dt2,i)/intpowLD(dt0,i);
+	for(k=0;k<3;k++) accelmod[j][k] += accelfit[i][k]*timemult;
+      }
+    }
+    // Re-calculate accelerations using these revised positions
+    for(j=1;j<=polyorder+1;j++) {
+      accelcalc02LD(planetnum, planetmasses, planet_statevecs[startpoint+latestpoint+j-polyorder-1], targpos[j], targaccel[j]);
+    }
+    // Use these revised accelerations to re-do the fits
+    ppxvec={};
+    for(i=0;i<polyorder+1;i++) ppxvec.push_back((temptime[i] - temptime[0])*SOLARDAY/dt0);
+    for(k=0;k<3;k++) {
+      ppyvec={};
+      for(i=0;i<polyorder+1;i++) ppyvec.push_back(targaccel[i][k]);
+      // Perform fit, and store in accelfit.
+      if(DEBUG>0) {
+	cout << "Running perfectpoly01LD with sizes " << ppxvec.size() << " and " << ppyvec.size() << "\n";
+	for(i=0;i<polyorder+1;i++) cout << "x = " << ppxvec[i] << ", y = " << ppyvec[i] << "\n";
+      }
+      perfectpoly01LD(ppxvec,ppyvec,ppfitvec);
+      for(i=0;i<polyorder+1;i++) accelfit[i][k] = ppfitvec[i];
+    }
+    // Re-calculate all of the positions and velocities using this fit.
+    for(j=1;j<=polyorder+1;j++) {
+      dt2 = (temptime[j]-temptime[0])*SOLARDAY;
+      // Positions
+      for(k=0;k<3;k++) targpos[j][k] = targpos[0][k] + targvel[0][k]*dt2;
+      for(i=0;i<polyorder+1;i++) {
+	timemult = intpowLD(dt2,2+i)*factorialLD(i)/factorialLD(2+i)/intpowLD(dt0,i);
+	for(k=0;k<3;k++) targpos[j][k] += accelfit[i][k]*timemult;
+      }
+      // Velocities
+      for(k=0;k<3;k++) targvel[j][k] = targvel[0][k];
+      for(i=0;i<polyorder+1;i++) {
+	timemult = intpowLD(dt2,1+i)/intpowLD(dt0,i)/((long double)(1+i));
+	for(k=0;k<3;k++) targvel[j][k] += accelfit[i][k]*timemult;
+      }
+      // Accelerations
+      for(k=0;k<3;k++) accelmod[j][k] = 0L;
+      for(i=0;i<polyorder+1;i++) {
+	timemult = intpowLD(dt2,i)/intpowLD(dt0,i);
+	for(k=0;k<3;k++) accelmod[j][k] += accelfit[i][k]*timemult;
+      }
+    }
+    // Re-calculate accelerations using these revised positions
+    for(j=1;j<=polyorder+1;j++) {
+      accelcalc02LD(planetnum, planetmasses, planet_statevecs[startpoint+latestpoint+j-polyorder-1], targpos[j], targaccel[j]);
+      if(latestpoint+j-polyorder-1 < outnum) {
+	for(k=0;k<3;k++) {
+	  targ_statevecs[latestpoint+j-polyorder-1][k] = targpos[j][k];
+	  targ_statevecs[latestpoint+j-polyorder-1][3+k] = targvel[j][k];
+	}
+      }
+    }
+    // We have now gone through two iterations of extrapolation
+    // to predict the next acceleration point as accurately as possible.
+    // The next step of the loop will move the extrapolated point back
+    // by one step, and use it to start extrapolating a new point,
+    // at the same time refining the former extrapolated points.
+  }
+  return(0);
+}
+
+// integrate_statevec02LD: October 02, 2025
+// Attempts to duplicate the functionality of integrate_orbit05LD(), with
+// more flexible architecture: specifically, with state vectors stored
+// as regular long double vectors instead of more sophisticated classes.
+// Can handle both backward and forward integration. The initial
+// conditions provided in starting_statevec apply to refpoint.
+// If refpoint <= startpoint, the program will integrate only
+// forward. If refpoint>=endpoint, only backward integration will
+// be performed. If (as is expected to be the
+// normal case) startpoint < refpont < endpoint, both backward
+// and forward integration will be performed.
+int integrate_statevec02LD(int polyorder, int planetnum, const vector <long double> &planetmjd, const vector <long double> &planetmasses, const vector <vector <long double>> &planet_statevecs, const vector <long double> &starting_statevec, int startpoint, int refpoint, int endpoint, vector <long double> &outMJD,  vector <vector <long double>> &targ_statevecs)
+{
+  vector <vector <long double>> targaccel;
+  vector <vector <long double>> accelfit;
+  vector <vector <long double>> targpos;
+  vector <vector <long double>> targvel;
+  vector <vector <long double>> accelmod;
+  vector <long double> temptime;
+  vector <long double> ppxvec;
+  vector <long double> ppyvec;
+  vector <long double> ppfitvec;
+  vector <long double> accelslope;
+  long i,j,k;
+  i=j=k=0;
+  int outnum = endpoint-startpoint+1;
+  int ref_subct=0;
+  
+  if(DEBUG>0) cout << "Inside integrate_statevec02LD()\n";
+
+  if(polyorder<2) {
+    cerr << "ERROR: integrate_statevec02LD called with polyorder = " << polyorder << "\n";
+    cerr << "polyorder must be at least 4!\n";
+    return(1);
+  }
+  
+  if(endpoint<startpoint) {
+    cerr << "ERROR: integrate_statevec02LD called with end point (" << endpoint << ") before starting point (" << startpoint << ")\n";
+    return(1);
+  } else if(startpoint<0 || endpoint>=long(planetmjd.size())) {
+    cerr << "ERROR: integrate_statevec02LD called with starting point " << startpoint << " or endpoint" << endpoint << " outside range of planet vectors (0 - " << planetmjd.size() << ")\n";
+    return(1);
+  } else if(refpoint<startpoint) {
+    cerr << "ERROR: integrate_statevec02LD called with reference point " << refpoint << " before starting point " << startpoint << "\n";
+    return(2);
+  } else if(refpoint>endpoint) {
+    cerr << "ERROR: integrate_statevec02LD called with reference point " << refpoint << " after end point " << endpoint << "\n";
+    return(2);
+  }
+  if(refpoint >= endpoint-polyorder-1) {
+    cerr << "ERROR: integrate_statevec02LD called with reference point " << refpoint << " too close to end point " << endpoint << "\n";
+    cerr << "to perform successful forward integration\n";
+    return(3);
+  }
+  if(refpoint <= startpoint+polyorder+1) {
+    cerr << "ERROR: integrate_statevec02LD called with reference point " << refpoint << " too close to start point " << startpoint << "\n";
+    cerr << "to perform successful backward integration\n";
+    return(3);
+  }
+
+  make_LDvec(outnum, outMJD);
+  make_LDmat(outnum, 6, targ_statevecs);
+  // Load outMJD with the actual output times
+  for(i=0;i<outnum;i++) outMJD[i] = planetmjd[startpoint+i];
+  
+  // Calculate the entry corresponding to refpoint in the shorter,
+  // problem-specific vectors targ_statevecs and outMJD.
+  ref_subct = refpoint-startpoint;
+
+  if(refpoint<endpoint) {
+    // Perform forward integration
+    long forwardnum = endpoint-refpoint+1;
+    vector <long double> forwardMJD;
+    vector <vector <long double>> forward_statevecs;
+     integrate_statevec_LDFW01(polyorder, planetnum, planetmjd, planetmasses, planet_statevecs, starting_statevec, refpoint, endpoint, forwardMJD, forward_statevecs);
+    for(i=0;i<forwardnum;i++) targ_statevecs[ref_subct+i] = forward_statevecs[i];
+  }
+  if(refpoint>startpoint) {
+    // Perform a backward integration.
+    long backwardnum = refpoint-startpoint+1;
+    long backrefpoint = planetmjd.size()-1 - refpoint;
+    long backstartpoint = planetmjd.size()-1 - startpoint;
+    vector <vector <long double>> backward_statevecs;
+    vector <long double> backward_startvec;
+    vector <long double> backwardMJD;
+    vector <vector <long double>> backplanet_statevecs;
+    vector <long double> backplanetmjd;
+
+    // Copy the starting state vector into backward_startvec
+    backward_startvec = starting_statevec;
+    // Sign-flip the velocity
+    for(k=3;k<6;k++) backward_startvec[k] *= -1.0l;
+    
+    // Copy planet vectors in reverse order
+    for(i=long(planetmjd.size()-1); i>=0; i--) {
+      backplanetmjd.push_back(-planetmjd[i]);
+      vector <long double> planetsonce;
+      for(j=0;j<planetnum;j++) {
+	// Position is copied verbatim
+	for(k=0;k<3;k++) planetsonce.push_back(planet_statevecs[i][6*j + k]);
+	// Velocity requires a sign-flip
+	for(k=3;k<6;k++) planetsonce.push_back(-planet_statevecs[i][6*j + k]);
+      }
+      backplanet_statevecs.push_back(planetsonce);
+    }
+    
+    integrate_statevec_LDFW01(polyorder, planetnum, backplanetmjd, planetmasses, backplanet_statevecs, backward_startvec, backrefpoint, backstartpoint, backwardMJD, backward_statevecs);
+    for(i=0;i<backwardnum;i++) {
+      // Position is copied verbatim
+      for(k=0;k<3;k++) targ_statevecs[ref_subct-i][k] = backward_statevecs[i][k];
+      // Velocity requires a sign-flip
+      for(k=3;k<6;k++) targ_statevecs[ref_subct-i][k] = -backward_statevecs[i][k];
+    }
+  }
+  return(0);
+}
+
 // tortoisechi03: February 05, 2025
 // Get chi-square value for a full Newtonian orbit-fit with
 // planetary perturbations, etc, given input state vectors
@@ -13362,7 +15250,85 @@ int Twopoint_Kepler_vstar(const double MGsun, const point3d startpoint, const po
   startvel.z = (endpoint.z - f*startpoint.z)/g;
   return(0);
 }   
+
+// Twopoint_Kepler_vstarSV: October 17, 2025:
+// Like Twopoint_Kepler_vstar, but used pure double-precision
+// vectors rather than the point3d class.
+// Description of ancestor program Twopoint_Kepler_vstar:
+// Given two points in an object's orbit (as 3-D Cartesian
+// vectors relative to the sun), and the time it takes to
+// move from the first point to the second, solve for the object's
+// Keplerian orbit, and in particular find its vector velocity
+// when at the first point. Input positions are in units of km,
+// timediff is in units of days, and the output velocity will
+// be in km/sec.
+// This code closely follows the derivation in Section 6.12 of
+// J. M. A. Danby's Foundations of Celestial Mechanics, in
+// contrast to the function Twopoint_Kepler_vel(), which attempted
+// to implement the derivation in Section 6.11
+int Twopoint_Kepler_vstarSV(const double MGsun, const vector <double> &startpoint, const vector <double> &endpoint, const double timediff, vector <double> &startvel, int itmax, int verbose)
+{
+  if(verbose>0) cout << "Inside Twopoint_Kepler_vstarSV\n";
+  double k=sqrt(MGsun);
+  double r1 = sqrt(startpoint[0]*startpoint[0] + startpoint[1]*startpoint[1] + startpoint[2]*startpoint[2]);
+  double r2 = sqrt(endpoint[0]*endpoint[0] + endpoint[1]*endpoint[1] + endpoint[2]*endpoint[2]);
+  double K = sqrt(2.0l*r1*r2 + 2.0l*nvecdotprod(startpoint,endpoint));
+  double m2 = DSQUARE(k*timediff*SOLARDAY)/intpowD(K,3);
+  double l = (r1+r2-K)/2.0l/K;
+  double y1,y2,y3,x1,x2,dy,Q;
+  y1=y2=y3=x1=x2=dy=Q=1.0l;
+  int itct=0;
+  startvel={};
+  make_dvec(3,startvel);
+  if(verbose>0) cout << "Twopoint_Kepler_vstarSV successfully initialized\n";
+
+  // Setup complete, go to optimzation loop.
+  while(fabs(dy)>KEPTRANSTOL2 && itct<itmax) {
+    x1 = m2/y1/y1 - l;
+    if(x1>0.5l || !isnormal(x1)) {
+      cerr << "ERROR: argument for Twopoint_KepQstar is " << x1 << ", out of valid range -infinity to +0.5, excluding 0.0\n";
+      return(1);
+    }
+    Q = Twopoint_KepQstar(x1);
+    if(!isnormal(Q) || Q==-LARGERR2) {
+      cerr << "Twopoint_KepQstar returns unreasonable value " << Q << " given argument " << x1 << "\n";
+      return(2);
+    }
+    y2 = 1.0l + (m2/y1/y1)*(4.0l/3.0l)*Q;
+    x2 = m2/y2/y2 - l;
+    if(x2>0.5l || !isnormal(x2)) {
+      cerr << "ERROR: argument for Twopoint_KepQstar is " << x2 << ", out of valid range -infinity to +0.5, excluding 0.0\n";
+      return(1);
+    }
+    Q = Twopoint_KepQstar(x2);
+    if(!isnormal(Q) || Q==-LARGERR2) {
+      cerr << "Twopoint_KepQstar returns unreasonable value " << Q << " given argument " << x2 << "\n";
+      return(2);
+    }
+    y3 = 1.0l + (m2/y2/y2)*(4.0l/3.0l)*Q;
+    if(isnormal(y1-2.0l*y2+y3)) dy = -DSQUARE(y2-y1)/(y1-2.0l*y2+y3);
+    else {
+      dy = 0.0l;
+      if(isnormal(-DSQUARE(y2-y1)) && fabs(y2-y1)>KEPTRANSTOL2) {
+	cerr << "WARNING: denominator for dy is " << (y1-2.0l*y2+y3) << " for numerator " << -DSQUARE(y2-y1) << "\n";
+	cerr << "This appears to indicate a nontrivial zero-divide\n";
+      }
+    }
+    y1 += dy;
+    itct++;
+  }
+  if(itct>=itmax) {
+    cerr << "WARNING: Twopoint_Kepler_vstar failed to converge in " << itmax << " iterations\n";
+    cerr << "x1, x2, y1, y2, y3, dy = " << x1 << " " << x2 << " " << y1 << " " << y2 << " " << y3 << " " << dy << "\n";
+  }
+  //cout << "Final value y1 = " << std::setprecision(20) << y1 << "\n";
+  double g = timediff*SOLARDAY/y1;
+  double f = 1.0l - 2.0l*DSQUARE(k*timediff*SOLARDAY)/(K*K*y1*y1*r1);
+  for(int i=0; i<3; i++) startvel[i] = (endpoint[i] - f*startpoint[i])/g;
+  return(0);
+}   
   
+
 // Keplerint_multipoint01: November 02, 2022: Like Keplerint, but does the
 // calculation for a bunch of points simultaneously. Note that
 // we assume the observation times and mjdstart are in UT1, which
@@ -14544,6 +16510,77 @@ double orbitchi_univar(const point3d &objectpos, const point3d &objectvel, const
   return(chisq);
 }
 
+// orbitchi_univarSV: October 17, 2025:
+// Calculate the chi-square value relative to input observational vectors
+// for an input orbit supplied in the form of state vector objectstate,
+// using the universal variables formulation of the Kepler problem.
+// In other words, get the chi-square value based on input state vectors,
+// using 2-body Keplerian integration, rather than n-body.
+// Input state vectors are expected to be in km and km/sec.
+// Note that the output vectors fitRA, fitDec, and resid are
+// null-wiped inside orbitchi_univarSV, so it isn't necessary for the
+// calling function to wipe them.
+double orbitchi_univarSV(const vector <double> &starting_statevec, const double mjdstart, const vector <vector <double>> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid, int verbose)
+{
+  vector <vector <double>> obs_statevecs;
+  int obsct;
+  int obsnum = obsMJD.size();
+  double light_travel_time;
+  vector <double> outpos;
+  make_dvec(3,outpos);
+  double outRA=0l;
+  double outDec=0l;
+  double dval=0l;
+  double chisq=0l;
+  resid = fitRA = fitDec = {};
+  int status=0;
+  long k=0;
+  
+  // Integrate orbit.
+  status=0;
+  status = Kepler_univ_vec_SV(GMSUN_KM3_SEC2, mjdstart, starting_statevec, obsMJD, obs_statevecs, verbose);
+  if(status!=0) {
+    // Kepler_univ_vec_SV failed.
+    return(LARGERR3);
+  }
+  for(obsct=0;obsct<obsnum;obsct++) {
+    // Initial approximation of the coordinates relative to the observer
+    for(k=0;k<3;k++) outpos[k] = obs_statevecs[obsct][k] - observerpos[obsct][k];
+    // Initial approximation of the observer-target distance
+    dval = nvecabs(outpos);
+    // Convert to meters and divide by the speed of light to get the light travel time.
+    light_travel_time = dval*1000.0/CLIGHT;
+    // Light-travel-time corrected version of coordinates relative to the observer
+    for(k=0;k<3;k++) outpos[k] = obs_statevecs[obsct][k] - light_travel_time*obs_statevecs[obsct][3+k] - observerpos[obsct][k];
+    // Light-travel-time corrected observer-target distance
+    dval = nvecabs(outpos);
+    if(!isnormal(dval)) {
+      cerr << "WARNING: about to call stateunit_to_celestial with bad input\n";
+      cerr << "Input start pos: " << starting_statevec[0] << " "  << starting_statevec[1] << " "  << starting_statevec[2] << "\n";
+      cerr << "Recovered start pos: " << obs_statevecs[0][0] << " "  << obs_statevecs[0][1] << " "  << obs_statevecs[0][2] << "\n";
+      cerr << "Current heliocentric pos: " << obs_statevecs[obsct][0] << " "  << obs_statevecs[obsct][1] << " "  << obs_statevecs[obsct][2] << "\n";
+      cerr << "LTT correction: " << light_travel_time*obs_statevecs[obsct][3] << " "  << light_travel_time*obs_statevecs[obsct][4] << " "  << light_travel_time*obs_statevecs[obsct][5] << "\n";
+      cerr << "Corrected topocentric pos: "<< outpos[0] << " "  << outpos[1] << " "  << outpos[2] << "\n";
+      cerr << "Observerpos: " << observerpos[obsct][0] << " "  << observerpos[obsct][1] << " "  << observerpos[obsct][2] << "\n";
+      chisq=LARGERR3; // Error code
+      return(chisq);
+    }
+    // Project onto the celestial sphere.
+    statevec_to_celestial(outpos, outRA, outDec);
+    dval = distradec01(obsRA[obsct],obsDec[obsct],outRA,outDec);
+    dval *= 3600.0L; // Convert to arcsec
+    fitRA.push_back(outRA);
+    fitDec.push_back(outDec);
+    resid.push_back(dval);
+  }
+  chisq=0.0L;
+  for(obsct=0;obsct<obsnum;obsct++) {
+    chisq += DSQUARE(resid[obsct]/sigastrom[obsct]);
+  }
+  return(chisq);
+}
+
+
 // TwopointF: October 26, 2022:
 // Given input values for k = sqrt(GMsun), delta-t, lambda1 = sqrt(r1+r2+c),
 // lambda2 = sqrt(r1+r2-c), and the semimajor axis a in km, evaluate a function
@@ -15038,6 +17075,14 @@ point3d geodist_to_3dpos01(double RA, double Dec, point3d observerpos, double ge
   return(baryvec);
 }
 
+vector <double> geodist_to_3dposvec(double RA, double Dec, const vector <double> &observerpos, double geodist)
+{
+  vector <double> baryvec;
+  celestial_to_SVunit(RA, Dec, baryvec);
+  for(long i=0; i<3;i++) baryvec[i] = observerpos[i] + baryvec[i]*geodist*AU_KM;
+  return(baryvec);
+}
+
 // Herget_unboundcheck01: November 03, 2022:
 // Quickly check if input parameters for a Method of Herget orbit fit
 // imply an unbound (hyperbolic) orbit.
@@ -15320,6 +17365,79 @@ double Hergetchi_vstar(double geodist1, double geodist2, int Hergetpoint1, int H
   
   return(orbchi);
 }
+
+
+// Hergetchi_vstarSV: October 17, 2025
+// Like Hergetchi_vstar, but uses pure double-precision
+// vectors, instead of the point3d class.
+// Description of ancestor program Hergetchi_vstar:
+// Like Hergetchi01, but uses Twopoint_Kepler_vstar()
+// rather than Twopoint_Kepler_v1() to solve the
+// Kepler two point boundary value problem. Hence, it is
+// able to handle unbound, hyperbolic orbits.
+// Contents 
+//
+double Hergetchi_vstarSV(double geodist1, double geodist2, int Hergetpoint1, int Hergetpoint2, const vector <vector <double>> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid, vector <double> &out_statevec, double &stateMJD, int verbose)
+{
+  if(verbose>0) cout << "Inside Hergetchi_vstarSV ";
+  int i=0;
+  long numobs = long(obsMJD.size());
+  if(verbose>0) cout << "with " << numobs << " input observations\n";
+  if(long(obsRA.size()) != numobs || long(obsDec.size()) != numobs || long(sigastrom.size()) != numobs || long(observerpos.size()) != numobs) {
+    cerr << "ERROR: Hergetchi_vstarSV finds unequal lenths among input vectors:\n";
+    cerr << "observed MJD, RA, Dec, sigastrom, and observerpos have lengths " << numobs << " " << obsRA.size() << " " << obsDec.size() << " " <<  sigastrom.size() << " " << observerpos.size() << "\n";
+    for(i=0;i<6;i++) out_statevec.push_back(-1.0l);
+    stateMJD = -1.0;
+    return(LARGERR3);
+  }
+  if(Hergetpoint2<=Hergetpoint1 || Hergetpoint1<0 || Hergetpoint2>=numobs) {
+    cerr << "ERROR: Hergetchi_vstar has invalid input reference points:\n";
+    cerr << "Starting point " << Hergetpoint1 << " and ending point " << Hergetpoint2 << ", where allowed range is 0 to " << numobs-1 << "\n";
+    for(i=0;i<6;i++) out_statevec.push_back(-1.0l);
+    stateMJD = -1.0;
+    return(LARGERR3);
+  }
+  if(geodist1<=0.0l || geodist2<=0.0l) {
+    //cerr << "ERROR: Hergetchi_vstar has zero or negative geodist1 or geodist2: " << geodist1 << " " << geodist2 << "\n";
+    return(LARGERR3);
+  }
+  if(verbose>0) cout << "Loading startpos and endpos\n";
+  vector <double> startpos = geodist_to_3dposvec(obsRA[Hergetpoint1], obsDec[Hergetpoint1], observerpos[Hergetpoint1], geodist1);
+  vector <double> endpos = geodist_to_3dposvec(obsRA[Hergetpoint2], obsDec[Hergetpoint2], observerpos[Hergetpoint2], geodist2);
+  if(verbose>0) cout << "startpos and endpos successfully loaded\n";
+  // Time difference should include a light-travel-time correction. The sign is determined
+  // by the fact that if the object gets further away, the object time moves backward
+  // relative to the observer time. Hence, if the object gets further away (i.e., geodist2>geodist1),
+  // the object experiences less time than the observer beween the two observations, because
+  // the observer is looking further back in time at the second observation.
+  double deltat = obsMJD[Hergetpoint2] - obsMJD[Hergetpoint1] - (geodist2-geodist1)/CLIGHT_AUDAY;
+  vector <double> startvel;
+  if(verbose>0) cout << "Hergetchi_vstarSV launching Twopoint_Kepler_vstarSV\n";
+  int status = Twopoint_Kepler_vstarSV(GMSUN_KM3_SEC2, startpos, endpos, deltat, startvel, KVSTAR_ITMAX, verbose);
+  if(status!=0) {
+    // Twopoint_Kepler_vstarSV() returned a failure code.
+    if(verbose>=2) cerr << "ERROR: Hergetchi_vstarSV received failure code " << status << " from Twopoint_Kepler_vstarSV\n";
+    if(verbose>=2) cerr << "On input distances " << geodist1 << " and " << geodist2 << "\n";
+    for(i=0;i<6;i++) out_statevec.push_back(-1.0l);
+    stateMJD = -1.0;
+    return(LARGERR3);
+  }
+    
+  double orbchi;
+  // Note that the output vectors fitRA, fitDec, and resid are null-wiped
+  // internally in orbitchi01, so it isn't necessary to wipe them here.
+  vector <double> starting_statevec={};
+  for(i=0;i<3;i++) starting_statevec.push_back(startpos[i]); 
+  for(i=0;i<3;i++) starting_statevec.push_back(startvel[i]); 
+  
+  orbchi = orbitchi_univarSV(starting_statevec, obsMJD[Hergetpoint1]-geodist1/CLIGHT_AUDAY, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, verbose);
+  
+  out_statevec=starting_statevec;
+  stateMJD = obsMJD[Hergetpoint1]-geodist1/CLIGHT_AUDAY;
+  return(orbchi);
+}
+
+
 
 #undef POSADJ
 
@@ -16264,7 +18382,7 @@ double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, i
   // Note that the output vectors fitRA, fitDec, and resid are null-wiped
   // internally, so it isn't necessary to wipe them here.
   for(i=0;i<3;i++) {
-    if(verbose>=2) cout << "Calling Hergetchi_vstar with distances " << simplex[i][0] << " " << simplex[i][1] << " : ";
+    if(verbose>=2) cout << "Calling Hergetchi_vstar with distances " << simplex[i][0] << " " << simplex[i][1] << ":\n";
     simpchi[i] = Hergetchi_vstar(simplex[i][0], simplex[i][1], Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, verbose);
     if(simpchi[i]>=LARGERR3) {
       cerr << "WARNING: Hergetchi_vstar() returned error code on simplex point " << i << ": " << simplex[i][0] << ", " << simplex[i][1] << "\n";
@@ -16541,6 +18659,390 @@ double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, i
 
   orbit.push_back(double(simp_total_ct));
   return(chisq);
+}
+
+
+// Hergetfit_vstarSV: October 20, 2025:
+// Like Hergetfit_vstar, but uses pure double-precision vectors,
+// rather than the point3d class.
+//
+// Description of ancestor program Hergetfit_vstar:
+// Like Hergetfit01, but uses Hergetchi_vstar() rather than
+// Hergetchi01(), and hence is able to handle unbound, hyperbolic
+// orbits. Performs orbit fitting using the Method of Herget,
+// and a downhill simplex method applied to the 2-dimensional space of
+// geodist1 and geodist2.
+// The vector orbit holds a [0], e [1], mjd [2], and the state vectors [3-8] on
+// return of Hergetchi_vstar(). Hergetfit_vstar pushes back one additional
+// datum: the number of orbit evaluations (~iterations) required
+// to reach convergence [9].
+double Hergetfit_vstarSV(double geodist1, double geodist2, double simplex_scale, int simptype, double ftol, int point1, int point2, const vector <vector <double>> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid, vector <double> &out_statevec, double &stateMJD, long &itnum, int verbose)
+{
+  int Hergetpoint1, Hergetpoint2;
+  double simprange;
+  double simplex[3][2];
+  double simpchi[3];
+  double refdist[2],trialdist[2];
+  double chisq, bestchi, worstchi, newchi;
+  double global_bestchi = LARGERR3;
+  double global_bestd1 = geodist1;
+  double global_bestd2 = geodist2;
+  int i,j,worstpoint, bestpoint;
+  int simp_eval_ct=0;
+  int simp_total_ct=0;
+  if(simplex_scale<=0.0L || simplex_scale>=SIMPLEX_SCALE_LIMIT) {
+    cerr << "WARNING: simplex scale must be between 0 and " << SIMPLEX_SCALE_LIMIT << "\n";
+    cerr << "Input out-of-range value " << simplex_scale << " will be reseset to ";
+    simplex_scale = SIMPLEX_SCALEFAC;
+    cerr << simplex_scale << "\n";
+  }
+  
+  // Input points are indexed from 1; apply offset
+  Hergetpoint1 = point1-1;
+  Hergetpoint2 = point2-1;
+
+  if(verbose>=2) {
+    cout << "Herget points: " << Hergetpoint1 << " " << Hergetpoint2 << "\n";
+    for(i=0;i<long(obsMJD.size());i++) {
+      cout << "Input observerpos " << i << ": " << obsMJD[i] << " " << observerpos[i][0] << " " << observerpos[i][1] << " " << observerpos[i][2] << "\n";
+    }
+  }
+
+  // SETUP FOR DOWNHILL SIMPLEX SEARCH
+  int status = Herget_simplex_int(geodist1, geodist2, simplex_scale, simplex, simptype);  
+  if(status==1) {
+    // This is the error code for a zero or negative input distance.
+    if(geodist1<MINHERGETDIST) geodist1=MINHERGETDIST;
+    if(geodist2<MINHERGETDIST) geodist2=MINHERGETDIST;
+    status=Herget_simplex_int(geodist1, geodist2, simplex_scale, simplex, simptype);
+    cerr << "WARNING: Herget_simplex_int() called with invalid distance.\n";
+    cerr << "retrying with newly assigned distances " << geodist1 << " and " << geodist2 << "\n";
+    if(status!=0) {
+      cerr << "ERROR: Herget_simplex_int() failed to create a good simplex\n";
+      return(LARGERR3);
+    }
+  }
+
+  cout << "Initializing simpchi\n";
+  for(i=0;i<3;i++) simpchi[i]=LARGERR3;
+  cout << "simpchi initialized\n";
+  // Calculate chi-square values for each point in the initial simplex
+  // Note that the output vectors fitRA, fitDec, and resid are null-wiped
+  // internally, so it isn't necessary to wipe them here.
+  for(i=0;i<3;i++) {
+    cout << "Calling Hergetchi_vstar with distances " << simplex[i][0] << " " << simplex[i][1] << " : ";
+    simpchi[i] = Hergetchi_vstarSV(simplex[i][0], simplex[i][1], Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, out_statevec, stateMJD, verbose);
+    if(simpchi[i]>=LARGERR3) {
+      cerr << "WARNING: Hergetchi_vstarSV() returned error code on simplex point " << i << ": " << simplex[i][0] << ", " << simplex[i][1] << "\n";
+    }
+    simp_eval_ct++;
+    simp_total_ct++;
+  }
+  if(simpchi[0] == LARGERR3 || simpchi[1] == LARGERR3 || simpchi[2] == LARGERR3) {
+    cerr << "WARNING: Hergetchi_vstarSV returned failure code with simplex:\n";
+    for(i=0;i<3;i++) {
+      cerr << simplex[i][0] << " " << simplex[i][1] << "chisq = " << simpchi[i] << "\n";
+    }
+  }
+
+  if(verbose>=2) cout << "Reduced chi-square value for input distances is " << simpchi[0]/obsMJD.size() << "\n";
+  
+  // Find best and worst points
+  worstpoint=bestpoint=0;
+  bestchi = worstchi = simpchi[0];
+  for(i=1;i<3;i++) {
+    if(simpchi[i]<bestchi) {
+      bestchi = simpchi[i];
+      bestpoint=i;
+    }
+    if(simpchi[i]>worstchi) {
+      worstchi = simpchi[i];
+      worstpoint=i;
+    }
+  }
+  if(TRACECONV>0) cout << "TRACECONV: " << simplex[bestpoint][0] << " " << simplex[bestpoint][1] << ": " << bestchi << "\n";
+  simprange = (worstchi-bestchi)/bestchi;
+  if(bestchi>=LARGERR3) {
+    cerr << "ERROR: Hergetfit_vstar() launched with no valid simplex points\n";
+    return(LARGERR3);
+  } else {
+    global_bestchi = bestchi;
+    global_bestd1 = simplex[bestpoint][0];
+    global_bestd2 = simplex[bestpoint][1];
+  }
+  // LAUNCH DOWNHILL SIMPLEX SEARCH
+  while(simprange>ftol && simp_total_ct <= SIMP_MAXCT_TOTAL) {
+    if(verbose>=2) cout << fixed << setprecision(6) << "Eval " << simp_total_ct << ": Best reduced chi-square value is " << bestchi/obsMJD.size() << ", range is " << simprange << ", vector is " << simplex[bestpoint][0] << " "  << simplex[bestpoint][1] << "\n";
+    
+    // Try to reflect away from worst point
+    // Find mean over all the points except the worst one
+    refdist[0] = refdist[1] = 0.0L;
+    for(i=0;i<3;i++) {
+      if(i!=worstpoint) {
+	refdist[0] += simplex[i][0]/2.0L;
+	refdist[1] += simplex[i][1]/2.0L;
+      }
+    }
+    // Calculate new trial point
+    trialdist[0] = refdist[0] - (simplex[worstpoint][0] - refdist[0]);
+    trialdist[1] = refdist[1] - (simplex[worstpoint][1] - refdist[1]);
+    // Make sure we don't have negative distances
+    if(trialdist[0]<0.0) trialdist[0] = -trialdist[0];
+    else if(trialdist[0]==0.0) trialdist[0] += MINHERGETDIST*10.0;
+    if(trialdist[1]<0.0) trialdist[1] = -trialdist[1];
+    else if(trialdist[1]==0.0) trialdist[1] += MINHERGETDIST*10.0;
+    // Calculate chi-square value at this new point
+    chisq = Hergetchi_vstarSV(trialdist[0], trialdist[1], Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, out_statevec, stateMJD, verbose);
+    if(chisq>=LARGERR3) {
+      cerr << "WARNING: Hergetchi_vstarSV() returned error code with input " << trialdist[0] << ", " << trialdist[1] << "\n";
+    }
+    simp_eval_ct++;
+    simp_total_ct++;
+    if(chisq<bestchi) {
+      // Very good result. Let this point replace worstpoint in the simplex
+      for(j=0;j<2;j++) simplex[worstpoint][j] = trialdist[j];
+      simpchi[worstpoint]=chisq;
+     // Extrapolate further in this direction: maybe we can do even better
+      trialdist[0] = refdist[0] - 2.0L*(simplex[worstpoint][0] - refdist[0]);
+      trialdist[1] = refdist[1] - 2.0L*(simplex[worstpoint][1] - refdist[1]);
+      // Make sure we don't have negative distances
+      if(trialdist[0]<0.0) trialdist[0] = -trialdist[0];
+      else if(trialdist[0]==0.0) trialdist[0] += MINHERGETDIST*10.0;
+      if(trialdist[1]<0.0) trialdist[1] = -trialdist[1];
+      else if(trialdist[1]==0.0) trialdist[1] += MINHERGETDIST*10.0;
+      newchi = Hergetchi_vstarSV(trialdist[0], trialdist[1], Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, out_statevec, stateMJD, verbose);
+      if(newchi>=LARGERR3) {
+	cerr << "WARNING: Hergetchi_vstarSV() returned error code with input " << trialdist[0] << ", " << trialdist[1] << "\n";
+      }
+
+      simp_eval_ct++;
+      simp_total_ct++;
+      if(newchi<chisq) {
+	// Let this even better point replace worstpoint in the simplex
+	for(j=0;j<2;j++) simplex[worstpoint][j] = trialdist[j];
+	simpchi[worstpoint]=newchi;
+      }
+      // This closes the case where reflecting away from the
+      // worst point was a big success.
+    } else {
+      // Reflecting away from the worst point wasn't great, but
+      // we'll see what we can manage.
+      if(chisq<worstchi) { 
+	// The new point was at least better than the previous worst.
+	// Add it to the simplex in place of the worst point
+	for(j=0;j<2;j++) simplex[worstpoint][j] = trialdist[j];
+	simpchi[worstpoint]=chisq;
+      } else {
+	// The new point was really no good.
+	// This is the part of the story where we give up on
+	// reflecting away from the worst point, and we try
+	// something else.
+	// First, try contracting away from the bad point,
+	// instead of reflecting away from it.
+	trialdist[0] = 0.5L*(simplex[worstpoint][0] + refdist[0]);
+	trialdist[1] = 0.5L*(simplex[worstpoint][1] + refdist[1]);
+	// Make sure we don't have negative distances
+	if(trialdist[0]<0.0) trialdist[0] = -trialdist[0];
+	else if(trialdist[0]==0.0) trialdist[0] += MINHERGETDIST*10.0;
+	if(trialdist[1]<0.0) trialdist[1] = -trialdist[1];
+	else if(trialdist[1]==0.0) trialdist[1] += MINHERGETDIST*10.0;
+	// Calculate chi-square value at this new point
+	chisq = Hergetchi_vstarSV(trialdist[0], trialdist[1], Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, out_statevec, stateMJD, verbose);
+	if(chisq>=LARGERR3) {
+	  cerr << "WARNING: Hergetchi_vstarSV() returned error code with input " << trialdist[0] << ", " << trialdist[1] << "\n";
+	}
+	simp_eval_ct++;
+	simp_total_ct++;
+	if(chisq<worstchi) {
+	  // The new point is better than the previous worst point
+	  // Add it to the simplex in place of the worst point
+	  for(j=0;j<2;j++) simplex[worstpoint][j] = trialdist[j];
+	  simpchi[worstpoint]=chisq;
+	} else {
+	  // Even contracting away from the bad point didn't help.
+	  // Only one thing left to try: contract toward the best point.
+	  // This means each point will become an average of the best
+	  // point and its former self.
+	  for(i=0;i<3;i++) {
+	    if(i!=bestpoint) {
+	      simplex[i][0] = 0.5L*(simplex[i][0] + simplex[bestpoint][0]);
+	      simplex[i][1] = 0.5L*(simplex[i][1] + simplex[bestpoint][1]);
+	      // Make sure we don't have negative distances
+	      if(simplex[i][0]<0.0) simplex[i][0] = -simplex[i][0];
+	      else if(simplex[i][0]==0.0) simplex[i][0] += MINHERGETDIST*10.0;
+	      if(simplex[i][1]<0.0) simplex[i][1] = -simplex[i][1];
+	      else if(simplex[i][1]==0.0) simplex[i][1] += MINHERGETDIST*10.0;
+	      simpchi[i] = Hergetchi_vstarSV(simplex[i][0], simplex[i][1], Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, out_statevec, stateMJD, verbose);
+	      if(simpchi[i]>=LARGERR3) {
+		cerr << "WARNING: Hergetchi_vstarSV() returned error code on simplex point " << i << ": " << simplex[i][0] << ", " << simplex[i][1] << "\n";
+	      }
+	      simp_eval_ct++;
+	      simp_total_ct++;
+	    }
+	  }
+	  // Close case where nothing worked but contracting around the best point.
+	}
+	// Close case where reflecting away from the worst point did not work. 
+      }
+      // Close case where reflecting away from the worst point was not a big success.
+    }
+    // Expand the simplex if we've been running for a long time
+    if(simp_eval_ct>SIMP_EXPAND_NUM && simp_total_ct <= SIMP_MAXCT_EXPAND) {
+      // Zero the counter
+      simp_eval_ct=0;
+      // Find center of the simplex
+      refdist[0] = (simplex[0][0] + simplex[1][0] + simplex[2][0])/3.0L;
+      refdist[1] = (simplex[0][1] + simplex[1][1] + simplex[2][1])/3.0L;
+      // Expand the simplex
+      for(i=0;i<3;i++) {
+	simplex[i][0] = refdist[0] + (simplex[i][0]-refdist[0])*SIMP_EXPAND_FAC;
+	simplex[i][1] = refdist[1] + (simplex[i][1]-refdist[1])*SIMP_EXPAND_FAC;
+	// Make sure we don't have negative distances
+	if(simplex[i][0]<0.0) simplex[i][0] = -simplex[i][0];
+	else if(simplex[i][0]==0.0) simplex[i][0] += MINHERGETDIST*10.0;
+	if(simplex[i][1]<0.0) simplex[i][1] = -simplex[i][1];
+	else if(simplex[i][1]==0.0) simplex[i][1] += MINHERGETDIST*10.0;
+      }
+      // Re-evaluate the chi-square values
+      for(i=0;i<3;i++) {
+	simpchi[i] = Hergetchi_vstarSV(simplex[i][0], simplex[i][1], Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, out_statevec, stateMJD, verbose);
+	if(simpchi[i]>=LARGERR3) {
+	  cerr << "WARNING: Hergetchi_vstarSV() returned error code on simplex point " << i << ": " << simplex[i][0] << ", " << simplex[i][1] << "\n";
+	}
+      }
+    }
+
+    // Identify best and worst points for next iteration.
+    worstpoint=bestpoint=0;
+    bestchi = worstchi = simpchi[0];
+    for(i=1;i<3;i++) {
+      if(simpchi[i]<bestchi) {
+	bestchi = simpchi[i];
+	bestpoint=i;
+	} 
+      if(simpchi[i]>worstchi) {
+	worstchi = simpchi[i];
+	worstpoint=i;
+      }
+    }
+    if(TRACECONV>0) cout << "TRACECONV: " << simplex[bestpoint][0] << " " << simplex[bestpoint][1]  << ": " << bestchi << "\n";
+    if(bestchi<global_bestchi) {
+      global_bestchi = bestchi;
+      global_bestd1 = simplex[bestpoint][0];
+      global_bestd2 = simplex[bestpoint][1];
+    }
+  
+    if(bestchi<LARGERR3) simprange = (worstchi-bestchi)/bestchi;
+    else {
+      if(verbose>=2) cout << "WARNING: probing a simplex with no valid points!\n";
+      // We have problems: expanding the simplex resulted in no
+      // acceptable points at all.
+      simprange = LARGERR3;
+      // Try to find something reasonable.
+      status = Herget_simplex_int(global_bestd1, global_bestd2, simplex_scale, simplex, simptype);
+      if(status==1) {
+	// This is the error code for a zero or negative input distance.
+	if(global_bestd1<MINHERGETDIST) global_bestd1=MINHERGETDIST;
+	if(global_bestd2<MINHERGETDIST) global_bestd2=MINHERGETDIST;
+	cerr << "WARNING: Herget_simplex_int() called with invalid distance.\n";
+	cerr << "retrying with newly assigned distances " << global_bestd1 << " and " << global_bestd2 << "\n";
+	status=Herget_simplex_int(global_bestd1, global_bestd2, simplex_scale, simplex, simptype);
+	if(status!=0) {
+	  cerr << "ERROR: Herget_simplex_int() failed to create a good simplex\n";
+	  return(LARGERR3);
+	}
+      }
+      for(i=0;i<3;i++) {
+	if(verbose>=2) cout << "Calling Hergetchi_vstar with distances " << simplex[i][0] << " " << simplex[i][1] << "\n";
+	simpchi[i] = Hergetchi_vstarSV(simplex[i][0], simplex[i][1], Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, out_statevec, stateMJD, verbose);
+	if(simpchi[i]>=LARGERR3) {
+	  cerr << "WARNING: Hergetchi_vstarSV() returned error code on simplex point " << i << ": " << simplex[i][0] << ", " << simplex[i][1] << "\n";
+	}
+	simp_eval_ct++;
+	simp_total_ct++;
+      }
+      if(simpchi[0] >= LARGERR3 && simpchi[1] >= LARGERR3 && simpchi[2] >= LARGERR3) {
+	cerr << "Hergetchi_vstar found no valid points with simplex:\n";
+	for(i=0;i<3;i++) {
+	  cerr << simplex[i][0] << " " << simplex[i][1] << "chisq = " << simpchi[i] << "\n";
+	}
+	return(LARGERR3);
+      } else {
+	// New simplex is acceptable
+	// Find best and worst points
+	worstpoint=bestpoint=0;
+	bestchi = worstchi = simpchi[0];
+	for(i=1;i<3;i++) {
+	  if(simpchi[i]<bestchi) {
+	    bestchi = simpchi[i];
+	    bestpoint=i;
+	  }
+	  if(simpchi[i]>worstchi) {
+	    worstchi = simpchi[i];
+	    worstpoint=i;
+	  }
+	}
+	if(TRACECONV>0) cout << "TRACECONV: " << simplex[bestpoint][0] << " " << simplex[bestpoint][1]  << ": " << bestchi << "\n";
+	simprange = (worstchi-bestchi)/bestchi;
+	if(bestchi<global_bestchi) {
+	  global_bestchi = bestchi;
+	  global_bestd1 = simplex[bestpoint][0];
+	  global_bestd2 = simplex[bestpoint][1];
+	}
+	// Close case where we eventually found a viable simplex
+      }
+      // Close case where we had an unviable simplex and had to try to fix it.
+    }
+    // Close main optimization loop.
+  }
+  
+  // Perform fit with final best parameters
+  chisq = Hergetchi_vstarSV(global_bestd1, global_bestd2, Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, out_statevec, stateMJD, verbose);
+  if(TRACECONV>0) cout << "TRACECONV: " << global_bestd1 << " " << global_bestd2  << ": " << chisq << "\n";
+  if(chisq>=LARGERR3) {
+    cerr << "WARNING: Hergetchi_vstar() returned error code on final optimized input " << global_bestd1 << ", " << global_bestd2 << "\n";
+  }
+  itnum = simp_total_ct;
+  return(chisq);
+}
+
+// statevec2kep_easy: October 20, 2025:
+// Given an input state vector, calculate the three 'easy' components
+// of a Keplerian orbit: orbital semimajor axis, eccentricity, and inclination.
+int statevec2kep_easy(const double MGsun, vector <double> &statevec, double &a, double &e, double &incl)
+{
+  double r0 = sqrt(statevec[0]*statevec[0] + statevec[1]*statevec[1] + statevec[2]*statevec[2]);
+  double v0 = sqrt(statevec[3]*statevec[3] + statevec[4]*statevec[4] + statevec[5]*statevec[5]);
+  double u = statevec[0]*statevec[3] + statevec[1]*statevec[4] + statevec[2]*statevec[5];
+  a = r0*MGsun/(2.0l*MGsun-v0*v0*r0);
+  double n = sqrt(MGsun/a/a/a);
+  double alpha = MGsun/a;
+  vector <double> incvec;
+  double EC, ES, CH, SH;
+  EC = ES = CH = SH = e = incl = 0.0l;
+  make_dvec(3,incvec);
+  
+  if(alpha>0.0l) {
+    // Bound, elliptical orbit
+    EC = 1.0l - r0/a;
+    ES = u/n/a/a;
+    e = sqrt(EC*EC + ES*ES);
+  } else if (alpha<0.0l) {
+    // Unbound, hyperbolic orbit
+    CH = 1.0l - r0/a;
+    SH = u/sqrt(-MGsun*a);
+    e = sqrt(CH*CH - SH*SH);
+  }
+  // Find the cross product r X v.
+  incvec[0] = statevec[1]*statevec[5] - statevec[2]*statevec[4];
+  incvec[1] = statevec[2]*statevec[3] - statevec[0]*statevec[5];
+  incvec[2] = statevec[0]*statevec[4] - statevec[1]*statevec[3];
+  // This vector points toward the orbit pole. Normalize it.
+  nvecnorm(incvec);
+  if(incvec[2]>=1.0) incl=0.0;
+  else if(incvec[2]<=-1.0) incl=180.0;
+  else incl = acos(incvec[2])*DEGPRAD;
+  return(0);
 }
 
 #define MACHEPS01 2.22e-10l
@@ -45866,7 +48368,7 @@ int matrix_transpose(const vector <vector <long double>> &A, vector <vector <lon
   long ncolA = A[0].size();
 
   // Check that all of the rows in A have the same length.
-  for(i=1;i<nrowA;i++) {
+  for(i=0;i<nrowA;i++) {
     if(ncolA != long(A[i].size())) {
       cerr << "ERROR in matXmat: row " << i << " of matrix A has " << A[i].size() << " columns, while the first row has " << ncolA << "\n";
       return(2);
@@ -45874,8 +48376,8 @@ int matrix_transpose(const vector <vector <long double>> &A, vector <vector <lon
   }
   Atrans={};
   make_LDmat(ncolA, nrowA, Atrans);
-  for(i=1;i<nrowA;i++) {
-    for(j=1;j<ncolA;j++) {
+  for(i=0;i<nrowA;i++) {
+    for(j=0;j<ncolA;j++) {
       Atrans[j][i] = A[i][j];
     }
   }
@@ -45890,7 +48392,7 @@ int matrix_transpose(const vector <vector <double>> &A, vector <vector <double>>
   long ncolA = A[0].size();
 
   // Check that all of the rows in A have the same length.
-  for(i=1;i<nrowA;i++) {
+  for(i=0;i<nrowA;i++) {
     if(ncolA != long(A[i].size())) {
       cerr << "ERROR in matXmat: row " << i << " of matrix A has " << A[i].size() << " columns, while the first row has " << ncolA << "\n";
       return(2);
@@ -45898,8 +48400,8 @@ int matrix_transpose(const vector <vector <double>> &A, vector <vector <double>>
   }
   Atrans={};
   make_dmat(ncolA, nrowA, Atrans);
-  for(i=1;i<nrowA;i++) {
-    for(j=1;j<ncolA;j++) {
+  for(i=0;i<nrowA;i++) {
+    for(j=0;j<ncolA;j++) {
       Atrans[j][i] = A[i][j];
     }
   }
@@ -48134,6 +50636,176 @@ int eigensolve02(const vector <vector <long double>> &A, vector <vector <long do
   return(0);
 }
 
+// eigensolve02: Overloaded version of identically-named function that
+// uses long double precision, where the current function uses
+// only double-precision.
+// Given a square matrix of doubles,
+// find its eigenvectors and eigenvalues. Return the
+// eigenvectors as columns (constant value of the second index)
+// of the matrix E, and the eigenvalues in the vector
+// eigenvals. Order both eigenvalues and eigenvectors from
+// largest to smallest absolute value of the eigenvalues.
+// Unlike eigensolve01, this version tries to guard against
+// the matrix becoming non-symmetrical.
+int eigensolve02(const vector <vector <double>> &A, vector <vector <double>> &E, vector <double> &eigenvals, double eigenoffmax, long eigenitmax)
+{
+  long nmat = A.size();
+  long i,j;
+  i=j=0;
+
+  // Test for valid input
+  if(nmat<=0) {
+    cerr << "ERROR: eigensolve02 supplied a void matrix\n";
+    return(1);
+  } else {
+    for(i=0;i<nmat;i++) {
+      if(long(A[i].size()) != nmat) {
+	cerr << "ERROR: eigensolve02 supplied a matrix that is not square\n";
+	cerr << "There are " << nmat << "rows, but row " << i << " has " << A[i].size() << " columns\n";
+	return(2);
+      }
+    }
+  }
+  for(i=0;i<nmat;i++) {
+    for(j=i+1;j<nmat;j++) {
+      if(A[i][j]!=A[j][i]) {
+	cerr << "ERROR: eigensolve02 supplied a matrix that is not symmetrical\n";
+	cerr << "A[" << i << "][" << j << "] = " << A[i][j] << "\n";
+	cerr << "A[" << j << "][" << i << "] = " << A[j][i] << "\n";
+	return(3);
+      }
+    }
+  }
+
+  // If we get here, the matrix is square and symmetrical
+  // Allocate other matrices.
+  vector <vector <double>> B; // Diagonalized version of A
+  vector <vector <double>> P; // Rotation matrix
+  vector <vector <double>> Ptrans; // Transpose of P
+  vector <vector <double>> Vtrans; // Transpose of V
+  vector <vector <double>> V; // Eigenvector matrix
+  vector <vector <double>> Tmat; // Temporary utility matrix
+  double offdiag = 0.0l;
+  double ondiag = 0.0l;
+  double diagratio = 1.0;
+  double bigelem = 0.0;
+  double c,s,t,theta;
+  long itct,imax,jmax;
+  itct=imax=jmax=0;
+  B=A;
+  make_dmat(nmat, nmat, P);
+  make_dmat(nmat, nmat, V);
+  double delem = 0.0l;
+  long index = 0;
+  double_index ldi = double_index(delem,index);
+  vector <double_index> ldivec;
+
+  // Initialize V to the identity matrix
+  for(i=0;i<nmat;i++) {
+    for(j=0;j<nmat;j++) {
+      if(i==j) V[i][j] = 1.0l;
+      else V[i][j] = 0.0l;
+    }
+  }
+
+  while(diagratio>eigenoffmax && itct<eigenitmax) {
+    // Find the largest remaining off-diagonal element in B.
+    imax=0;
+    jmax=1;
+    bigelem = fabs(B[0][1]);
+    for(i=0;i<nmat;i++) {
+      for(j=0;j<nmat;j++) {
+	if(i!=j && fabs(B[i][j])>bigelem) {
+	  bigelem = fabs(B[i][j]);
+	  imax=i;
+	  jmax=j;
+	}
+      }
+    }
+    theta = (B[jmax][jmax] - B[imax][imax])/2.0l/B[imax][jmax];
+    if(theta>=0) {
+      t = 1.0l/(theta+sqrt(theta*theta+1.0l));
+    } else if(theta<0.0) {
+      t = -1.0l/(-theta+sqrt(theta*theta+1.0l));
+    }
+    else {
+      cerr << "ERROR: non-normal value of theta from elements " << B[jmax][jmax] << ", " << B[imax][imax] << ", and " << B[imax][jmax] << "\n";
+      return(4);
+    }
+    // Construct rotation matrix P
+    c = 1/sqrt(t*t + 1.0l);
+    s = t*c;
+    // Initialize P to the identity matrix
+    for(i=0;i<nmat;i++) {
+      for(j=0;j<nmat;j++) {
+	if(i==j) P[i][j] = 1.0l;
+	else P[i][j] = 0.0l;
+      }
+    }
+    // Correct diagonal elements of P
+    P[imax][imax] = P[jmax][jmax] = c;
+    // Initialize Ptrans to P
+    Ptrans = P;
+    // Load off-diagonal elements of P and Ptrans
+    P[imax][jmax] = Ptrans[jmax][imax] = s;
+    P[jmax][imax] = Ptrans[imax][jmax] = -s;
+    
+    // Iterate the matrix whose rows will eventually be the eigenvectors
+    matXmat(V, P, Tmat);
+    V=Tmat;
+    
+    // Construct new matrix B' equal to Ptrans*B*P.
+    matXmat(Ptrans, B, Tmat);
+    matXmat(Tmat, P, B);
+    
+    //Guard against roundoff error by making sure the new matrix is symmetrical. 
+    Tmat=B;
+    for(i=0;i<nmat;i++) {
+      for(j=0;j<nmat;j++) {
+    	if(i==j) B[i][j]=Tmat[i][j];
+    	else B[i][j] = 0.5l*Tmat[i][j] + 0.5l*Tmat[j][i];
+      }
+    }
+    
+    // Calculate the ratio of the sum of off-diagonal elements to the sum of on-diagonal elements
+    ondiag = offdiag = 0.0l;
+    for(i=0;i<nmat;i++) {
+      for(j=0;j<nmat;j++) {
+	if(i==j) ondiag += fabs(B[i][j]);
+	else offdiag += fabs(B[i][j]);
+      }
+    }
+    diagratio = offdiag/ondiag;
+    itct++;
+  }
+  if(diagratio>eigenoffmax) {
+    cerr << "ERROR: eigensolve01 failed to converge, diagratio still " << diagratio << " > " << eigenoffmax << "\n";
+    return(5);
+  }
+  // If we get here, the matrix should have been successfully diagonalized.
+  // Sort the eigenvalues and eigenvectors in order of decreasing
+  // absolute value of the eigenvalues.
+  ldivec={};
+  for(i=0;i<nmat;i++) {
+    delem = -fabs(B[i][i]);
+    index = i;
+    ldi = double_index(delem,index);
+    ldivec.push_back(ldi);
+  }
+  sort(ldivec.begin(),ldivec.end(),lower_double_index());
+  // Load the sorted eigenvalues and eigenvectors
+  eigenvals={};
+  E=V; // Ensures matrix E has correct size, values will be re-arranged in loop below.
+  for(j=0;j<nmat;j++) {
+    jmax = ldivec[j].index; // Index of the next highest eigenvalue
+    eigenvals.push_back(B[jmax][jmax]);
+    for(i=0;i<nmat;i++) {
+      E[i][j] = V[i][jmax];
+    }
+  }
+  return(0);
+}
+
 // anglevec_meanrms: May 29, 2025: Given a vector of angles and a period
 // (e.g., 180.0 or 360.0), handle all relevant complexities
 // about wrapping the angles to an effective range in the
@@ -48199,3 +50871,3980 @@ int anglevec_meanrms(const vector <double> &angles, double period, double *media
   *mean = angmean;
   return(0);
 }
+
+// accelcalc02: October 01, 2025
+// Given a vector of planet positions for a particular instant in time,
+// calculate the resulting gravitational acceleration at the point targpos.
+// The planet masses must be provided in the vector planetmasses, and must
+// consist of GM products in km^3/sec^2, the default coordinate set used
+// by JPL. The output acceleration will have units of km/sec^2.
+int accelcalc02(int planetnum, const vector <double> &planetmasses, const vector <double> &planet_statevecs, const vector <double> &targ_statevec, vector <double> &accel)
+{
+  accel = {};
+  make_dvec(3,accel);
+  vector <double> relpos;
+  make_dvec(3,relpos);
+
+  for(long i=0;i<planetnum;i++) {
+    // Calculate relative position vector pointing from target toward planet
+    for(long j=0;j<3;j++) relpos[j] = planet_statevecs[i*6+j] - targ_statevec[j];
+    double distcubed = intpowD(nvecabs(relpos),3);
+    for(long j=0;j<3;j++) accel[j] += planetmasses[i]*relpos[j]/distcubed;
+  }
+  return(0);
+}
+
+// accelcalc02LD: October 01, 2025
+// Given a vector of planet positions for a particular instant in time,
+// calculate the resulting gravitational acceleration at the point targpos.
+// The planet masses must be provided in the vector planetmasses, and must
+// consist of GM products in km^3/sec^2, the default coordinate set used
+// by JPL. The output acceleration will have units of km/sec^2.
+int accelcalc02LD(int planetnum, const vector <long double> &planetmasses, const vector <long double> &planet_statevecs, const vector <long double> &targ_statevec, vector <long double> &accel)
+{
+  accel = {};
+  make_LDvec(3,accel);
+  vector <long double> relpos;
+  make_LDvec(3,relpos);
+
+  for(long i=0;i<planetnum;i++) {
+    // Calculate relative position vector pointing from target toward planet
+    for(long j=0;j<3;j++) relpos[j] = planet_statevecs[i*6+j] - targ_statevec[j];
+    long double distcubed = intpowLD(nvecabs(relpos),3);
+    for(long j=0;j<3;j++) accel[j] += planetmasses[i]*relpos[j]/distcubed;
+  }
+  return(0);
+}
+
+// tidecalc01: October 09, 2025
+// Given a vector of planet positions for a particular instant in time,
+// calculate the resulting gravitational acceleration at the point targpos,
+// and the 3x3 matrix of derivatives of the accelerations. These are formatted
+// such that tidemat[0][0], tidemat[0][1], tidemat[0][2] are the derivatives
+// of the x-component of acceleration with respect to x, y, and z;
+// tidemat[1][0], tidemat[1][1], tidemat[1][2] are the derivatives of the y component, etc.
+// The planet masses must be provided in the vector planetmasses, and must
+// consist of GM products in km^3/sec^2, the default coordinate set used
+// by JPL. The output acceleration will have units of km/sec^2.
+int tidecalc01(int planetnum, const vector <double> &planetmasses, const vector <double> &planet_statevecs, const vector <double> &targ_statevec, vector <double> &accel, vector <vector <double>> &tidemat)
+{
+  accel = {};
+  make_dvec(3,accel);
+  vector <double> relpos;
+  make_dvec(3,relpos);
+  long i=0;
+  long j=0;
+  long k=0;
+  double inv_dist,inv_distsquared;
+  double MG_invdistcubed;
+
+  tidemat={};
+  make_dmat(3,3,tidemat);
+  
+  for(i=0;i<planetnum;i++) {
+    // Calculate relative position vector pointing from target toward planet
+    for(j=0;j<3;j++) relpos[j] = planet_statevecs[i*6+j] - targ_statevec[j];
+    inv_dist = 1.0l/nvecabs(relpos);
+    inv_distsquared = inv_dist*inv_dist;
+    MG_invdistcubed = planetmasses[i]*inv_distsquared*inv_dist;
+    for(j=0;j<3;j++) {
+      accel[j] += relpos[j]*MG_invdistcubed;
+      for(k=0;k<3;k++) {
+	if(k==j) tidemat[j][k] += MG_invdistcubed*(3.0*relpos[k]*relpos[k]*inv_distsquared-1.0);
+	else tidemat[j][k] += 3.0*MG_invdistcubed*relpos[k]*relpos[j]*inv_distsquared;
+      }
+    }
+  }
+  return(0);
+}
+
+#define DEBUG 0
+#define TIMEDOWNSCALE 2.0l
+
+// integrate_statevec03: October 02, 2025
+// Like integrate_statevec02LD(), but is the first function of it kind
+// to use an Everhart integrator.
+// Can handle both backward and forward integration. The initial
+// conditions provided in starting_statevec apply to refpoint.
+// If refpoint <= startpoint, the program will integrate only
+// forward. If refpoint>=endpoint, only backward integration will
+// be performed. If (as is expected to be the
+// normal case) startpoint < refpont < endpoint, both backward
+// and forward integration will be performed.
+int integrate_statevec03(int polyorder, int planetnum, const vector <double> &planetmjd, const vector <double> &planetmasses, const vector <vector <double>> &planet_statevecs, const vector <double> &starting_statevec, int startpoint, int refpoint, int endpoint, vector <double> &outMJD,  vector <vector <double>> &targ_statevecs, double timestep, int hnum, const vector <double> &hspace)
+{
+  long i,j,k;
+  i=j=k=0;
+  int outnum = endpoint-startpoint+1;
+  int ref_subct=0;
+  int status=0;
+  
+  if(DEBUG>0) cout << "Inside integrate_statevec03()\n";
+  
+  if(endpoint<startpoint) {
+    cerr << "ERROR: integrate_statevec03 called with end point (" << endpoint << ") before starting point (" << startpoint << ")\n";
+    return(1);
+  } else if(startpoint<0 || endpoint>=long(planetmjd.size())) {
+    cerr << "ERROR: integrate_statevec03 called with starting point " << startpoint << " or endpoint" << endpoint << " outside range of planet vectors (0 - " << planetmjd.size() << ")\n";
+    return(1);
+  } else if(refpoint<startpoint) {
+    cerr << "ERROR: integrate_statevec03 called with reference point " << refpoint << " before starting point " << startpoint << "\n";
+    return(2);
+  } else if(refpoint>endpoint) {
+    cerr << "ERROR: integrate_statevec03 called with reference point " << refpoint << " after end point " << endpoint << "\n";
+    return(2);
+  }
+
+  make_dvec(outnum, outMJD);
+  make_dmat(outnum, 6, targ_statevecs);
+  // Load outMJD with the actual output times
+  for(i=0;i<outnum;i++) outMJD[i] = planetmjd[startpoint+i];
+  
+  // Calculate the entry corresponding to refpoint in the shorter,
+  // problem-specific vectors targ_statevecs and outMJD.
+  ref_subct = refpoint-startpoint;
+
+  if(refpoint<endpoint) {
+    // Perform forward integration
+    long forwardnum = endpoint-refpoint+1;
+    vector <double> forwardMJD;
+    vector <vector <double>> forward_statevecs;
+    status = integrate_everhart(planetnum, planetmjd, planetmasses, planet_statevecs, starting_statevec, refpoint, endpoint, forwardMJD,  forward_statevecs, timestep, hnum, hspace, polyorder);
+    if(status!=0) {
+      cerr << "ERROR: integrate_everhart() returned error status " << status << "\n";
+      return(status);
+    }
+    for(i=0;i<forwardnum;i++) targ_statevecs[ref_subct+i] = forward_statevecs[i];
+  }
+  if(refpoint>startpoint) {
+    // Perform a backward integration.
+    long backwardnum = refpoint-startpoint+1;
+    long backrefpoint = planetmjd.size()-1 - refpoint;
+    long backstartpoint = planetmjd.size()-1 - startpoint;
+    vector <vector <double>> backward_statevecs;
+    vector <double> backward_startvec;
+    vector <double> backwardMJD;
+    vector <vector <double>> backplanet_statevecs;
+    vector <double> backplanetmjd;
+
+    // Copy the starting state vector into backward_startvec
+    backward_startvec = starting_statevec;
+    // Sign-flip the velocity
+    for(k=3;k<6;k++) backward_startvec[k] *= -1.0l;
+    
+    // Copy planet vectors in reverse order
+    for(i=long(planetmjd.size()-1); i>=0; i--) {
+      backplanetmjd.push_back(-planetmjd[i]);
+      vector <double> planetsonce;
+      for(j=0;j<planetnum;j++) {
+	// Position is copied verbatim
+	for(k=0;k<3;k++) planetsonce.push_back(planet_statevecs[i][6*j + k]);
+	// Velocity requires a sign-flip
+	for(k=3;k<6;k++) planetsonce.push_back(-planet_statevecs[i][6*j + k]);
+      }
+      backplanet_statevecs.push_back(planetsonce);
+    }
+    integrate_everhart(planetnum, backplanetmjd, planetmasses, backplanet_statevecs, backward_startvec, backrefpoint, backstartpoint, backwardMJD, backward_statevecs, timestep, hnum, hspace, polyorder);
+    if(status!=0) {
+      cerr << "ERROR: integrate_everhart() returned error status " << status << "\n";
+      return(status);
+    }
+    for(i=0;i<backwardnum;i++) {
+      // Position is copied verbatim
+      for(k=0;k<3;k++) targ_statevecs[ref_subct-i][k] = backward_statevecs[i][k];
+      // Velocity requires a sign-flip
+      for(k=3;k<6;k++) targ_statevecs[ref_subct-i][k] = -backward_statevecs[i][k];
+    }
+  }
+  return(0);
+}
+ 
+
+// integrate_everhart: October 03, 2025
+// First attempt to implement the Everhart integrator.
+// Note that timestep is expected to be in solar days
+int integrate_everhart(int planetnum, const vector <double> &planetmjd, const vector <double> &planetmasses, const vector <vector <double>> &planet_statevecs, const vector <double> &starting_statevec, int startpoint, int endpoint, vector <double> &outMJD,  vector <vector <double>> &targ_statevecs, double timestep, int hnum, const vector <double> &hspace, int polyorder)
+{
+  vector <double> planetsonce;
+  vector <vector <double>> targpos;
+  vector <vector <double>> targvel;
+  vector <double> ldvec;
+  long i,j,k;
+  i=j=k=0;
+  int outnum = endpoint-startpoint+1;
+  double dt0=0L;
+  double mjd0;
+  double mjdnow;
+  vector <double> htimes;
+  vector <double> tvec; // one-indexed vector in units of timeunit
+  vector <vector <double>> F;
+  vector <vector <double>> alpha;
+  vector <vector <double>> oldalpha1;
+  vector <vector <double>> A;
+  vector <vector <double>> c;
+  vector <vector <double>> planet_hpos;
+  vector <vector <double>> tmat; // tmat[n][j] = tvec[n] - tvec[j]
+  double timeunit = timestep/TIMEDOWNSCALE; // Units are solar days
+                                                 // Purpose is to keep large powers of time from getting too large
+  long itct;
+  long stepct;
+  long outct=0;
+  long horder=0;
+
+  if(DEBUG>0) {
+    cout << "Inside integrate_everhart()\n";
+    cout << "Input state vector: " << starting_statevec[0] << " "  << starting_statevec[1] << " "  << starting_statevec[2] << " "  << starting_statevec[3] << " "  << starting_statevec[4] << " "  << starting_statevec[5] << "\n";
+  }
+
+  if(endpoint<startpoint) {
+    cerr << "ERROR: integrate_everhart called with end point (" << endpoint << ") before starting point (" << startpoint << ")\n";
+    return(1);
+  } else if(startpoint<0 || endpoint>=long(planetmjd.size())) {
+    cerr << "ERROR: integrate_everhart called with starting point " << startpoint << " or endpoint" << endpoint << " outside range of planet vectors (0 - " << planetmjd.size() << ")\n";
+    return(1);
+  }
+  // Allocate the output vectors
+  make_dvec(outnum, outMJD);
+  make_dmat(outnum, 6, targ_statevecs);
+  // Load outMJD with the actual output times
+  for(i=0;i<outnum;i++) outMJD[i] = planetmjd[startpoint+i];
+  // Load planet_hpos with the correct number of empty vectors
+  planet_hpos={};
+  for(i=0;i<=hnum+1;i++) {
+    ldvec={};
+    planet_hpos.push_back(ldvec);
+  }
+
+  // Everything after this will be one-indexed rather than zero-indexed,
+  // for consistency with the equations in Everhart (1974)
+  make_dmat(hnum+1, 3, F);
+  make_dmat(hnum+1, 3, alpha);
+  make_dmat(3, 3, oldalpha1);
+  make_dmat(hnum+1, 3, A);
+  make_dvec(hnum+1, htimes);
+  make_dmat(hnum+1, hnum+1, tmat);
+  make_dmat(hnum+1, hnum+1, c);
+  make_dvec(hnum+1, tvec);
+  
+  // Make sure that relevant vectors for the polynomial fitting
+  // are all large enough.
+  make_dmat(hnum+1, 3, targpos);
+  make_dmat(hnum+1, 3, targvel);
+
+  // Load the time vector tvec and the planet positions planet_hpos
+  // All of this is one-indexed, like all the calculations that follow,
+  // for consistency with Everhart (1974).
+  mjd0 = planetmjd[startpoint];
+  for(i=1;i<=hnum;i++) {
+    htimes[i] = timestep*hspace[i-1]; // Units are days
+    mjdnow = mjd0+htimes[i];
+    planet_hpos[i] = {};
+    nplanetpos02(mjdnow, planetnum, polyorder, planetmjd, planet_statevecs, planet_hpos[i]);
+    tvec[i] = htimes[i]/timeunit; // Units are timeunit
+    if(DEBUG>0) {
+      cout << "i, htimes[i], mjdnow, tvec[i], planet_hpos[0], planet_hpos[1], planet_hpos[2]: " << i << " " << htimes[i] << " " << mjdnow << " " << tvec[i] << " " << planet_hpos[i][0] << " " << planet_hpos[i][1] << " " << planet_hpos[i][2] << "\n";
+      cout << "planet_hpos[18], planet_hpos[19], planet_hpos[20]: " << planet_hpos[i][18] << " " << planet_hpos[i][19] << " " << planet_hpos[i][20] << "\n";
+      cout << "planet_hpos[21], planet_hpos[22], planet_hpos[23]: " << planet_hpos[i][21] << " " << planet_hpos[i][22] << " " << planet_hpos[i][23] << "\n";
+    }
+  }
+  for(i=1;i<=hnum;i++) {
+    for(j=1;j<=hnum;j++) tmat[i][j] = tvec[i] - tvec[j]; // Units are timeunit
+  }
+  // Load c matrix
+  c[1][1] = 1.0l;
+  for(i=2;i<=hnum;i++) {
+    c[i][1] = -tvec[i]*c[i-1][1];
+    for(j=2;j<i;j++) c[i][j] = c[i-1][j-1] - tvec[i]*c[i-1][j];
+    c[i][i] = 1.0l;
+  }
+
+  // Load the starting position and velocity
+  for(k=0;k<3;k++) {
+    targpos[1][k] = starting_statevec[k];
+    targvel[1][k] = starting_statevec[3+k]*timeunit*SOLARDAY; // units are km/timeunit
+  }
+
+  // Calculate the initial acceleration and store it in the F matrix
+  i=1;
+  accelcalc02(planetnum, planetmasses, planet_statevecs[startpoint], targpos[i], F[i]); // Acceleration is exact
+  for(k=0;k<3;k++) F[i][k] *= timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are now km/timeunit^2
+  if(DEBUG>0) {
+    cout << "Starting conditions:\n";
+    cout << "F[" << i << "]: " << F[i][0] << " " << F[i][1] << " " << F[i][2] << "\n";
+    cout << "targpos[" << i << "]: " << targpos[i][0] << " " << targpos[i][1] << " " << targpos[i][2] << "\n";
+    cout << "targvel[" << i << "]: " << targvel[i][0]/timeunit/SOLARDAY << " " << targvel[i][1]/timeunit/SOLARDAY << " " << targvel[i][2]/timeunit/SOLARDAY << "\n";
+  }
+    
+  // Using the approximation of constant acceleration,
+  // calculate the position and velocity at tvec[2]
+  i=2;
+  dt0 = tvec[i] - tvec[i-1]; // units of dt0 are timeunit
+  for(k=0;k<3;k++) {
+    targpos[i][k] = targpos[i-1][k] + targvel[i-1][k]*dt0 + 0.5l*F[i-1][k]*dt0*dt0;
+    targvel[i][k] = targvel[i-1][k] + F[i-1][k]*dt0;
+  }
+  // Calculate the acceleration at tvec[2], and store it in the F matrix
+  accelcalc02(planetnum, planetmasses, planet_statevecs[startpoint], targpos[i], F[i]);
+  for(k=0;k<3;k++) F[i][k] *= timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are now km/timeunit^2
+  if(DEBUG>0) {
+    cout << "Constant acceleration approx:\n";
+    cout << "F[" << i << "]: " << F[i][0] << " " << F[i][1] << " " << F[i][2] << "\n";
+    cout << "targpos[" << i << "]: " << targpos[i][0] << " " << targpos[i][1] << " " << targpos[i][2] << "\n";
+    cout << "targvel[" << i << "]: " << targvel[i][0]/timeunit/SOLARDAY << " " << targvel[i][1]/timeunit/SOLARDAY << " " << targvel[i][2]/timeunit/SOLARDAY << "\n";
+  }
+  // Bootstrap iterations. horder is the highest term considered for F.
+  horder=2;
+  for(itct=1;itct<=hnum+3;itct++) {
+    for(i=2;i<=horder;i++) {
+      for(k=0;k<3;k++) alpha[i-1][k] = (F[i][k] - F[1][k])/tvec[i];
+      for(j=2;j<i;j++) {
+	for(k=0;k<3;k++) {
+	  alpha[i-1][k] -= alpha[j-1][k];
+	  alpha[i-1][k] /= tvec[i] - tvec[j];
+	}
+      }
+    }
+
+    // Make sure high-order terms of matrix A start out at zero.
+    for(j=1;j<hnum;j++) {
+      for(k=0;k<3;k++) A[j][k] = 0.0l;
+    }
+    // Calculate all available terms in matrix A from matrix alpha
+    for(j=1;j<horder;j++) {
+      for(k=0;k<3;k++) A[j][k] = 0.0l;
+      for(i=horder-1;i>=j;i--) {
+	for(k=0;k<3;k++) A[j][k] += c[i][j]*alpha[i][k];
+      }
+    }
+  
+    if(DEBUG>0) {
+      cout << "F matrix, horder = " << horder << ":\n";
+      for(j=1;j<=horder;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << F[j][k] << " ";
+	cout << "\n";
+      }
+      cout << "alpha matrix:\n";
+      for(j=1;j<hnum;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << alpha[j][k] << " ";
+	cout << "\n";
+      }
+      cout << "A matrix:\n";
+      for(j=1;j<hnum;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << A[j][k] << " ";
+	cout << "\n";
+      }
+    }
+    if(horder<hnum) horder++;
+    for(j=2;j<=horder;j++) {
+      dt0 = tvec[j] - tvec[1]; // units of dt0 are timeunit
+      for(k=0;k<3;k++) targpos[j][k] = targvel[j][k] = 0.0l;
+      for(i=horder-1;i>=1;i--) {
+ 	for(k=0;k<3;k++) targpos[j][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+	for(k=0;k<3;k++) targvel[j][k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+      }
+      for(k=0;k<3;k++) targpos[j][k] += targpos[1][k] + targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+      for(k=0;k<3;k++) targvel[j][k] += targvel[1][k] + F[1][k]*dt0;
+    }
+    // Re-calculate the accelerations (that is, the vector F) at these revised positions
+    for(i=2;i<=horder;i++) {
+      accelcalc02(planetnum, planetmasses, planet_hpos[i], targpos[i], F[i]);
+      for(k=0;k<3;k++) F[i][k] *= timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are now km/timeunit^2
+      if(DEBUG>0) {
+	cout << "Interating at itct " << itct << ", horder = " << horder << "\n";
+	cout << "F[" << i << "]: " << F[i][0] << " " << F[i][1] << " " << F[i][2] << "\n";
+	cout << "targpos[" << i << "]: " << targpos[i][0] << " " << targpos[i][1] << " " << targpos[i][2] << "\n";
+	cout << "targvel[" << i << "]: " << targvel[i][0]/timeunit/SOLARDAY << " " << targvel[i][1]/timeunit/SOLARDAY << " " << targvel[i][2]/timeunit/SOLARDAY << "\n";
+      }
+    }
+  }
+  
+  outct=0;
+  // Load output position and velocity spanning the first timestep
+  while(outMJD[outct] <= outMJD[0]+timestep) {
+    dt0 = (outMJD[outct] - outMJD[0])/timeunit;
+    for(k=0;k<3;k++) targ_statevecs[outct][k] = targpos[1][k] + targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+    for(k=0;k<3;k++) targ_statevecs[outct][3+k] = targvel[1][k] + F[1][k]*dt0;
+    for(i=1;i<hnum;i++) {
+      for(k=0;k<3;k++) targ_statevecs[outct][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+      for(k=0;k<3;k++) targ_statevecs[outct][3+k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+    }
+    // Convert the velocity from km/timeunit to km/sec
+    for(k=0;k<3;k++) targ_statevecs[outct][3+k] /= timeunit*SOLARDAY;
+    if(DEBUG>0) cout << "outct = " << outct << ", statevecs = " << targ_statevecs[outct][0] << " "  << targ_statevecs[outct][1] << " "  << targ_statevecs[outct][2] << " "  << targ_statevecs[outct][3] << " " << targ_statevecs[outct][4] << " " << targ_statevecs[outct][5] << " " << "\n";
+    outct++;
+  }
+
+  // Finished with the iterations, calculate precise position
+  // and velocity at the end of the first timestep, and store
+  // in targpos[1] and targvel[1], to set up for the next
+  // integration step.
+  dt0 = timestep/timeunit; // units of dt0 are timeunit
+  for(k=0;k<3;k++) targpos[1][k] += targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+  for(k=0;k<3;k++) targvel[1][k] += F[1][k]*dt0;
+  for(i=1;i<hnum;i++) {
+    for(k=0;k<3;k++) targvel[1][k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+    for(k=0;k<3;k++) targpos[1][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+  }
+  if(DEBUG>0) cout << "targpos = " << targpos[1][0] << " "  << targpos[1][1] << " " << targpos[1][2] << " " << targvel[1][0]/timeunit/SOLARDAY << " "  << targvel[1][1]/timeunit/SOLARDAY << " "  << targvel[1][2]/timeunit/SOLARDAY << "\n";
+  
+  // Save current value of alpha[1] in oldalpha1
+  for(k=0;k<3;k++) oldalpha1[2][k] = alpha[1][k];
+
+  // Launch full-precision integration
+  stepct=1;
+  mjd0 = planetmjd[startpoint] + timestep * static_cast<double>(stepct);
+  while(mjd0 <= planetmjd[endpoint] && outct<outnum) {
+    // Calculate the positions of all the planets throughout this timestep
+    for(i=1;i<=hnum;i++) {
+      mjdnow = mjd0+htimes[i];
+      planet_hpos[i] = {};
+      nplanetpos02(mjdnow, planetnum, polyorder, planetmjd, planet_statevecs, planet_hpos[i]);
+    }
+    // Calculate new value of F[1]
+    i=1;
+    accelcalc02(planetnum, planetmasses, planet_hpos[i], targpos[i], F[i]);
+    for(k=0;k<3;k++) F[i][k] *= timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are now km/timeunit^2
+
+    // Integrate over the next timestep
+    if(stepct==2) {
+      // Obtain new value of alpha[1] by linear extrapolation from the old
+      for(k=0;k<3;k++) alpha[1][k] = 2.0l*oldalpha1[2][k] - oldalpha1[1][k]; 
+    } else if(stepct>2) {
+      // Obtain new value of alpha[1] by quadratic extrapolation from the old
+      for(k=0;k<3;k++) {
+	double fita = (oldalpha1[2][k] - 2.0l*oldalpha1[1][k] + oldalpha1[0][k])/2.0l;
+	double fitb = (-oldalpha1[2][k] + 4.0l*oldalpha1[1][k] - 3.0l*oldalpha1[0][k])/2.0l;
+	double fitc = oldalpha1[0][k];
+	alpha[1][k] = 9.0l*fita + 3.0l*fitb + fitc;
+      }
+    }
+
+    // Iteratively improve initial estimate of the alpha matrix,
+    // and the A matrix, positions, and velocities that depend on it.
+    for(itct=1;itct<=2;itct++) {
+      // First calculate the A matrix from the best current values of alpha
+      for(j=1;j<hnum;j++) {
+	for(k=0;k<3;k++) A[j][k] = 0.0l;
+	for(i=j;i<hnum;i++) {
+	  for(k=0;k<3;k++) A[j][k] += c[i][j]*alpha[i][k];
+	}
+      }
+      // predict all the positions and velocities from the A values,
+      // using Everhart Equations 4 and 5
+      for(j=2;j<=hnum;j++) {
+	dt0 = tvec[j] - tvec[1]; // units of dt0 are timeunit
+	for(k=0;k<3;k++) targpos[j][k] = targpos[1][k] + targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+	for(k=0;k<3;k++) targvel[j][k] = targvel[1][k] + F[1][k]*dt0;
+	for(i=1;i<hnum;i++) {
+	  for(k=0;k<3;k++) targpos[j][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+	  for(k=0;k<3;k++) targvel[j][k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+	}
+      }
+      // Re-calculate the accelerations (that is, the vector F) at these revised positions
+      for(i=2;i<=hnum;i++) {
+	accelcalc02(planetnum, planetmasses, planet_hpos[i], targpos[i], F[i]);
+	for(k=0;k<3;k++) F[i][k] *= timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are now km/timeunit^2
+      }
+      // Re-calculate alpha based on the revised vector F
+      for(i=2;i<=hnum;i++) {
+	for(k=0;k<3;k++) alpha[i-1][k] = (F[i][k] - F[1][k])/tvec[i];
+	for(j=2;j<i;j++) {
+	  for(k=0;k<3;k++) {
+	    alpha[i-1][k] -= alpha[j-1][k];
+	    alpha[i-1][k] /= tvec[i] - tvec[j];
+	  }
+	}
+      }
+    }
+    // Done with iterations, alpha matrix should be very accurate now.
+    // Calculate a revised A matrix from final-iteration values of alpha
+    for(j=1;j<hnum;j++) {
+      for(k=0;k<3;k++) A[j][k] = 0.0l;
+      for(i=j;i<hnum;i++) {
+	for(k=0;k<3;k++) A[j][k] += c[i][j]*alpha[i][k];
+      }
+    }
+    if(DEBUG>0) {
+      cout << "F matrix, stepct = " << stepct << ":\n";
+      for(j=1;j<=horder;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << F[j][k] << " ";
+	cout << "\n";
+      }
+      cout << "alpha matrix:\n";
+      for(j=1;j<hnum;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << alpha[j][k] << " ";
+	cout << "\n";
+      }
+      cout << "A matrix:\n";
+      for(j=1;j<hnum;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << A[j][k] << " ";
+	cout << "\n";
+      }
+    }
+    
+    // Load output position and velocity spanning the latest timestep
+    while(outMJD[outct] <= mjd0+timestep && outct<outnum) {
+      dt0 = (outMJD[outct] - mjd0)/timeunit;
+      for(k=0;k<3;k++) targ_statevecs[outct][k] = targpos[1][k] + targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+      for(k=0;k<3;k++) targ_statevecs[outct][3+k] = targvel[1][k] + F[1][k]*dt0;
+      for(i=1;i<hnum;i++) {
+	for(k=0;k<3;k++) targ_statevecs[outct][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+	for(k=0;k<3;k++) targ_statevecs[outct][3+k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+      }
+      // Convert the velocity from km/timeunit to km/sec
+      for(k=0;k<3;k++) targ_statevecs[outct][3+k] /= timeunit*SOLARDAY;
+      outct++;
+    }
+
+    // Calculate precise position and velocity at the end of this timestep, and store
+    // in targpos[1] and targvel[1], to set up for the next integration step.
+    dt0 = timestep/timeunit; // units of dt0 are timeunit
+    for(k=0;k<3;k++) targpos[1][k] += targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+    for(k=0;k<3;k++) targvel[1][k] += F[1][k]*dt0;
+    for(i=1;i<hnum;i++) {
+      for(k=0;k<3;k++) targvel[1][k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+      for(k=0;k<3;k++) targpos[1][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+    }
+  
+    // Cycle oldalpha1
+    for(k=0;k<3;k++) oldalpha1[0][k] = oldalpha1[1][k];
+    for(k=0;k<3;k++) oldalpha1[1][k] = oldalpha1[2][k];
+    for(k=0;k<3;k++) oldalpha1[2][k] = alpha[1][k];
+    stepct++;
+    mjd0 = planetmjd[startpoint] + timestep * static_cast<double>(stepct);
+  }
+  return(0);
+}
+
+// integrate_everhart_vareq: October 09, 2025
+// Everhart integrator for the variational equations
+// Note that timestep is expected to be in solar days
+int integrate_everhart_vareq(int planetnum, const vector <double> &planetmjd, const vector <double> &planetmasses, const vector <vector <double>> &planet_statevecs, const vector <double> &starting_statevec, int startpoint, int endpoint, vector <double> &outMJD,  vector <vector <double>> &targ_statevecs, vector <vector <double>> &vareq_mat, double timestep, int hnum, const vector <double> &hspace, int polyorder)
+{
+  vector <double> planetsonce;
+  vector <vector <double>> targpos;
+  vector <vector <double>> targvel;
+  vector <double> ldvec;
+  long i,j,k;
+  i=j=k=0;
+  int outnum = endpoint-startpoint+1;
+  double dt0=0L;
+  double mjd0;
+  double mjdnow;
+  vector <double> htimes;
+  vector <double> tvec; // one-indexed vector in units of timeunit
+  vector <vector <double>> F;
+  vector <vector <double>> alpha;
+  vector <vector <double>> oldalpha1;
+  vector <vector <double>> A;
+  vector <vector <double>> c;
+  vector <vector <double>> planet_hpos;
+  vector <vector <double>> tmat; // tmat[n][j] = tvec[n] - tvec[j]
+  double timeunit = timestep/TIMEDOWNSCALE; // Units are solar days
+                                                 // Purpose is to keep large powers of time from getting too large
+  long itct;
+  long stepct;
+  long outct=0;
+  long horder=0;
+  vector <vector <double>> tidemat;
+  vector <vector <double>> phival;
+  vector <vector <double>> smat;
+  vector <vector <double>> phideriv;
+  vector <vector <double>> phivalmat;
+  vector <vector <double>> phiderivmat;
+  vector <vector <double>> phi_alpha;
+  vector <vector <double>> old_phi_alpha1;
+  vector <vector <double>> phi_A;
+  int pi,pj;
+  double fita,fitb,fitc;
+  fita = fitb = fitc = 0.0;
+  
+  if(DEBUG>0) {
+    cout << "Inside integrate_everhart_vareq()\n";
+    cout << "Input state vector: " << starting_statevec[0] << " "  << starting_statevec[1] << " "  << starting_statevec[2] << " "  << starting_statevec[3] << " "  << starting_statevec[4] << " "  << starting_statevec[5] << "\n";
+  }
+
+  if(endpoint<startpoint) {
+    cerr << "ERROR: integrate_everhart_vareq called with end point (" << endpoint << ") before starting point (" << startpoint << ")\n";
+    return(1);
+  } else if(startpoint<0 || endpoint>=long(planetmjd.size())) {
+    cerr << "ERROR: integrate_everhart_vareq called with starting point " << startpoint << " or endpoint" << endpoint << " outside range of planet vectors (0 - " << planetmjd.size() << ")\n";
+    return(1);
+  }
+  // Allocate the output vectors
+  make_dvec(outnum, outMJD);
+  make_dmat(outnum, 6, targ_statevecs);
+  make_dmat(outnum, 36, vareq_mat);
+  // Load outMJD with the actual output times
+  for(i=0;i<outnum;i++) outMJD[i] = planetmjd[startpoint+i];
+  // Load planet_hpos with the correct number of empty vectors
+  planet_hpos={};
+  for(i=0;i<=hnum+1;i++) {
+    ldvec={};
+    planet_hpos.push_back(ldvec);
+  }
+
+  // Everything after this will be one-indexed rather than zero-indexed,
+  // for consistency with the equations in Everhart (1974)
+  make_dmat(hnum+1, 3, F);
+  make_dmat(hnum+1, 3, alpha);
+  make_dmat(3, 3, oldalpha1);
+  make_dmat(hnum+1, 3, A);
+  make_dvec(hnum+1, htimes);
+  make_dmat(hnum+1, hnum+1, tmat);
+  make_dmat(hnum+1, hnum+1, c);
+  make_dvec(hnum+1, tvec);
+  make_dmat(6,6,phival);
+  make_dmat(6,6,smat);
+  make_dmat(6,6,phideriv);
+  make_dmat(hnum+1,36,phivalmat);
+  make_dmat(hnum+1,36,phiderivmat);
+  make_dmat(hnum+1,36, phi_alpha);
+  make_dmat(hnum+1,36, phi_A);
+  make_dmat(3, 36, old_phi_alpha1);
+
+  // Make sure that relevant vectors for the polynomial fitting
+  // are all large enough.
+  make_dmat(hnum+1, 3, targpos);
+  make_dmat(hnum+1, 3, targvel);
+
+  // Load the time vector tvec and the planet positions planet_hpos
+  // All of this is one-indexed, like all the calculations that follow,
+  // for consistency with Everhart (1974).
+  mjd0 = planetmjd[startpoint];
+  for(i=1;i<=hnum;i++) {
+    htimes[i] = timestep*hspace[i-1]; // Units are days
+    mjdnow = mjd0+htimes[i];
+    planet_hpos[i] = {};
+    nplanetpos02(mjdnow, planetnum, polyorder, planetmjd, planet_statevecs, planet_hpos[i]);
+    tvec[i] = htimes[i]/timeunit; // Units are timeunit
+    if(DEBUG>0) {
+      cout << "i, htimes[i], mjdnow, tvec[i], planet_hpos[0], planet_hpos[1], planet_hpos[2]: " << i << " " << htimes[i] << " " << mjdnow << " " << tvec[i] << " " << planet_hpos[i][0] << " " << planet_hpos[i][1] << " " << planet_hpos[i][2] << "\n";
+      cout << "planet_hpos[18], planet_hpos[19], planet_hpos[20]: " << planet_hpos[i][18] << " " << planet_hpos[i][19] << " " << planet_hpos[i][20] << "\n";
+      cout << "planet_hpos[21], planet_hpos[22], planet_hpos[23]: " << planet_hpos[i][21] << " " << planet_hpos[i][22] << " " << planet_hpos[i][23] << "\n";
+    }
+  }
+  for(i=1;i<=hnum;i++) {
+    for(j=1;j<=hnum;j++) tmat[i][j] = tvec[i] - tvec[j]; // Units are timeunit
+  }
+  // Load c matrix
+  c[1][1] = 1.0l;
+  for(i=2;i<=hnum;i++) {
+    c[i][1] = -tvec[i]*c[i-1][1];
+    for(j=2;j<i;j++) c[i][j] = c[i-1][j-1] - tvec[i]*c[i-1][j];
+    c[i][i] = 1.0l;
+  }
+
+  // Load the starting position and velocity
+  for(k=0;k<3;k++) {
+    targpos[1][k] = starting_statevec[k];
+    targvel[1][k] = starting_statevec[3+k]*timeunit*SOLARDAY; // units are km/timeunit
+  }
+  // Initialize the variational equation matrix phival
+  for(pi=0;pi<6;pi++) {
+    for(pj=0;pj<6;pj++) {
+      if(pi==pj) phival[pi][pj] = 1.0;
+      else phival[pi][pj] = 0.0;
+    }
+  }
+  // Initialize the sensitivity matrix smat. Only the lower-left quadrant will ever change.
+  for(pi=0;pi<3;pi++) {
+    for(pj=0;pj<3;pj++) {
+      smat[pi][pj] = 0.0;
+    }
+    for(pj=3;pj<6;pj++) {
+      if(pi == pj-3) smat[pi][pj] = 1.0;
+      else smat[pi][pj] = 0.0;
+    }
+  }
+  for(pi=3;pi<6;pi++) {
+    for(pj=0;pj<3;pj++) {
+      smat[pi][pj] = 0.0;
+    }
+    for(pj=3;pj<6;pj++) {
+      smat[pi][pj] = 0.0;
+    }
+  }
+
+  // Calculate the initial acceleration and store it in the F matrix
+  i=1;
+  tidecalc01(planetnum, planetmasses, planet_statevecs[startpoint], targpos[i], F[i], tidemat); // Acceleration is exact
+  for(k=0;k<3;k++) F[i][k] *= timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are now km/timeunit^2
+  // Update the sensitivity matrix with the new tidal parameters.
+  for(pi=3;pi<6;pi++) {
+    for(pj=0;pj<3;pj++) {
+      smat[pi][pj] = tidemat[pi-3][pj] * timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are 1/timeunit^2
+    }
+  }
+  // Calculate the derivative matrix
+  matXmat(smat, phival, phideriv);
+  // Unroll phival and phideriv into phivalmat and phiderivmat
+  for(pi=0;pi<6;pi++) {
+    for(pj=0;pj<6;pj++) {
+      phivalmat[i][pi*6+pj] = phival[pi][pj];
+      phiderivmat[i][pi*6+pj] = phideriv[pi][pj];
+    }
+  }
+  
+  if(DEBUG>0) {
+    cout << "Starting conditions:\n";
+    cout << "F[" << i << "]: " << F[i][0] << " " << F[i][1] << " " << F[i][2] << "\n";
+    cout << "targpos[" << i << "]: " << targpos[i][0] << " " << targpos[i][1] << " " << targpos[i][2] << "\n";
+    cout << "targvel[" << i << "]: " << targvel[i][0]/timeunit/SOLARDAY << " " << targvel[i][1]/timeunit/SOLARDAY << " " << targvel[i][2]/timeunit/SOLARDAY << "\n";
+  }
+    
+  // Using the approximation of constant acceleration,
+  // calculate the position, velocity, and phival at tvec[2]
+  i=2;
+  dt0 = tvec[i] - tvec[i-1]; // units of dt0 are timeunit
+  for(k=0;k<3;k++) {
+    targpos[i][k] = targpos[i-1][k] + targvel[i-1][k]*dt0 + 0.5l*F[i-1][k]*dt0*dt0;
+    targvel[i][k] = targvel[i-1][k] + F[i-1][k]*dt0;
+  }
+  for(pi=0;pi<36;pi++) phivalmat[i][pi] = phivalmat[i-1][pi] + phideriv[i-1][pi]*dt0;
+  
+  // Calculate the acceleration and phider at tvec[2], and store it in the F matrix
+  tidecalc01(planetnum, planetmasses, planet_hpos[i], targpos[i], F[i], tidemat);
+  for(k=0;k<3;k++) F[i][k] *= timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are now km/timeunit^2
+  if(DEBUG>0) {
+    cout << "Constant acceleration approx:\n";
+    cout << "F[" << i << "]: " << F[i][0] << " " << F[i][1] << " " << F[i][2] << "\n";
+    cout << "targpos[" << i << "]: " << targpos[i][0] << " " << targpos[i][1] << " " << targpos[i][2] << "\n";
+    cout << "targvel[" << i << "]: " << targvel[i][0]/timeunit/SOLARDAY << " " << targvel[i][1]/timeunit/SOLARDAY << " " << targvel[i][2]/timeunit/SOLARDAY << "\n";
+  }
+  // Re-roll phivalmat[i] into phival
+  for(pi=0;pi<6;pi++) {
+    for(pj=0;pj<6;pj++) {
+      phival[pi][pj] = phivalmat[i][pi*6+pj];
+    }
+  }
+  // Update the sensitivity matrix with the new tidal parameters.
+  for(pi=3;pi<6;pi++) {
+    for(pj=0;pj<3;pj++) {
+      smat[pi][pj] = tidemat[pi-3][pj] * timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are 1/timeunit^2
+    }
+  }
+  // Calculate the new derivative matrix
+  matXmat(smat, phival, phideriv);
+  // Unroll phimat and phideriv into phivalmat and phiderivmat
+  for(pi=0;pi<6;pi++) {
+    for(pj=0;pj<6;pj++) {
+      phivalmat[i][pi*6+pj] = phival[pi][pj];
+      phiderivmat[i][pi*6+pj] = phideriv[pi][pj];
+    }
+  }
+  
+  // Bootstrap iterations. horder is the highest term considered for F.
+  horder=2;
+  for(itct=1;itct<=hnum+3;itct++) {
+    for(i=2;i<=horder;i++) {
+      for(k=0;k<3;k++) alpha[i-1][k] = (F[i][k] - F[1][k])/tvec[i];
+      for(pi=0;pi<36;pi++) phi_alpha[i-1][pi] = (phiderivmat[i][pi] - phiderivmat[1][pi])/tvec[i];
+      for(j=2;j<i;j++) {
+	for(k=0;k<3;k++) {
+	  alpha[i-1][k] -= alpha[j-1][k];
+	  alpha[i-1][k] /= tvec[i] - tvec[j];
+	}
+	for(pi=0;pi<36;pi++) {
+	  phi_alpha[i-1][pi] -= phi_alpha[j-1][pi];
+	  phi_alpha[i-1][pi] /= tvec[i] - tvec[j];
+	}
+      }
+    }
+
+    // Make sure high-order terms of matrix A start out at zero.
+    for(j=1;j<hnum;j++) {
+      for(k=0;k<3;k++) A[j][k] = 0.0l;
+      for(pi=0;pi<36;pi++) phi_A[j][pi] = 0.0l;
+    }
+    // Calculate all available terms in matrix A from matrix alpha
+    for(j=1;j<horder;j++) {
+      for(k=0;k<3;k++) A[j][k] = 0.0l;
+      for(pi=0;pi<36;pi++) phi_A[j][pi] = 0.0l;
+      for(i=horder-1;i>=j;i--) {
+	for(k=0;k<3;k++) A[j][k] += c[i][j]*alpha[i][k];
+	for(pi=0;pi<36;pi++) phi_A[j][pi] += c[i][j]*phi_alpha[i][pi];
+      }
+    }
+  
+    if(DEBUG>0) {
+      cout << "F matrix, horder = " << horder << ":\n";
+      for(j=1;j<=horder;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << F[j][k] << " ";
+	cout << "\n";
+      }
+      cout << "alpha matrix:\n";
+      for(j=1;j<hnum;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << alpha[j][k] << " ";
+	cout << "\n";
+      }
+      cout << "A matrix:\n";
+      for(j=1;j<hnum;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << A[j][k] << " ";
+	cout << "\n";
+      }
+    }
+    if(horder<hnum) horder++;
+    for(j=2;j<=horder;j++) {
+      dt0 = tvec[j] - tvec[1]; // units of dt0 are timeunit
+      for(k=0;k<3;k++) targpos[j][k] = targvel[j][k] = 0.0l;
+      for(pi=0;pi<36;pi++) phivalmat[j][pi] = 0.0l;
+      for(i=horder-1;i>=1;i--) {
+ 	for(k=0;k<3;k++) targpos[j][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+	for(k=0;k<3;k++) targvel[j][k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+	for(pi=0;pi<36;pi++) phivalmat[j][pi] += phi_A[i][pi] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+      }
+      for(k=0;k<3;k++) targpos[j][k] += targpos[1][k] + targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+      for(k=0;k<3;k++) targvel[j][k] += targvel[1][k] + F[1][k]*dt0;
+      for(pi=0;pi<36;pi++) phivalmat[j][pi] += phivalmat[1][pi] + phiderivmat[1][pi]*dt0;
+    }
+    // Re-calculate the accelerations (that is, the vector F) at these revised positions
+    for(i=2;i<=horder;i++) {
+      tidecalc01(planetnum, planetmasses, planet_hpos[i], targpos[i], F[i], tidemat);
+      for(k=0;k<3;k++) F[i][k] *= timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are now km/timeunit^2
+      if(DEBUG>0) {
+	cout << "Interating at itct " << itct << ", horder = " << horder << "\n";
+	cout << "F[" << i << "]: " << F[i][0] << " " << F[i][1] << " " << F[i][2] << "\n";
+	cout << "targpos[" << i << "]: " << targpos[i][0] << " " << targpos[i][1] << " " << targpos[i][2] << "\n";
+	cout << "targvel[" << i << "]: " << targvel[i][0]/timeunit/SOLARDAY << " " << targvel[i][1]/timeunit/SOLARDAY << " " << targvel[i][2]/timeunit/SOLARDAY << "\n";
+      }
+      // Re-roll phivalmat[i] into phival
+      for(pi=0;pi<6;pi++) {
+	for(pj=0;pj<6;pj++) {
+	  phival[pi][pj] = phivalmat[i][pi*6+pj];
+	}
+      }
+      // Update the sensitivity matrix with the new tidal parameters.
+      for(pi=3;pi<6;pi++) {
+	for(pj=0;pj<3;pj++) {
+	  smat[pi][pj] = tidemat[pi-3][pj] * timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are 1/timeunit^2
+	}
+      }
+      // Calculate the new derivative matrix
+      matXmat(smat, phival, phideriv);
+      // Unroll phimat and phideriv into phivalmat and phiderivmat
+      for(pi=0;pi<6;pi++) {
+	for(pj=0;pj<6;pj++) {
+	  phivalmat[i][pi*6+pj] = phival[pi][pj];
+	  phiderivmat[i][pi*6+pj] = phideriv[pi][pj];
+	}
+      }
+    }
+  }
+  
+  outct=0;
+  // Load output position and velocity spanning the first timestep
+  while(outMJD[outct] <= outMJD[0]+timestep) {
+    dt0 = (outMJD[outct] - outMJD[0])/timeunit;
+    for(k=0;k<3;k++) targ_statevecs[outct][k] = targpos[1][k] + targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+    for(k=0;k<3;k++) targ_statevecs[outct][3+k] = targvel[1][k] + F[1][k]*dt0;
+    for(pi=0;pi<36;pi++) vareq_mat[outct][pi] = phivalmat[1][pi] + phiderivmat[1][pi]*dt0;
+    for(i=1;i<hnum;i++) {
+      for(k=0;k<3;k++) targ_statevecs[outct][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+      for(k=0;k<3;k++) targ_statevecs[outct][3+k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+      for(pi=0;pi<36;pi++) vareq_mat[outct][pi] += phi_A[i][pi] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+    }
+    // Convert the velocity from km/timeunit to km/sec
+    for(k=0;k<3;k++) targ_statevecs[outct][3+k] /= timeunit*SOLARDAY;
+    if(DEBUG>0) cout << "outct = " << outct << ", statevecs = " << targ_statevecs[outct][0] << " "  << targ_statevecs[outct][1] << " "  << targ_statevecs[outct][2] << " "  << targ_statevecs[outct][3] << " " << targ_statevecs[outct][4] << " " << targ_statevecs[outct][5] << " " << "\n";
+    for(pi=0;pi<3;pi++) {
+      for(pj=3;pj<6;pj++) {
+	vareq_mat[outct][pi*6+pj] *= timeunit*SOLARDAY; // Derivatives with velocity in the denominator
+      }
+    }
+    for(pi=3;pi<6;pi++) {
+      for(pj=0;pj<3;pj++) {
+	vareq_mat[outct][pi*6+pj] /= timeunit*SOLARDAY; // Derivatives with velocity in the numerator
+      }
+    }
+    outct++;
+  }
+
+  // Finished with the iterations, calculate precise position
+  // and velocity at the end of the first timestep, and store
+  // in targpos[1] and targvel[1], to set up for the next
+  // integration step.
+  dt0 = timestep/timeunit; // units of dt0 are timeunit
+  for(k=0;k<3;k++) targpos[1][k] += targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+  for(k=0;k<3;k++) targvel[1][k] += F[1][k]*dt0;
+  for(pi=0;pi<36;pi++) phivalmat[1][pi] += phiderivmat[1][pi]*dt0;
+  for(i=1;i<hnum;i++) {
+    for(k=0;k<3;k++) targvel[1][k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+    for(k=0;k<3;k++) targpos[1][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+    for(pi=0;pi<36;pi++) phivalmat[1][pi] += phi_A[i][pi] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+  }
+  if(DEBUG>0) cout << "targpos = " << targpos[1][0] << " "  << targpos[1][1] << " " << targpos[1][2] << " " << targvel[1][0]/timeunit/SOLARDAY << " "  << targvel[1][1]/timeunit/SOLARDAY << " "  << targvel[1][2]/timeunit/SOLARDAY << "\n";
+  
+  // Save current value of alpha[1] in oldalpha1
+  for(k=0;k<3;k++) oldalpha1[2][k] = alpha[1][k];
+  for(pi=0;pi<36;pi++) old_phi_alpha1[2][pi] = phi_alpha[1][pi];
+  
+  // Launch full-precision integration
+  stepct=1;
+  mjd0 = planetmjd[startpoint] + timestep * static_cast<double>(stepct);
+  while(mjd0 <= planetmjd[endpoint] && outct<outnum) {
+    // Calculate the positions of all the planets throughout this timestep
+    for(i=1;i<=hnum;i++) {
+      mjdnow = mjd0+htimes[i];
+      planet_hpos[i] = {};
+      nplanetpos02(mjdnow, planetnum, polyorder, planetmjd, planet_statevecs, planet_hpos[i]);
+    }
+    // Calculate new value of F[1]
+    i=1;
+    tidecalc01(planetnum, planetmasses, planet_hpos[i], targpos[i], F[i], tidemat);
+    for(k=0;k<3;k++) F[i][k] *= timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are now km/timeunit^2
+    // Re-roll phivalmat[i] into phival
+    for(pi=0;pi<6;pi++) {
+      for(pj=0;pj<6;pj++) {
+	phival[pi][pj] = phivalmat[i][pi*6+pj];
+      }
+    }
+    // Update the sensitivity matrix with the new tidal parameters.
+    for(pi=3;pi<6;pi++) {
+      for(pj=0;pj<3;pj++) {
+	smat[pi][pj] = tidemat[pi-3][pj] * timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are 1/timeunit^2
+      }
+    }
+    // Calculate the new derivative matrix
+    matXmat(smat, phival, phideriv);
+    // Unroll phimat and phideriv into phivalmat and phiderivmat
+    for(pi=0;pi<6;pi++) {
+      for(pj=0;pj<6;pj++) {
+	phivalmat[i][pi*6+pj] = phival[pi][pj];
+	phiderivmat[i][pi*6+pj] = phideriv[pi][pj];
+      }
+    }
+
+    // Integrate over the next timestep
+    if(stepct==2) {
+      // Obtain new value of alpha[1] by linear extrapolation from the old
+      for(k=0;k<3;k++) alpha[1][k] = 2.0l*oldalpha1[2][k] - oldalpha1[1][k];
+      for(pi=0;pi<36;pi++) phi_alpha[1][pi] = 2.0*old_phi_alpha1[2][pi] - old_phi_alpha1[1][pi];
+    } else if(stepct>2) {
+      // Obtain new value of alpha[1] by quadratic extrapolation from the old
+      for(k=0;k<3;k++) {
+	fita = (oldalpha1[2][k] - 2.0l*oldalpha1[1][k] + oldalpha1[0][k])/2.0l;
+	fitb = (-oldalpha1[2][k] + 4.0l*oldalpha1[1][k] - 3.0l*oldalpha1[0][k])/2.0l;
+	fitc = oldalpha1[0][k];
+	alpha[1][k] = 9.0l*fita + 3.0l*fitb + fitc;
+      }
+      for(pi=0;pi<36;pi++) {
+	fita = (old_phi_alpha1[2][pi] - 2.0l*old_phi_alpha1[1][pi] + old_phi_alpha1[0][pi])/2.0l;
+	fitb = (-old_phi_alpha1[2][pi] + 4.0l*old_phi_alpha1[1][pi] - 3.0l*old_phi_alpha1[0][pi])/2.0l;
+	fitc = old_phi_alpha1[0][pi];
+	phi_alpha[1][pi] = 9.0l*fita + 3.0l*fitb + fitc;
+      }
+    }
+
+    // Iteratively improve initial estimate of the alpha matrix,
+    // and the A matrix, positions, and velocities that depend on it.
+    for(itct=1;itct<=2;itct++) {
+      // First calculate the A matrix from the best current values of alpha
+      for(j=1;j<hnum;j++) {
+	for(k=0;k<3;k++) A[j][k] = 0.0l;
+	for(pi=0;pi<36;pi++) phi_A[j][pi] = 0.0;
+	for(i=j;i<hnum;i++) {
+	  for(k=0;k<3;k++) A[j][k] += c[i][j]*alpha[i][k];
+	  for(pi=0;pi<36;pi++) phi_A[j][pi] += c[i][j]*phi_alpha[i][pi];
+	}
+      }
+      // predict all the positions and velocities from the A values,
+      // using Everhart Equations 4 and 5
+      for(j=2;j<=hnum;j++) {
+	dt0 = tvec[j] - tvec[1]; // units of dt0 are timeunit
+	for(k=0;k<3;k++) targpos[j][k] = targpos[1][k] + targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+	for(k=0;k<3;k++) targvel[j][k] = targvel[1][k] + F[1][k]*dt0;
+	for(pi=0;pi<36;pi++) phivalmat[j][pi] = phivalmat[1][pi] + phiderivmat[1][pi]*dt0; 
+	for(i=1;i<hnum;i++) {
+	  for(k=0;k<3;k++) targpos[j][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+	  for(k=0;k<3;k++) targvel[j][k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+	  for(pi=0;pi<36;pi++) phivalmat[j][pi] += phi_A[i][pi] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+	}
+      }
+      // Re-calculate the accelerations (that is, the vector F) at these revised positions
+      for(i=2;i<=hnum;i++) {
+	tidecalc01(planetnum, planetmasses, planet_hpos[i], targpos[i], F[i], tidemat);
+	for(k=0;k<3;k++) F[i][k] *= timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are now km/timeunit^2
+	// Re-roll phivalmat[i] into phival
+	for(pi=0;pi<6;pi++) {
+	  for(pj=0;pj<6;pj++) {
+	    phival[pi][pj] = phivalmat[i][pi*6+pj];
+	  }
+	}
+	// Update the sensitivity matrix with the new tidal parameters.
+	for(pi=3;pi<6;pi++) {
+	  for(pj=0;pj<3;pj++) {
+	    smat[pi][pj] = tidemat[pi-3][pj] * timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are 1/timeunit^2
+	  }
+	}
+	// Calculate the new derivative matrix
+	matXmat(smat, phival, phideriv);
+	// Unroll phimat and phideriv into phivalmat and phiderivmat
+	for(pi=0;pi<6;pi++) {
+	  for(pj=0;pj<6;pj++) {
+	    phivalmat[i][pi*6+pj] = phival[pi][pj];
+	    phiderivmat[i][pi*6+pj] = phideriv[pi][pj];
+	  }
+	}
+      }
+      // Re-calculate alpha based on the revised vector F
+      for(i=2;i<=hnum;i++) {
+	for(k=0;k<3;k++) alpha[i-1][k] = (F[i][k] - F[1][k])/tvec[i];
+	for(pi=0;pi<36;pi++) phi_alpha[i-1][pi] = (phiderivmat[i][pi] - phiderivmat[1][pi])/tvec[i];
+	for(j=2;j<i;j++) {
+	  for(k=0;k<3;k++) {
+	    alpha[i-1][k] -= alpha[j-1][k];
+	    alpha[i-1][k] /= tvec[i] - tvec[j];
+	  }
+	  for(pi=0;pi<36;pi++) {
+	    phi_alpha[i-1][pi] -= phi_alpha[j-1][pi];
+	    phi_alpha[i-1][pi] /= tvec[i] - tvec[j];
+	  }
+	}
+      }
+    }
+    // Done with iterations, alpha matrix should be very accurate now.
+    // Calculate a revised A matrix from final-iteration values of alpha
+    for(j=1;j<hnum;j++) {
+      for(k=0;k<3;k++) A[j][k] = 0.0l;
+      for(pi=0;pi<36;pi++) phi_A[j][pi] = 0.0l;
+      for(i=j;i<hnum;i++) {
+	for(k=0;k<3;k++) A[j][k] += c[i][j]*alpha[i][k];
+	for(pi=0;pi<36;pi++) phi_A[j][pi] += c[i][j]*phi_alpha[i][pi];
+      }
+    }
+    if(DEBUG>0) {
+      cout << "F matrix, stepct = " << stepct << ":\n";
+      for(j=1;j<=horder;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << F[j][k] << " ";
+	cout << "\n";
+      }
+      cout << "alpha matrix:\n";
+      for(j=1;j<hnum;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << alpha[j][k] << " ";
+	cout << "\n";
+      }
+      cout << "A matrix:\n";
+      for(j=1;j<hnum;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << A[j][k] << " ";
+	cout << "\n";
+      }
+    }
+    
+    // Load output position and velocity spanning the latest timestep
+    while(outMJD[outct] <= mjd0+timestep && outct<outnum) {
+      dt0 = (outMJD[outct] - mjd0)/timeunit;
+      for(k=0;k<3;k++) targ_statevecs[outct][k] = targpos[1][k] + targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+      for(k=0;k<3;k++) targ_statevecs[outct][3+k] = targvel[1][k] + F[1][k]*dt0;
+      for(pi=0;pi<36;pi++) vareq_mat[outct][pi] = phivalmat[1][pi] + phiderivmat[1][pi]*dt0;
+      for(i=1;i<hnum;i++) {
+	for(k=0;k<3;k++) targ_statevecs[outct][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+	for(k=0;k<3;k++) targ_statevecs[outct][3+k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+	for(pi=0;pi<36;pi++) vareq_mat[outct][pi] += phi_A[i][pi] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+      }
+      // Convert the velocity from km/timeunit to km/sec
+      for(k=0;k<3;k++) targ_statevecs[outct][3+k] /= timeunit*SOLARDAY;
+      for(pi=0;pi<3;pi++) {
+	for(pj=3;pj<6;pj++) {
+	  vareq_mat[outct][pi*6+pj] *= timeunit*SOLARDAY; // Derivatives with velocity in the denominator
+	}
+      }
+      for(pi=3;pi<6;pi++) {
+	for(pj=0;pj<3;pj++) {
+	  vareq_mat[outct][pi*6+pj] /= timeunit*SOLARDAY; // Derivatives with velocity in the numerator
+	}
+      }
+      outct++;
+    }
+
+    // Calculate precise position and velocity at the end of this timestep, and store
+    // in targpos[1] and targvel[1], to set up for the next integration step.
+    dt0 = timestep/timeunit; // units of dt0 are timeunit
+    for(k=0;k<3;k++) targpos[1][k] += targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+    for(k=0;k<3;k++) targvel[1][k] += F[1][k]*dt0;
+    for(pi=0;pi<36;pi++) phivalmat[1][pi] += phiderivmat[1][pi]*dt0;
+    for(i=1;i<hnum;i++) {
+      for(k=0;k<3;k++) targvel[1][k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+      for(k=0;k<3;k++) targpos[1][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+      for(pi=0;pi<36;pi++) phivalmat[1][pi] += phi_A[i][pi] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+    }
+  
+    // Cycle oldalpha1
+    for(k=0;k<3;k++) oldalpha1[0][k] = oldalpha1[1][k];
+    for(k=0;k<3;k++) oldalpha1[1][k] = oldalpha1[2][k];
+    for(k=0;k<3;k++) oldalpha1[2][k] = alpha[1][k];
+    for(pi=0;pi<36;pi++) old_phi_alpha1[0][pi] = old_phi_alpha1[1][pi];
+    for(pi=0;pi<36;pi++) old_phi_alpha1[1][pi] = old_phi_alpha1[2][pi];
+    for(pi=0;pi<36;pi++) old_phi_alpha1[2][pi] = phi_alpha[1][pi];
+    
+    stepct++;
+    mjd0 = planetmjd[startpoint] + timestep * static_cast<double>(stepct);
+  }
+  return(0);
+}
+
+// integrate_vareq01: October 09, 2025:
+// Integrate variational equations using integrate_everhart_vareq()
+// Closely related to integrate_statevec03.
+int integrate_vareq01(int polyorder, int planetnum, const vector <double> &planetmjd, const vector <double> &planetmasses, const vector <vector <double>> &planet_statevecs, const vector <double> &starting_statevec, int startpoint, int refpoint, int endpoint, vector <double> &outMJD,  vector <vector <double>> &targ_statevecs, vector <vector <double>> &vareq_mat, double timestep, int hnum, const vector <double> &hspace)
+{
+  long i,j,k,pi,pj;
+  i=j=k=pi=pj=0;
+  int outnum = endpoint-startpoint+1;
+  int ref_subct=0;
+  int status=0;
+  
+  if(DEBUG>0) cout << "Inside integrate_vareq01()\n";
+  
+  if(endpoint<startpoint) {
+    cerr << "ERROR: integrate_vareq01 called with end point (" << endpoint << ") before starting point (" << startpoint << ")\n";
+    return(1);
+  } else if(startpoint<0 || endpoint>=long(planetmjd.size())) {
+    cerr << "ERROR: integrate_vareq01 called with starting point " << startpoint << " or endpoint" << endpoint << " outside range of planet vectors (0 - " << planetmjd.size() << ")\n";
+    return(1);
+  } else if(refpoint<startpoint) {
+    cerr << "ERROR: integrate_vareq01 called with reference point " << refpoint << " before starting point " << startpoint << "\n";
+    return(2);
+  } else if(refpoint>endpoint) {
+    cerr << "ERROR: integrate_vareq01 called with reference point " << refpoint << " after end point " << endpoint << "\n";
+    return(2);
+  }
+
+  make_dvec(outnum, outMJD);
+  make_dmat(outnum, 6, targ_statevecs);
+  make_dmat(outnum, 36, vareq_mat);
+  // Load outMJD with the actual output times
+  for(i=0;i<outnum;i++) outMJD[i] = planetmjd[startpoint+i];
+  
+  // Calculate the entry corresponding to refpoint in the shorter,
+  // problem-specific vectors targ_statevecs and outMJD.
+  ref_subct = refpoint-startpoint;
+
+  if(refpoint<endpoint) {
+    // Perform forward integration
+    long forwardnum = endpoint-refpoint+1;
+    vector <double> forwardMJD;
+    vector <vector <double>> forward_statevecs;
+    vector <vector <double>> forward_vareq;
+    status = integrate_everhart_vareq(planetnum, planetmjd, planetmasses, planet_statevecs, starting_statevec, refpoint, endpoint, forwardMJD,  forward_statevecs, forward_vareq, timestep, hnum, hspace, polyorder);
+    if(status!=0) {
+      cerr << "ERROR: integrate_everhart_vareq() returned error status " << status << "\n";
+      return(status);
+    }
+    for(i=0;i<forwardnum;i++) {
+      targ_statevecs[ref_subct+i] = forward_statevecs[i];
+      vareq_mat[ref_subct+i] = forward_vareq[i];
+    }
+  }
+  if(refpoint>startpoint) {
+    // Perform a backward integration.
+    long backwardnum = refpoint-startpoint+1;
+    long backrefpoint = planetmjd.size()-1 - refpoint;
+    long backstartpoint = planetmjd.size()-1 - startpoint;
+    vector <vector <double>> backward_statevecs;
+    vector <vector <double>> backward_vareq;
+    vector <double> backward_startvec;
+    vector <double> backwardMJD;
+    vector <vector <double>> backplanet_statevecs;
+    vector <double> backplanetmjd;
+
+    // Copy the starting state vector into backward_startvec
+    backward_startvec = starting_statevec;
+    // Sign-flip the velocity
+    for(k=3;k<6;k++) backward_startvec[k] *= -1.0l;
+    
+    // Copy planet vectors in reverse order
+    for(i=long(planetmjd.size()-1); i>=0; i--) {
+      backplanetmjd.push_back(-planetmjd[i]);
+      vector <double> planetsonce;
+      for(j=0;j<planetnum;j++) {
+	// Position is copied verbatim
+	for(k=0;k<3;k++) planetsonce.push_back(planet_statevecs[i][6*j + k]);
+	// Velocity requires a sign-flip
+	for(k=3;k<6;k++) planetsonce.push_back(-planet_statevecs[i][6*j + k]);
+      }
+      backplanet_statevecs.push_back(planetsonce);
+    }
+    integrate_everhart_vareq(planetnum, backplanetmjd, planetmasses, backplanet_statevecs, backward_startvec, backrefpoint, backstartpoint, backwardMJD, backward_statevecs, backward_vareq, timestep, hnum, hspace, polyorder);
+    if(status!=0) {
+      cerr << "ERROR: integrate_everhart_vareq() returned error status " << status << "\n";
+      return(status);
+    }
+    for(i=0;i<backwardnum;i++) {
+      // Position is copied verbatim
+      for(k=0;k<3;k++) targ_statevecs[ref_subct-i][k] = backward_statevecs[i][k];
+      // Velocity requires a sign-flip
+      for(k=3;k<6;k++) targ_statevecs[ref_subct-i][k] = -backward_statevecs[i][k];
+      vareq_mat[ref_subct-i] = backward_vareq[i];
+      // Terms with velocity in only the numerator or only the denominator require a sign-flip:
+      for(pi=0;pi<3;pi++) {
+	for(pj=3;pj<6;pj++) {
+	  vareq_mat[ref_subct-i][pi*6+pj] *= -1.0; // Derivatives with velocity in the denominator
+	}
+      }
+      for(pi=3;pi<6;pi++) {
+	for(pj=0;pj<3;pj++) {
+	  vareq_mat[ref_subct-i][pi*6+pj] *= -1.0; // Derivatives with velocity in the numerator
+	}
+      }
+
+    }
+  }
+  return(0);
+}
+
+
+
+// integrate_everhart_vareq02: October 09, 2025
+// Everhart integrator for the variational equations, as well as
+// position and velocity. In order to obtain a major increase in
+// speed, this version requires that the input vectors planemjd and planet_statevecs
+// have already been interpolated to the exact, unequal sampling
+// intervals required for Everhart integration with the specified timestep
+// and hnum. Here, hnum is the number of small (unequal) timesteps
+// per big (equal) timestep, and the input argument timestep is the
+// length of the big timesteps. This input timestep is expected
+// to be in solar days, where 5 and 10 days are probably reasonable.
+// Planetary ephemeris files with the required sampling for
+// Everhart integration at a specific hnum and timestep can be produced
+// using Horizons_resample.cpp.
+// Note: this function handles only forward integration, but it is
+// designed to serve as the central engine for integrate_vareq02(), which
+// handles integration in both backward and forward directions as needed.
+int integrate_everhart_vareq02(int planetnum, const vector <double> &planetmjd, const vector <double> &planetmasses, const vector <vector <double>> &planet_statevecs, const vector <double> &starting_statevec, int startpoint, int endpoint, vector <double> &outMJD,  vector <vector <double>> &targ_statevecs, vector <vector <double>> &vareq_mat, double timestep, int hnum, const vector <double> &hspace)
+{
+  vector <vector <double>> targpos;
+  vector <vector <double>> targvel;
+  vector <double> ldvec;
+  long i,j,k;
+  i=j=k=0;
+  int outnum = round(planetmjd[endpoint] - planetmjd[startpoint])+1;
+  double dt0=0L;
+  double mjd0;
+  double mjdnow;
+  vector <double> htimes;
+  vector <double> tvec; // one-indexed vector in units of timeunit
+  vector <vector <double>> F;
+  vector <vector <double>> alpha;
+  vector <vector <double>> oldalpha1;
+  vector <vector <double>> A;
+  vector <vector <double>> c;
+  vector <vector <double>> tmat; // tmat[n][j] = tvec[n] - tvec[j]
+  double timeunit = timestep/TIMEDOWNSCALE; // Units are solar days
+                                            // Purpose is to keep large powers of time from getting too large
+  long itct;
+  long stepct;
+  long outct=0;
+  long horder=0;
+  vector <vector <double>> tidemat;
+  vector <vector <double>> phival;
+  vector <vector <double>> smat;
+  vector <vector <double>> phideriv;
+  vector <vector <double>> phivalmat;
+  vector <vector <double>> phiderivmat;
+  vector <vector <double>> phi_alpha;
+  vector <vector <double>> old_phi_alpha1;
+  vector <vector <double>> phi_A;
+  int pi,pj;
+  double fita,fitb,fitc;
+  fita = fitb = fitc = 0.0;
+  
+  if(DEBUG>0) {
+    cout << "Inside integrate_everhart_vareq02()\n";
+    cout << "Input state vector: " << starting_statevec[0] << " "  << starting_statevec[1] << " "  << starting_statevec[2] << " "  << starting_statevec[3] << " "  << starting_statevec[4] << " "  << starting_statevec[5] << "\n";
+  }
+  
+  
+  if(endpoint<startpoint) {
+    cerr << "ERROR: integrate_everhart_vareq02 called with end point (" << endpoint << ") before starting point (" << startpoint << ")\n";
+    return(1);
+  } else if(startpoint<0 || endpoint>=long(planetmjd.size())) {
+    cerr << "ERROR: integrate_everhart_vareq02 called with starting point " << startpoint << " or endpoint" << endpoint << " outside range of planet vectors (0 - " << planetmjd.size() << ")\n";
+    return(1);
+  }
+  // Allocate the output vectors
+  make_dvec(outnum, outMJD);
+  make_dmat(outnum, 6, targ_statevecs);
+  make_dmat(outnum, 36, vareq_mat);
+  // Load outMJD with the actual output times
+  for(i=0;i<outnum;i++) outMJD[i] = planetmjd[startpoint] + static_cast<double>(i);
+
+  // Everything after this will be one-indexed rather than zero-indexed,
+  // for consistency with the equations in Everhart (1974)
+  make_dmat(hnum+1, 3, F);
+  make_dmat(hnum+1, 3, alpha);
+  make_dmat(3, 3, oldalpha1);
+  make_dmat(hnum+1, 3, A);
+  make_dvec(hnum+1, htimes);
+  make_dmat(hnum+1, hnum+1, tmat);
+  make_dmat(hnum+1, hnum+1, c);
+  make_dvec(hnum+1, tvec);
+  make_dmat(6,6,phival);
+  make_dmat(6,6,smat);
+  make_dmat(6,6,phideriv);
+  make_dmat(hnum+1,36,phivalmat);
+  make_dmat(hnum+1,36,phiderivmat);
+  make_dmat(hnum+1,36, phi_alpha);
+  make_dmat(hnum+1,36, phi_A);
+  make_dmat(3, 36, old_phi_alpha1);
+
+  // Make sure that relevant vectors for the polynomial fitting
+  // are all large enough.
+  make_dmat(hnum+1, 3, targpos);
+  make_dmat(hnum+1, 3, targvel);
+
+  // Load the time vector tvec.
+  // All of this is one-indexed, like all the calculations that follow,
+  // for consistency with Everhart (1974).
+  mjd0 = planetmjd[startpoint];
+  for(i=1;i<=hnum;i++) {
+    htimes[i] = timestep*hspace[i-1]; // Units are days
+    mjdnow = mjd0+htimes[i];
+    if(fabs(mjdnow - planetmjd[startpoint+i-1]) > STATEMJD_TIMETOL) {
+      cerr << "ERROR: time mismatch at point " << startpoint+i-1 << " " << mjdnow << " vs. " << planetmjd[startpoint+i-1] << "\n";
+      return(2);
+    }
+    tvec[i] = htimes[i]/timeunit; // Units are timeunit
+  }
+  for(i=1;i<=hnum;i++) {
+    for(j=1;j<=hnum;j++) tmat[i][j] = tvec[i] - tvec[j]; // Units are timeunit
+  }
+  // Load c matrix
+  c[1][1] = 1.0l;
+  for(i=2;i<=hnum;i++) {
+    c[i][1] = -tvec[i]*c[i-1][1];
+    for(j=2;j<i;j++) c[i][j] = c[i-1][j-1] - tvec[i]*c[i-1][j];
+    c[i][i] = 1.0l;
+  }
+
+  // Load the starting position and velocity
+  for(k=0;k<3;k++) {
+    targpos[1][k] = starting_statevec[k];
+    targvel[1][k] = starting_statevec[3+k]*timeunit*SOLARDAY; // units are km/timeunit
+  }
+  // Initialize the variational equation matrix phival
+  for(pi=0;pi<6;pi++) {
+    for(pj=0;pj<6;pj++) {
+      if(pi==pj) phival[pi][pj] = 1.0;
+      else phival[pi][pj] = 0.0;
+    }
+  }
+  // Initialize the sensitivity matrix smat. Only the lower-left quadrant will ever change.
+  for(pi=0;pi<3;pi++) {
+    for(pj=0;pj<3;pj++) {
+      smat[pi][pj] = 0.0;
+    }
+    for(pj=3;pj<6;pj++) {
+      if(pi == pj-3) smat[pi][pj] = 1.0;
+      else smat[pi][pj] = 0.0;
+    }
+  }
+  for(pi=3;pi<6;pi++) {
+    for(pj=0;pj<3;pj++) {
+      smat[pi][pj] = 0.0;
+    }
+    for(pj=3;pj<6;pj++) {
+      smat[pi][pj] = 0.0;
+    }
+  }
+
+  // Calculate the initial acceleration and store it in the F matrix
+  i=1;
+  tidecalc01(planetnum, planetmasses, planet_statevecs[startpoint+i-1], targpos[i], F[i], tidemat); // Acceleration is exact
+  for(k=0;k<3;k++) F[i][k] *= timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are now km/timeunit^2
+  // Update the sensitivity matrix with the new tidal parameters.
+  for(pi=3;pi<6;pi++) {
+    for(pj=0;pj<3;pj++) {
+      smat[pi][pj] = tidemat[pi-3][pj] * timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are 1/timeunit^2
+    }
+  }
+  // Calculate the derivative matrix
+  matXmat(smat, phival, phideriv);
+  // Unroll phival and phideriv into phivalmat and phiderivmat
+  for(pi=0;pi<6;pi++) {
+    for(pj=0;pj<6;pj++) {
+      phivalmat[i][pi*6+pj] = phival[pi][pj];
+      phiderivmat[i][pi*6+pj] = phideriv[pi][pj];
+    }
+  }
+  
+  if(DEBUG>0) {
+    cout << "Starting conditions:\n";
+    cout << "F[" << i << "]: " << F[i][0] << " " << F[i][1] << " " << F[i][2] << "\n";
+    cout << "targpos[" << i << "]: " << targpos[i][0] << " " << targpos[i][1] << " " << targpos[i][2] << "\n";
+    cout << "targvel[" << i << "]: " << targvel[i][0]/timeunit/SOLARDAY << " " << targvel[i][1]/timeunit/SOLARDAY << " " << targvel[i][2]/timeunit/SOLARDAY << "\n";
+  }
+    
+  // Using the approximation of constant acceleration,
+  // calculate the position, velocity, and phival at tvec[2]
+  i=2;
+  dt0 = tvec[i] - tvec[i-1]; // units of dt0 are timeunit
+  for(k=0;k<3;k++) {
+    targpos[i][k] = targpos[i-1][k] + targvel[i-1][k]*dt0 + 0.5l*F[i-1][k]*dt0*dt0;
+    targvel[i][k] = targvel[i-1][k] + F[i-1][k]*dt0;
+  }
+  for(pi=0;pi<36;pi++) phivalmat[i][pi] = phivalmat[i-1][pi] + phideriv[i-1][pi]*dt0;
+  
+  // Calculate the acceleration and phider at tvec[2], and store it in the F matrix
+  tidecalc01(planetnum, planetmasses, planet_statevecs[startpoint+i-1], targpos[i], F[i], tidemat);
+  for(k=0;k<3;k++) F[i][k] *= timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are now km/timeunit^2
+  if(DEBUG>0) {
+    cout << "Constant acceleration approx:\n";
+    cout << "F[" << i << "]: " << F[i][0] << " " << F[i][1] << " " << F[i][2] << "\n";
+    cout << "targpos[" << i << "]: " << targpos[i][0] << " " << targpos[i][1] << " " << targpos[i][2] << "\n";
+    cout << "targvel[" << i << "]: " << targvel[i][0]/timeunit/SOLARDAY << " " << targvel[i][1]/timeunit/SOLARDAY << " " << targvel[i][2]/timeunit/SOLARDAY << "\n";
+  }
+  // Re-roll phivalmat[i] into phival
+  for(pi=0;pi<6;pi++) {
+    for(pj=0;pj<6;pj++) {
+      phival[pi][pj] = phivalmat[i][pi*6+pj];
+    }
+  }
+  // Update the sensitivity matrix with the new tidal parameters.
+  for(pi=3;pi<6;pi++) {
+    for(pj=0;pj<3;pj++) {
+      smat[pi][pj] = tidemat[pi-3][pj] * timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are 1/timeunit^2
+    }
+  }
+  // Calculate the new derivative matrix
+  matXmat(smat, phival, phideriv);
+  // Unroll phimat and phideriv into phivalmat and phiderivmat
+  for(pi=0;pi<6;pi++) {
+    for(pj=0;pj<6;pj++) {
+      phivalmat[i][pi*6+pj] = phival[pi][pj];
+      phiderivmat[i][pi*6+pj] = phideriv[pi][pj];
+    }
+  }
+  
+  // Bootstrap iterations. horder is the highest term considered for F.
+  horder=2;
+  for(itct=1;itct<=hnum+3;itct++) {
+    for(i=2;i<=horder;i++) {
+      for(k=0;k<3;k++) alpha[i-1][k] = (F[i][k] - F[1][k])/tvec[i];
+      for(pi=0;pi<36;pi++) phi_alpha[i-1][pi] = (phiderivmat[i][pi] - phiderivmat[1][pi])/tvec[i];
+      for(j=2;j<i;j++) {
+	for(k=0;k<3;k++) {
+	  alpha[i-1][k] -= alpha[j-1][k];
+	  alpha[i-1][k] /= tvec[i] - tvec[j];
+	}
+	for(pi=0;pi<36;pi++) {
+	  phi_alpha[i-1][pi] -= phi_alpha[j-1][pi];
+	  phi_alpha[i-1][pi] /= tvec[i] - tvec[j];
+	}
+      }
+    }
+
+    // Make sure high-order terms of matrix A start out at zero.
+    for(j=1;j<hnum;j++) {
+      for(k=0;k<3;k++) A[j][k] = 0.0l;
+      for(pi=0;pi<36;pi++) phi_A[j][pi] = 0.0l;
+    }
+    // Calculate all available terms in matrix A from matrix alpha
+    for(j=1;j<horder;j++) {
+      for(k=0;k<3;k++) A[j][k] = 0.0l;
+      for(pi=0;pi<36;pi++) phi_A[j][pi] = 0.0l;
+      for(i=horder-1;i>=j;i--) {
+	for(k=0;k<3;k++) A[j][k] += c[i][j]*alpha[i][k];
+	for(pi=0;pi<36;pi++) phi_A[j][pi] += c[i][j]*phi_alpha[i][pi];
+      }
+    }
+  
+    if(DEBUG>0) {
+      cout << "F matrix, horder = " << horder << ":\n";
+      for(j=1;j<=horder;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << F[j][k] << " ";
+	cout << "\n";
+      }
+      cout << "alpha matrix:\n";
+      for(j=1;j<hnum;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << alpha[j][k] << " ";
+	cout << "\n";
+      }
+      cout << "A matrix:\n";
+      for(j=1;j<hnum;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << A[j][k] << " ";
+	cout << "\n";
+      }
+    }
+    if(horder<hnum) horder++;
+    for(j=2;j<=horder;j++) {
+      dt0 = tvec[j] - tvec[1]; // units of dt0 are timeunit
+      for(k=0;k<3;k++) targpos[j][k] = targvel[j][k] = 0.0l;
+      for(pi=0;pi<36;pi++) phivalmat[j][pi] = 0.0l;
+      for(i=horder-1;i>=1;i--) {
+ 	for(k=0;k<3;k++) targpos[j][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+	for(k=0;k<3;k++) targvel[j][k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+	for(pi=0;pi<36;pi++) phivalmat[j][pi] += phi_A[i][pi] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+      }
+      for(k=0;k<3;k++) targpos[j][k] += targpos[1][k] + targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+      for(k=0;k<3;k++) targvel[j][k] += targvel[1][k] + F[1][k]*dt0;
+      for(pi=0;pi<36;pi++) phivalmat[j][pi] += phivalmat[1][pi] + phiderivmat[1][pi]*dt0;
+    }
+    // Re-calculate the accelerations (that is, the vector F) at these revised positions
+    for(i=2;i<=horder;i++) {
+      tidecalc01(planetnum, planetmasses, planet_statevecs[startpoint+i-1], targpos[i], F[i], tidemat);
+      for(k=0;k<3;k++) F[i][k] *= timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are now km/timeunit^2
+      if(DEBUG>0) {
+	cout << "Interating at itct " << itct << ", horder = " << horder << "\n";
+	cout << "F[" << i << "]: " << F[i][0] << " " << F[i][1] << " " << F[i][2] << "\n";
+	cout << "targpos[" << i << "]: " << targpos[i][0] << " " << targpos[i][1] << " " << targpos[i][2] << "\n";
+	cout << "targvel[" << i << "]: " << targvel[i][0]/timeunit/SOLARDAY << " " << targvel[i][1]/timeunit/SOLARDAY << " " << targvel[i][2]/timeunit/SOLARDAY << "\n";
+      }
+      // Re-roll phivalmat[i] into phival
+      for(pi=0;pi<6;pi++) {
+	for(pj=0;pj<6;pj++) {
+	  phival[pi][pj] = phivalmat[i][pi*6+pj];
+	}
+      }
+      // Update the sensitivity matrix with the new tidal parameters.
+      for(pi=3;pi<6;pi++) {
+	for(pj=0;pj<3;pj++) {
+	  smat[pi][pj] = tidemat[pi-3][pj] * timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are 1/timeunit^2
+	}
+      }
+      // Calculate the new derivative matrix
+      matXmat(smat, phival, phideriv);
+      // Unroll phimat and phideriv into phivalmat and phiderivmat
+      for(pi=0;pi<6;pi++) {
+	for(pj=0;pj<6;pj++) {
+	  phivalmat[i][pi*6+pj] = phival[pi][pj];
+	  phiderivmat[i][pi*6+pj] = phideriv[pi][pj];
+	}
+      }
+    }
+  }
+  
+  outct=0;
+  // Load output position and velocity spanning the first timestep
+  while(outMJD[outct] <= outMJD[0]+timestep) {
+    dt0 = (outMJD[outct] - outMJD[0])/timeunit;
+    for(k=0;k<3;k++) targ_statevecs[outct][k] = targpos[1][k] + targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+    for(k=0;k<3;k++) targ_statevecs[outct][3+k] = targvel[1][k] + F[1][k]*dt0;
+    for(pi=0;pi<36;pi++) vareq_mat[outct][pi] = phivalmat[1][pi] + phiderivmat[1][pi]*dt0;
+    for(i=1;i<hnum;i++) {
+      for(k=0;k<3;k++) targ_statevecs[outct][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+      for(k=0;k<3;k++) targ_statevecs[outct][3+k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+      for(pi=0;pi<36;pi++) vareq_mat[outct][pi] += phi_A[i][pi] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+    }
+    // Convert the velocity from km/timeunit to km/sec
+    for(k=0;k<3;k++) targ_statevecs[outct][3+k] /= timeunit*SOLARDAY;
+    if(DEBUG>0) cout << "outct = " << outct << ", statevecs = " << targ_statevecs[outct][0] << " "  << targ_statevecs[outct][1] << " "  << targ_statevecs[outct][2] << " "  << targ_statevecs[outct][3] << " " << targ_statevecs[outct][4] << " " << targ_statevecs[outct][5] << " " << "\n";
+    for(pi=0;pi<3;pi++) {
+      for(pj=3;pj<6;pj++) {
+	vareq_mat[outct][pi*6+pj] *= timeunit*SOLARDAY; // Derivatives with velocity in the denominator
+      }
+    }
+    for(pi=3;pi<6;pi++) {
+      for(pj=0;pj<3;pj++) {
+	vareq_mat[outct][pi*6+pj] /= timeunit*SOLARDAY; // Derivatives with velocity in the numerator
+      }
+    }
+    outct++;
+  }
+
+  // Finished with the iterations, calculate precise position
+  // and velocity at the end of the first timestep, and store
+  // in targpos[1] and targvel[1], to set up for the next
+  // integration step.
+  dt0 = timestep/timeunit; // units of dt0 are timeunit
+  for(k=0;k<3;k++) targpos[1][k] += targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+  for(k=0;k<3;k++) targvel[1][k] += F[1][k]*dt0;
+  for(pi=0;pi<36;pi++) phivalmat[1][pi] += phiderivmat[1][pi]*dt0;
+  for(i=1;i<hnum;i++) {
+    for(k=0;k<3;k++) targvel[1][k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+    for(k=0;k<3;k++) targpos[1][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+    for(pi=0;pi<36;pi++) phivalmat[1][pi] += phi_A[i][pi] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+  }
+  if(DEBUG>0) cout << "targpos = " << targpos[1][0] << " "  << targpos[1][1] << " " << targpos[1][2] << " " << targvel[1][0]/timeunit/SOLARDAY << " "  << targvel[1][1]/timeunit/SOLARDAY << " "  << targvel[1][2]/timeunit/SOLARDAY << "\n";
+  
+  // Save current value of alpha[1] in oldalpha1
+  for(k=0;k<3;k++) oldalpha1[2][k] = alpha[1][k];
+  for(pi=0;pi<36;pi++) old_phi_alpha1[2][pi] = phi_alpha[1][pi];
+  
+  // Launch full-precision integration
+  stepct=1;
+  mjd0 = planetmjd[startpoint] + timestep * static_cast<double>(stepct);
+  while(mjd0 <= planetmjd[endpoint] && outct<outnum) {
+    // Test time-consistency with the planetary ephemerides throughout this timestep
+    for(i=1;i<=hnum;i++) {
+      mjdnow = mjd0+htimes[i];
+      if(fabs(mjdnow-planetmjd[startpoint+stepct*hnum+i-1]) > STATEMJD_TIMETOL) {
+      cerr << "ERROR: time mismatch at point " << stepct*hnum+i << " " << mjdnow << " vs. " << planetmjd[startpoint+stepct*hnum+i-1] << "\n";
+      return(2);
+    }
+    }
+    // Calculate new value of F[1]
+    i=1;
+    tidecalc01(planetnum, planetmasses, planet_statevecs[startpoint+stepct*hnum+i-1], targpos[i], F[i], tidemat);
+    for(k=0;k<3;k++) F[i][k] *= timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are now km/timeunit^2
+    // Re-roll phivalmat[i] into phival
+    for(pi=0;pi<6;pi++) {
+      for(pj=0;pj<6;pj++) {
+	phival[pi][pj] = phivalmat[i][pi*6+pj];
+      }
+    }
+    // Update the sensitivity matrix with the new tidal parameters.
+    for(pi=3;pi<6;pi++) {
+      for(pj=0;pj<3;pj++) {
+	smat[pi][pj] = tidemat[pi-3][pj] * timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are 1/timeunit^2
+      }
+    }
+    // Calculate the new derivative matrix
+    matXmat(smat, phival, phideriv);
+    // Unroll phimat and phideriv into phivalmat and phiderivmat
+    for(pi=0;pi<6;pi++) {
+      for(pj=0;pj<6;pj++) {
+	phivalmat[i][pi*6+pj] = phival[pi][pj];
+	phiderivmat[i][pi*6+pj] = phideriv[pi][pj];
+      }
+    }
+
+    // Integrate over the next timestep
+    if(stepct==2) {
+      // Obtain new value of alpha[1] by linear extrapolation from the old
+      for(k=0;k<3;k++) alpha[1][k] = 2.0l*oldalpha1[2][k] - oldalpha1[1][k];
+      for(pi=0;pi<36;pi++) phi_alpha[1][pi] = 2.0*old_phi_alpha1[2][pi] - old_phi_alpha1[1][pi];
+    } else if(stepct>2) {
+      // Obtain new value of alpha[1] by quadratic extrapolation from the old
+      for(k=0;k<3;k++) {
+	fita = (oldalpha1[2][k] - 2.0l*oldalpha1[1][k] + oldalpha1[0][k])/2.0l;
+	fitb = (-oldalpha1[2][k] + 4.0l*oldalpha1[1][k] - 3.0l*oldalpha1[0][k])/2.0l;
+	fitc = oldalpha1[0][k];
+	alpha[1][k] = 9.0l*fita + 3.0l*fitb + fitc;
+      }
+      for(pi=0;pi<36;pi++) {
+	fita = (old_phi_alpha1[2][pi] - 2.0l*old_phi_alpha1[1][pi] + old_phi_alpha1[0][pi])/2.0l;
+	fitb = (-old_phi_alpha1[2][pi] + 4.0l*old_phi_alpha1[1][pi] - 3.0l*old_phi_alpha1[0][pi])/2.0l;
+	fitc = old_phi_alpha1[0][pi];
+	phi_alpha[1][pi] = 9.0l*fita + 3.0l*fitb + fitc;
+      }
+    }
+
+    // Iteratively improve initial estimate of the alpha matrix,
+    // and the A matrix, positions, and velocities that depend on it.
+    for(itct=1;itct<=2;itct++) {
+      // First calculate the A matrix from the best current values of alpha
+      for(j=1;j<hnum;j++) {
+	for(k=0;k<3;k++) A[j][k] = 0.0l;
+	for(pi=0;pi<36;pi++) phi_A[j][pi] = 0.0;
+	for(i=j;i<hnum;i++) {
+	  for(k=0;k<3;k++) A[j][k] += c[i][j]*alpha[i][k];
+	  for(pi=0;pi<36;pi++) phi_A[j][pi] += c[i][j]*phi_alpha[i][pi];
+	}
+      }
+      // predict all the positions and velocities from the A values,
+      // using Everhart Equations 4 and 5
+      for(j=2;j<=hnum;j++) {
+	dt0 = tvec[j] - tvec[1]; // units of dt0 are timeunit
+	for(k=0;k<3;k++) targpos[j][k] = targpos[1][k] + targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+	for(k=0;k<3;k++) targvel[j][k] = targvel[1][k] + F[1][k]*dt0;
+	for(pi=0;pi<36;pi++) phivalmat[j][pi] = phivalmat[1][pi] + phiderivmat[1][pi]*dt0; 
+	for(i=1;i<hnum;i++) {
+	  for(k=0;k<3;k++) targpos[j][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+	  for(k=0;k<3;k++) targvel[j][k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+	  for(pi=0;pi<36;pi++) phivalmat[j][pi] += phi_A[i][pi] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+	}
+      }
+      // Re-calculate the accelerations (that is, the vector F) at these revised positions
+      for(i=2;i<=hnum;i++) {
+	tidecalc01(planetnum, planetmasses, planet_statevecs[startpoint+stepct*hnum+i-1], targpos[i], F[i], tidemat);
+	for(k=0;k<3;k++) F[i][k] *= timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are now km/timeunit^2
+	// Re-roll phivalmat[i] into phival
+	for(pi=0;pi<6;pi++) {
+	  for(pj=0;pj<6;pj++) {
+	    phival[pi][pj] = phivalmat[i][pi*6+pj];
+	  }
+	}
+	// Update the sensitivity matrix with the new tidal parameters.
+	for(pi=3;pi<6;pi++) {
+	  for(pj=0;pj<3;pj++) {
+	    smat[pi][pj] = tidemat[pi-3][pj] * timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are 1/timeunit^2
+	  }
+	}
+	// Calculate the new derivative matrix
+	matXmat(smat, phival, phideriv);
+	// Unroll phimat and phideriv into phivalmat and phiderivmat
+	for(pi=0;pi<6;pi++) {
+	  for(pj=0;pj<6;pj++) {
+	    phivalmat[i][pi*6+pj] = phival[pi][pj];
+	    phiderivmat[i][pi*6+pj] = phideriv[pi][pj];
+	  }
+	}
+      }
+      // Re-calculate alpha based on the revised vector F
+      for(i=2;i<=hnum;i++) {
+	for(k=0;k<3;k++) alpha[i-1][k] = (F[i][k] - F[1][k])/tvec[i];
+	for(pi=0;pi<36;pi++) phi_alpha[i-1][pi] = (phiderivmat[i][pi] - phiderivmat[1][pi])/tvec[i];
+	for(j=2;j<i;j++) {
+	  for(k=0;k<3;k++) {
+	    alpha[i-1][k] -= alpha[j-1][k];
+	    alpha[i-1][k] /= tvec[i] - tvec[j];
+	  }
+	  for(pi=0;pi<36;pi++) {
+	    phi_alpha[i-1][pi] -= phi_alpha[j-1][pi];
+	    phi_alpha[i-1][pi] /= tvec[i] - tvec[j];
+	  }
+	}
+      }
+    }
+    // Done with iterations, alpha matrix should be very accurate now.
+    // Calculate a revised A matrix from final-iteration values of alpha
+    for(j=1;j<hnum;j++) {
+      for(k=0;k<3;k++) A[j][k] = 0.0l;
+      for(pi=0;pi<36;pi++) phi_A[j][pi] = 0.0l;
+      for(i=j;i<hnum;i++) {
+	for(k=0;k<3;k++) A[j][k] += c[i][j]*alpha[i][k];
+	for(pi=0;pi<36;pi++) phi_A[j][pi] += c[i][j]*phi_alpha[i][pi];
+      }
+    }
+    if(DEBUG>0) {
+      cout << "F matrix, stepct = " << stepct << ":\n";
+      for(j=1;j<=horder;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << F[j][k] << " ";
+	cout << "\n";
+      }
+      cout << "alpha matrix:\n";
+      for(j=1;j<hnum;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << alpha[j][k] << " ";
+	cout << "\n";
+      }
+      cout << "A matrix:\n";
+      for(j=1;j<hnum;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << A[j][k] << " ";
+	cout << "\n";
+      }
+    }
+    
+    // Load output position and velocity spanning the latest timestep
+    while(outMJD[outct] <= mjd0+timestep && outct<outnum) {
+      dt0 = (outMJD[outct] - mjd0)/timeunit;
+      for(k=0;k<3;k++) targ_statevecs[outct][k] = targpos[1][k] + targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+      for(k=0;k<3;k++) targ_statevecs[outct][3+k] = targvel[1][k] + F[1][k]*dt0;
+      for(pi=0;pi<36;pi++) vareq_mat[outct][pi] = phivalmat[1][pi] + phiderivmat[1][pi]*dt0;
+      for(i=1;i<hnum;i++) {
+	for(k=0;k<3;k++) targ_statevecs[outct][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+	for(k=0;k<3;k++) targ_statevecs[outct][3+k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+	for(pi=0;pi<36;pi++) vareq_mat[outct][pi] += phi_A[i][pi] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+      }
+      // Convert the velocity from km/timeunit to km/sec
+      for(k=0;k<3;k++) targ_statevecs[outct][3+k] /= timeunit*SOLARDAY;
+      for(pi=0;pi<3;pi++) {
+	for(pj=3;pj<6;pj++) {
+	  vareq_mat[outct][pi*6+pj] *= timeunit*SOLARDAY; // Derivatives with velocity in the denominator
+	}
+      }
+      for(pi=3;pi<6;pi++) {
+	for(pj=0;pj<3;pj++) {
+	  vareq_mat[outct][pi*6+pj] /= timeunit*SOLARDAY; // Derivatives with velocity in the numerator
+	}
+      }
+      outct++;
+    }
+
+    // Calculate precise position and velocity at the end of this timestep, and store
+    // in targpos[1] and targvel[1], to set up for the next integration step.
+    dt0 = timestep/timeunit; // units of dt0 are timeunit
+    for(k=0;k<3;k++) targpos[1][k] += targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+    for(k=0;k<3;k++) targvel[1][k] += F[1][k]*dt0;
+    for(pi=0;pi<36;pi++) phivalmat[1][pi] += phiderivmat[1][pi]*dt0;
+    for(i=1;i<hnum;i++) {
+      for(k=0;k<3;k++) targvel[1][k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+      for(k=0;k<3;k++) targpos[1][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+      for(pi=0;pi<36;pi++) phivalmat[1][pi] += phi_A[i][pi] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+    }
+  
+    // Cycle oldalpha1
+    for(k=0;k<3;k++) oldalpha1[0][k] = oldalpha1[1][k];
+    for(k=0;k<3;k++) oldalpha1[1][k] = oldalpha1[2][k];
+    for(k=0;k<3;k++) oldalpha1[2][k] = alpha[1][k];
+    for(pi=0;pi<36;pi++) old_phi_alpha1[0][pi] = old_phi_alpha1[1][pi];
+    for(pi=0;pi<36;pi++) old_phi_alpha1[1][pi] = old_phi_alpha1[2][pi];
+    for(pi=0;pi<36;pi++) old_phi_alpha1[2][pi] = phi_alpha[1][pi];
+    
+    stepct++;
+    mjd0 = planetmjd[startpoint] + timestep * static_cast<double>(stepct);
+  }
+  return(0);
+}
+
+
+// integrate_vareq02: October 09, 2025:
+// Using integrate_everhart_vareq02() as the central caculating engine,
+// integrate an orbit forward and/or backward in time, as needed, integrating
+// both the state vectors (position and velocity) and the variational equations.
+// In order to obtain a major increase in speed, requires input vectors
+// planet_backward_mjd, planet_backward_statevecs, planet_forward_mjd, and
+// planet_forward_statevecs to have already been interpolated to the exact, unequal sampling
+// intervals required for Everhart integration with the specified timestep
+// and hnum, where the backward vectors are in time-reversed order with
+// MJD and velocity sign-flipped. Files containing such vectors, in both backwards
+// and forwards directions, can be produced with the required sampling for
+// Everhart integration at a specific hnum and timestep using Horizons_resample.cpp.
+// Here, hnum is the number of small (unequal) timesteps
+// per big (equal) timestep, and the input argument timestep is the
+// length of the big timesteps. This input timestep is expected
+// to be in solar days, where 5 and 10 days are probably reasonable.
+int integrate_vareq02(int planetnum, const vector <double> &planetmasses, const vector <double> &planet_backward_mjd, const vector <vector <double>> &planet_backward_statevecs, const vector <double> &planet_forward_mjd, const vector <vector <double>> &planet_forward_statevecs, const vector <double> &starting_statevec, double mjdstart, double mjdref, double mjdend, vector <double> &outMJD,  vector <vector <double>> &targ_statevecs, vector <vector <double>> &vareq_mat, double timestep, int hnum, const vector <double> &hspace)
+{
+  long i,j,k,pi,pj;
+  i=j=k=pi=pj=0;
+  int outnum = 0;
+  int ref_subct=0;
+  int status=0;
+  long startpoint,endpoint,refpoint;
+  outMJD={};
+  targ_statevecs={};
+  vareq_mat={};
+  
+  if(DEBUG>0) cout << "Inside integrate_vareq02()\n";
+
+  // Match mjdstart and mjdend to forward planet file.
+  startpoint = endpoint = refpoint = -99;
+  for(j=0;j<long(planet_forward_mjd.size());j++) {
+    if(fabs(planet_forward_mjd[j]-mjdstart) < STATEMJD_TIMETOL) startpoint = j;
+    if(fabs(planet_forward_mjd[j]-mjdref) < STATEMJD_TIMETOL) refpoint = j;
+    if(fabs(planet_forward_mjd[j]-mjdend) < STATEMJD_TIMETOL) endpoint = j;
+  }
+  if(startpoint<0 || refpoint<0 || endpoint<0) {
+    cerr << "ERROR: mjdstart " << mjdstart << " and/or mjdref " << mjdref << " and/or mjdend " << mjdend << " could not be matched\nto any timestep in the planet files\n";
+    return(1);
+  } else {
+    cout << "mjdstart " << mjdstart << " corresponds to timestep " << startpoint << " in the forward planet files\n";
+    cout << "mjdref " << mjdref << " corresponds to timestep " << refpoint << " in the forward planet files\n";
+    cout << "mjdend " << mjdend << " corresponds to timestep " << endpoint << " in the forward planet files\n";
+  }
+  
+  if(endpoint<startpoint) {
+    cerr << "ERROR: integrate_vareq02 finds end point (" << endpoint << ") before starting point (" << startpoint << ")\n";
+    return(1);
+  } else if(refpoint<startpoint) {
+    cerr << "ERROR: integrate_vareq02 finds reference point " << refpoint << " before starting point " << startpoint << "\n";
+    return(2);
+  } else if(refpoint>endpoint) {
+    cerr << "ERROR: integrate_vareq02 finds reference point " << refpoint << " after end point " << endpoint << "\n";
+    return(2);
+  }
+
+  outnum = round(mjdend-mjdstart) + 1; // Daily sampling on output is hard-coded, for now
+  
+  make_dvec(outnum, outMJD);
+  make_dmat(outnum, 6, targ_statevecs);
+  make_dmat(outnum, 36, vareq_mat);
+  // Load outMJD with the actual output times
+  for(i=0;i<outnum;i++) outMJD[i] = round(mjdstart) + static_cast<double>(i);
+  
+  // Calculate the entry corresponding to refpoint in the shorter,
+  // problem-specific vectors targ_statevecs and outMJD.
+  ref_subct = round(mjdref-mjdstart);
+
+  if(refpoint<endpoint) {
+    // Perform forward integration
+    
+    long forwardnum = outnum - ref_subct;
+    vector <double> forwardMJD;
+    vector <vector <double>> forward_statevecs;
+    vector <vector <double>> forward_vareq;
+    cout << "Launching integrate_everhart_vareq02() to perform forward integration\n";
+    status = integrate_everhart_vareq02(planetnum, planet_forward_mjd, planetmasses, planet_forward_statevecs, starting_statevec, refpoint, endpoint, forwardMJD,  forward_statevecs, forward_vareq, timestep, hnum, hspace);
+    cout << "Foward integration complete with output vector lengths " << forwardMJD.size() << " and " << forward_statevecs.size() << "\n";
+    if(status!=0) {
+      cerr << "ERROR: integrate_everhart_vareq02() returned error status " << status << "\n";
+      return(status);
+    }
+    for(i=0;i<forwardnum;i++) {
+      if(DEBUG>0) cout << "i, forwardnum, ref_subct+i, outnum: " << i << " " << forwardnum<< " " << ref_subct+i << " " << outnum << " " << "\n";
+      targ_statevecs[ref_subct+i] = forward_statevecs[i];
+      vareq_mat[ref_subct+i] = forward_vareq[i];
+    }
+  }
+  if(refpoint>startpoint) {
+    // Perform a backward integration.
+    // Match mjdstart and mjdref to backward planet file.
+    long backrefpoint = -99;
+    long backstartpoint = -99;
+    for(j=0;j<long(planet_backward_mjd.size());j++) {
+      if(fabs(planet_backward_mjd[j]+mjdstart) < STATEMJD_TIMETOL) backstartpoint = j;
+      if(fabs(planet_backward_mjd[j]+mjdref) < STATEMJD_TIMETOL) backrefpoint = j;
+    }
+    if(backstartpoint<0 || backrefpoint<0) {
+      cerr << "ERROR: mjdref " << mjdref << " and/or mjdend " << mjdend << " could not be matched\nto any timestep in the backward planet files\n";
+      return(1);
+    } else {
+      cout << "mjdstart " << mjdstart << " corresponds to timestep " << backstartpoint << " in the backward planet files\n";
+      cout << "mjdref " << mjdref << " corresponds to timestep " << backrefpoint << " in the backward planet files\n";
+      vector <vector <double>> backward_statevecs;
+      vector <vector <double>> backward_vareq;
+      vector <double> backward_startvec;
+      vector <double> backwardMJD;
+
+      // Copy the starting state vector into backward_startvec
+      backward_startvec = starting_statevec;
+      // Sign-flip the velocity
+      for(k=3;k<6;k++) backward_startvec[k] *= -1.0l;
+      cout << "Launching integrate_everhart_vareq02() to perform backward integration\n";
+      status = integrate_everhart_vareq02(planetnum, planet_backward_mjd, planetmasses, planet_backward_statevecs, backward_startvec, backrefpoint, backstartpoint, backwardMJD,  backward_statevecs, backward_vareq, timestep, hnum, hspace);
+      cout << "Backward integration complete with output vector lengths " << backwardMJD.size() << " and " << backward_statevecs.size() << "\n";
+      if(status!=0) {
+	cerr << "ERROR: integrate_everhart_vareq02() returned error status " << status << "\n";
+	return(status);
+      }
+      for(i=0;i<=ref_subct;i++) {
+	if(DEBUG>0) cout << "i, ref_subct-i, outnum: " << i << " " << ref_subct-i << " " << outnum << " " << "\n";
+	// Position is copied verbatim
+	for(k=0;k<3;k++) targ_statevecs[ref_subct-i][k] = backward_statevecs[i][k];
+	// Velocity requires a sign-flip
+	for(k=3;k<6;k++) targ_statevecs[ref_subct-i][k] = -backward_statevecs[i][k];
+	vareq_mat[ref_subct-i] = backward_vareq[i];
+	// Terms with velocity in only the numerator or only the denominator require a sign-flip:
+	for(pi=0;pi<3;pi++) {
+	  for(pj=3;pj<6;pj++) {
+	    vareq_mat[ref_subct-i][pi*6+pj] *= -1.0; // Derivatives with velocity in the denominator
+	  }
+	}
+	for(pi=3;pi<6;pi++) {
+	  for(pj=0;pj<3;pj++) {
+	    vareq_mat[ref_subct-i][pi*6+pj] *= -1.0; // Derivatives with velocity in the numerator
+	  }
+	}
+      }
+    }
+  }
+  return(0);
+}
+
+
+// integrate_everhart02: October 09, 2025
+// Like integrate_everhart_vareq02, but integrates only the state vectors,
+// not the variational equations. In order to obtain a major increase in
+// speed, this function and integrate_everhart_vareq02() require that the
+// input vectors planemjd and planet_statevecs
+// have already been interpolated to the exact, unequal sampling
+// intervals required for Everhart integration with the specified timestep
+// and hnum. Here, hnum is the number of small (unequal) timesteps
+// per big (equal) timestep, and the input argument timestep is the
+// length of the big timesteps. This input timestep is expected
+// to be in solar days, where 5 and 10 days are probably reasonable.
+// Planetary ephemeris files with the required sampling for
+// Everhart integration at a specific hnum and timestep can be produced
+// using Horizons_resample.cpp.
+// Note: this function handles only forward integration, but it is
+// designed to serve as the central engine for integrate_vareq02(), which
+// handles integration in both backward and forward directions as needed.
+int integrate_everhart02(int planetnum, const vector <double> &planetmjd, const vector <double> &planetmasses, const vector <vector <double>> &planet_statevecs, const vector <double> &starting_statevec, int startpoint, int endpoint, vector <double> &outMJD,  vector <vector <double>> &targ_statevecs, double timestep, int hnum, const vector <double> &hspace)
+{
+  vector <vector <double>> targpos;
+  vector <vector <double>> targvel;
+  vector <double> ldvec;
+  long i,j,k;
+  i=j=k=0;
+  int outnum = round(planetmjd[endpoint] - planetmjd[startpoint])+1;
+  double dt0=0L;
+  double mjd0;
+  double mjdnow;
+  vector <double> htimes;
+  vector <double> tvec; // one-indexed vector in units of timeunit
+  vector <vector <double>> F;
+  vector <vector <double>> alpha;
+  vector <vector <double>> oldalpha1;
+  vector <vector <double>> A;
+  vector <vector <double>> c;
+  vector <vector <double>> tmat; // tmat[n][j] = tvec[n] - tvec[j]
+  double timeunit = timestep/TIMEDOWNSCALE; // Units are solar days
+                                            // Purpose is to keep large powers of time from getting too large
+  long itct;
+  long stepct;
+  long outct=0;
+  long horder=0;
+  double fita,fitb,fitc;
+  fita = fitb = fitc = 0.0;
+  
+  if(DEBUG>0) {
+    cout << "Inside integrate_everhart02\n";
+    cout << "Input state vector: " << starting_statevec[0] << " "  << starting_statevec[1] << " "  << starting_statevec[2] << " "  << starting_statevec[3] << " "  << starting_statevec[4] << " "  << starting_statevec[5] << "\n";
+  }
+  
+  
+  if(endpoint<startpoint) {
+    cerr << "ERROR: integrate_everhart02 called with end point (" << endpoint << ") before starting point (" << startpoint << ")\n";
+    return(1);
+  } else if(startpoint<0 || endpoint>=long(planetmjd.size())) {
+    cerr << "ERROR: integrate_everhart02 " << startpoint << " or endpoint" << endpoint << " outside range of planet vectors (0 - " << planetmjd.size() << ")\n";
+    return(1);
+  }
+  // Allocate the output vectors
+  make_dvec(outnum, outMJD);
+  make_dmat(outnum, 6, targ_statevecs);
+  // Load outMJD with the actual output times
+  for(i=0;i<outnum;i++) outMJD[i] = planetmjd[startpoint] + static_cast<double>(i);
+
+  // Everything after this will be one-indexed rather than zero-indexed,
+  // for consistency with the equations in Everhart (1974)
+  make_dmat(hnum+1, 3, F);
+  make_dmat(hnum+1, 3, alpha);
+  make_dmat(3, 3, oldalpha1);
+  make_dmat(hnum+1, 3, A);
+  make_dvec(hnum+1, htimes);
+  make_dmat(hnum+1, hnum+1, tmat);
+  make_dmat(hnum+1, hnum+1, c);
+  make_dvec(hnum+1, tvec);
+
+  // Make sure that relevant vectors for the polynomial fitting
+  // are all large enough.
+  make_dmat(hnum+1, 3, targpos);
+  make_dmat(hnum+1, 3, targvel);
+
+  // Load the time vector tvec.
+  // All of this is one-indexed, like all the calculations that follow,
+  // for consistency with Everhart (1974).
+  mjd0 = planetmjd[startpoint];
+  for(i=1;i<=hnum;i++) {
+    htimes[i] = timestep*hspace[i-1]; // Units are days
+    mjdnow = mjd0+htimes[i];
+    if(fabs(mjdnow - planetmjd[startpoint+i-1]) > STATEMJD_TIMETOL) {
+      cerr << "ERROR: time mismatch at point " << startpoint+i-1 << " " << mjdnow << " vs. " << planetmjd[startpoint+i-1] << "\n";
+      return(2);
+    }
+    tvec[i] = htimes[i]/timeunit; // Units are timeunit
+  }
+  for(i=1;i<=hnum;i++) {
+    for(j=1;j<=hnum;j++) tmat[i][j] = tvec[i] - tvec[j]; // Units are timeunit
+  }
+  // Load c matrix
+  c[1][1] = 1.0l;
+  for(i=2;i<=hnum;i++) {
+    c[i][1] = -tvec[i]*c[i-1][1];
+    for(j=2;j<i;j++) c[i][j] = c[i-1][j-1] - tvec[i]*c[i-1][j];
+    c[i][i] = 1.0l;
+  }
+
+  // Load the starting position and velocity
+  for(k=0;k<3;k++) {
+    targpos[1][k] = starting_statevec[k];
+    targvel[1][k] = starting_statevec[3+k]*timeunit*SOLARDAY; // units are km/timeunit
+  }
+
+  // Calculate the initial acceleration and store it in the F matrix
+  i=1;
+  accelcalc02(planetnum, planetmasses, planet_statevecs[startpoint+i-1], targpos[i], F[i]); // Acceleration is exact
+  for(k=0;k<3;k++) F[i][k] *= timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are now km/timeunit^2
+  
+  if(DEBUG>0) {
+    cout << "Starting conditions:\n";
+    cout << "F[" << i << "]: " << F[i][0] << " " << F[i][1] << " " << F[i][2] << "\n";
+    cout << "targpos[" << i << "]: " << targpos[i][0] << " " << targpos[i][1] << " " << targpos[i][2] << "\n";
+    cout << "targvel[" << i << "]: " << targvel[i][0]/timeunit/SOLARDAY << " " << targvel[i][1]/timeunit/SOLARDAY << " " << targvel[i][2]/timeunit/SOLARDAY << "\n";
+  }
+    
+  // Using the approximation of constant acceleration,
+  // calculate the position, velocity, and phival at tvec[2]
+  i=2;
+  dt0 = tvec[i] - tvec[i-1]; // units of dt0 are timeunit
+  for(k=0;k<3;k++) {
+    targpos[i][k] = targpos[i-1][k] + targvel[i-1][k]*dt0 + 0.5l*F[i-1][k]*dt0*dt0;
+    targvel[i][k] = targvel[i-1][k] + F[i-1][k]*dt0;
+  }
+  
+  // Calculate the acceleration and phider at tvec[2], and store it in the F matrix
+  accelcalc02(planetnum, planetmasses, planet_statevecs[startpoint+i-1], targpos[i], F[i]);
+  for(k=0;k<3;k++) F[i][k] *= timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are now km/timeunit^2
+  if(DEBUG>0) {
+    cout << "Constant acceleration approx:\n";
+    cout << "F[" << i << "]: " << F[i][0] << " " << F[i][1] << " " << F[i][2] << "\n";
+    cout << "targpos[" << i << "]: " << targpos[i][0] << " " << targpos[i][1] << " " << targpos[i][2] << "\n";
+    cout << "targvel[" << i << "]: " << targvel[i][0]/timeunit/SOLARDAY << " " << targvel[i][1]/timeunit/SOLARDAY << " " << targvel[i][2]/timeunit/SOLARDAY << "\n";
+  }
+  
+  // Bootstrap iterations. horder is the highest term considered for F.
+  horder=2;
+  for(itct=1;itct<=hnum+3;itct++) {
+    for(i=2;i<=horder;i++) {
+      for(k=0;k<3;k++) alpha[i-1][k] = (F[i][k] - F[1][k])/tvec[i];
+      for(j=2;j<i;j++) {
+	for(k=0;k<3;k++) {
+	  alpha[i-1][k] -= alpha[j-1][k];
+	  alpha[i-1][k] /= tvec[i] - tvec[j];
+	}
+      }
+    }
+
+    // Make sure high-order terms of matrix A start out at zero.
+    for(j=1;j<hnum;j++) {
+      for(k=0;k<3;k++) A[j][k] = 0.0l;
+    }
+    // Calculate all available terms in matrix A from matrix alpha
+    for(j=1;j<horder;j++) {
+      for(k=0;k<3;k++) A[j][k] = 0.0l;
+      for(i=horder-1;i>=j;i--) {
+	for(k=0;k<3;k++) A[j][k] += c[i][j]*alpha[i][k];
+      }
+    }
+  
+    if(DEBUG>0) {
+      cout << "F matrix, horder = " << horder << ":\n";
+      for(j=1;j<=horder;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << F[j][k] << " ";
+	cout << "\n";
+      }
+      cout << "alpha matrix:\n";
+      for(j=1;j<hnum;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << alpha[j][k] << " ";
+	cout << "\n";
+      }
+      cout << "A matrix:\n";
+      for(j=1;j<hnum;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << A[j][k] << " ";
+	cout << "\n";
+      }
+    }
+    if(horder<hnum) horder++;
+    for(j=2;j<=horder;j++) {
+      dt0 = tvec[j] - tvec[1]; // units of dt0 are timeunit
+      for(k=0;k<3;k++) targpos[j][k] = targvel[j][k] = 0.0l;
+      for(i=horder-1;i>=1;i--) {
+ 	for(k=0;k<3;k++) targpos[j][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+	for(k=0;k<3;k++) targvel[j][k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+      }
+      for(k=0;k<3;k++) targpos[j][k] += targpos[1][k] + targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+      for(k=0;k<3;k++) targvel[j][k] += targvel[1][k] + F[1][k]*dt0;
+    }
+    // Re-calculate the accelerations (that is, the vector F) at these revised positions
+    for(i=2;i<=horder;i++) {
+      accelcalc02(planetnum, planetmasses, planet_statevecs[startpoint+i-1], targpos[i], F[i]);
+      for(k=0;k<3;k++) F[i][k] *= timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are now km/timeunit^2
+      if(DEBUG>0) {
+	cout << "Interating at itct " << itct << ", horder = " << horder << "\n";
+	cout << "F[" << i << "]: " << F[i][0] << " " << F[i][1] << " " << F[i][2] << "\n";
+	cout << "targpos[" << i << "]: " << targpos[i][0] << " " << targpos[i][1] << " " << targpos[i][2] << "\n";
+	cout << "targvel[" << i << "]: " << targvel[i][0]/timeunit/SOLARDAY << " " << targvel[i][1]/timeunit/SOLARDAY << " " << targvel[i][2]/timeunit/SOLARDAY << "\n";
+      }
+    }
+  }
+  
+  outct=0;
+  // Load output position and velocity spanning the first timestep
+  while(outMJD[outct] <= outMJD[0]+timestep) {
+    dt0 = (outMJD[outct] - outMJD[0])/timeunit;
+    for(k=0;k<3;k++) targ_statevecs[outct][k] = targpos[1][k] + targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+    for(k=0;k<3;k++) targ_statevecs[outct][3+k] = targvel[1][k] + F[1][k]*dt0;
+    for(i=1;i<hnum;i++) {
+      for(k=0;k<3;k++) targ_statevecs[outct][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+      for(k=0;k<3;k++) targ_statevecs[outct][3+k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+    }
+    // Convert the velocity from km/timeunit to km/sec
+    for(k=0;k<3;k++) targ_statevecs[outct][3+k] /= timeunit*SOLARDAY;
+    if(DEBUG>0) cout << "outct = " << outct << ", statevecs = " << targ_statevecs[outct][0] << " "  << targ_statevecs[outct][1] << " "  << targ_statevecs[outct][2] << " "  << targ_statevecs[outct][3] << " " << targ_statevecs[outct][4] << " " << targ_statevecs[outct][5] << " " << "\n";
+    outct++;
+  }
+
+  // Finished with the iterations, calculate precise position
+  // and velocity at the end of the first timestep, and store
+  // in targpos[1] and targvel[1], to set up for the next
+  // integration step.
+  dt0 = timestep/timeunit; // units of dt0 are timeunit
+  for(k=0;k<3;k++) targpos[1][k] += targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+  for(k=0;k<3;k++) targvel[1][k] += F[1][k]*dt0;
+  for(i=1;i<hnum;i++) {
+    for(k=0;k<3;k++) targvel[1][k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+    for(k=0;k<3;k++) targpos[1][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+  }
+  if(DEBUG>0) cout << "targpos = " << targpos[1][0] << " "  << targpos[1][1] << " " << targpos[1][2] << " " << targvel[1][0]/timeunit/SOLARDAY << " "  << targvel[1][1]/timeunit/SOLARDAY << " "  << targvel[1][2]/timeunit/SOLARDAY << "\n";
+  
+  // Save current value of alpha[1] in oldalpha1
+  for(k=0;k<3;k++) oldalpha1[2][k] = alpha[1][k];
+
+  // Launch full-precision integration
+  stepct=1;
+  mjd0 = planetmjd[startpoint] + timestep * static_cast<double>(stepct);
+  while(mjd0 <= planetmjd[endpoint] && outct<outnum) {
+    // Test time-consistency with the planetary ephemerides throughout this timestep.
+    for(i=1;i<=hnum;i++) {
+      mjdnow = mjd0+htimes[i];
+      if(fabs(mjdnow-planetmjd[startpoint+stepct*hnum+i-1]) > STATEMJD_TIMETOL) {
+      cerr << "ERROR: time mismatch at point " << stepct*hnum+i << " " << mjdnow << " vs. " << planetmjd[startpoint+stepct*hnum+i-1] << "\n";
+      return(2);
+    }
+    }
+    // Calculate new value of F[1]
+    i=1;
+    accelcalc02(planetnum, planetmasses, planet_statevecs[startpoint+stepct*hnum+i-1], targpos[i], F[i]);
+    for(k=0;k<3;k++) F[i][k] *= timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are now km/timeunit^2
+
+    // Integrate over the next timestep
+    if(stepct==2) {
+      // Obtain new value of alpha[1] by linear extrapolation from the old
+      for(k=0;k<3;k++) alpha[1][k] = 2.0l*oldalpha1[2][k] - oldalpha1[1][k];
+    } else if(stepct>2) {
+      // Obtain new value of alpha[1] by quadratic extrapolation from the old
+      for(k=0;k<3;k++) {
+	fita = (oldalpha1[2][k] - 2.0l*oldalpha1[1][k] + oldalpha1[0][k])/2.0l;
+	fitb = (-oldalpha1[2][k] + 4.0l*oldalpha1[1][k] - 3.0l*oldalpha1[0][k])/2.0l;
+	fitc = oldalpha1[0][k];
+	alpha[1][k] = 9.0l*fita + 3.0l*fitb + fitc;
+      }
+    }
+
+    // Iteratively improve initial estimate of the alpha matrix,
+    // and the A matrix, positions, and velocities that depend on it.
+    for(itct=1;itct<=2;itct++) {
+      // First calculate the A matrix from the best current values of alpha
+      for(j=1;j<hnum;j++) {
+	for(k=0;k<3;k++) A[j][k] = 0.0l;
+	for(i=j;i<hnum;i++) {
+	  for(k=0;k<3;k++) A[j][k] += c[i][j]*alpha[i][k];
+	}
+      }
+      // predict all the positions and velocities from the A values,
+      // using Everhart Equations 4 and 5
+      for(j=2;j<=hnum;j++) {
+	dt0 = tvec[j] - tvec[1]; // units of dt0 are timeunit
+	for(k=0;k<3;k++) targpos[j][k] = targpos[1][k] + targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+	for(k=0;k<3;k++) targvel[j][k] = targvel[1][k] + F[1][k]*dt0;
+	for(i=1;i<hnum;i++) {
+	  for(k=0;k<3;k++) targpos[j][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+	  for(k=0;k<3;k++) targvel[j][k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+	}
+      }
+      // Re-calculate the accelerations (that is, the vector F) at these revised positions
+      for(i=2;i<=hnum;i++) {
+	accelcalc02(planetnum, planetmasses, planet_statevecs[startpoint+stepct*hnum+i-1], targpos[i], F[i]);
+	for(k=0;k<3;k++) F[i][k] *= timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are now km/timeunit^2
+      }
+      // Re-calculate alpha based on the revised vector F
+      for(i=2;i<=hnum;i++) {
+	for(k=0;k<3;k++) alpha[i-1][k] = (F[i][k] - F[1][k])/tvec[i];
+	for(j=2;j<i;j++) {
+	  for(k=0;k<3;k++) {
+	    alpha[i-1][k] -= alpha[j-1][k];
+	    alpha[i-1][k] /= tvec[i] - tvec[j];
+	  }
+	}
+      }
+    }
+    // Done with iterations, alpha matrix should be very accurate now.
+    // Calculate a revised A matrix from final-iteration values of alpha
+    for(j=1;j<hnum;j++) {
+      for(k=0;k<3;k++) A[j][k] = 0.0l;
+      for(i=j;i<hnum;i++) {
+	for(k=0;k<3;k++) A[j][k] += c[i][j]*alpha[i][k];
+      }
+    }
+    if(DEBUG>0) {
+      cout << "F matrix, stepct = " << stepct << ":\n";
+      for(j=1;j<=horder;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << F[j][k] << " ";
+	cout << "\n";
+      }
+      cout << "alpha matrix:\n";
+      for(j=1;j<hnum;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << alpha[j][k] << " ";
+	cout << "\n";
+      }
+      cout << "A matrix:\n";
+      for(j=1;j<hnum;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << A[j][k] << " ";
+	cout << "\n";
+      }
+    }
+    
+    // Load output position and velocity spanning the latest timestep
+    while(outMJD[outct] <= mjd0+timestep && outct<outnum) {
+      dt0 = (outMJD[outct] - mjd0)/timeunit;
+      for(k=0;k<3;k++) targ_statevecs[outct][k] = targpos[1][k] + targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+      for(k=0;k<3;k++) targ_statevecs[outct][3+k] = targvel[1][k] + F[1][k]*dt0;
+      for(i=1;i<hnum;i++) {
+	for(k=0;k<3;k++) targ_statevecs[outct][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+	for(k=0;k<3;k++) targ_statevecs[outct][3+k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+      }
+      // Convert the velocity from km/timeunit to km/sec
+      for(k=0;k<3;k++) targ_statevecs[outct][3+k] /= timeunit*SOLARDAY;
+      outct++;
+    }
+
+    // Calculate precise position and velocity at the end of this timestep, and store
+    // in targpos[1] and targvel[1], to set up for the next integration step.
+    dt0 = timestep/timeunit; // units of dt0 are timeunit
+    for(k=0;k<3;k++) targpos[1][k] += targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+    for(k=0;k<3;k++) targvel[1][k] += F[1][k]*dt0;
+    for(i=1;i<hnum;i++) {
+      for(k=0;k<3;k++) targvel[1][k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+      for(k=0;k<3;k++) targpos[1][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+    }
+  
+    // Cycle oldalpha1
+    for(k=0;k<3;k++) oldalpha1[0][k] = oldalpha1[1][k];
+    for(k=0;k<3;k++) oldalpha1[1][k] = oldalpha1[2][k];
+    for(k=0;k<3;k++) oldalpha1[2][k] = alpha[1][k];
+    stepct++;
+    mjd0 = planetmjd[startpoint] + timestep * static_cast<double>(stepct);
+  }
+  return(0);
+}
+
+
+// integrate_statevec04: October 13, 2025:
+// Like integrate_vareq02, but integrates only the state vectors (positions
+// and velocity, not the variational equations.
+// In order to obtain a major increase in speed, requires input vectors
+// planet_backward_mjd, planet_backward_statevecs, planet_forward_mjd, and
+// planet_forward_statevecs to have already been interpolated to the exact, unequal sampling
+// intervals required for Everhart integration with the specified timestep
+// and hnum, where the backward vectors are in time-reversed order with
+// MJD and velocity sign-flipped. Files containing such vectors, in both backwards
+// and forwards directions, can be produced with the required sampling for
+// Everhart integration at a specific hnum and timestep using Horizons_resample.cpp.
+// Here, hnum is the number of small (unequal) timesteps
+// per big (equal) timestep, and the input argument timestep is the
+// length of the big timesteps. This input timestep is expected
+// to be in solar days, where 5 and 10 days are probably reasonable.
+int integrate_statevec04(int planetnum, const vector <double> &planetmasses, const vector <double> &planet_backward_mjd, const vector <vector <double>> &planet_backward_statevecs, const vector <double> &planet_forward_mjd, const vector <vector <double>> &planet_forward_statevecs, const vector <double> &starting_statevec, double mjdstart, double mjdref, double mjdend, vector <double> &outMJD,  vector <vector <double>> &targ_statevecs, double timestep, int hnum, const vector <double> &hspace)
+{
+  long i,j,k,pi,pj;
+  i=j=k=pi=pj=0;
+  int outnum = 0;
+  int ref_subct=0;
+  int status=0;
+  long startpoint,endpoint,refpoint;
+  outMJD={};
+  targ_statevecs={};
+  
+  if(DEBUG>0) cout << "Inside integrate_statevec04\n";
+
+  // Match mjdstart and mjdend to forward planet file.
+  startpoint = endpoint = refpoint = -99;
+  for(j=0;j<long(planet_forward_mjd.size());j++) {
+    if(fabs(planet_forward_mjd[j]-mjdstart) < STATEMJD_TIMETOL) startpoint = j;
+    if(fabs(planet_forward_mjd[j]-mjdref) < STATEMJD_TIMETOL) refpoint = j;
+    if(fabs(planet_forward_mjd[j]-mjdend) < STATEMJD_TIMETOL) endpoint = j;
+  }
+  if(startpoint<0 || refpoint<0 || endpoint<0) {
+    cerr << "ERROR: mjdstart " << mjdstart << " and/or mjdref " << mjdref << " and/or mjdend " << mjdend << " could not be matched\nto any timestep in the planet files\n";
+    return(1);
+  } else {
+    cout << "mjdstart " << mjdstart << " corresponds to timestep " << startpoint << " in the forward planet files\n";
+    cout << "mjdref " << mjdref << " corresponds to timestep " << refpoint << " in the forward planet files\n";
+    cout << "mjdend " << mjdend << " corresponds to timestep " << endpoint << " in the forward planet files\n";
+  }
+  
+  if(endpoint<startpoint) {
+    cerr << "ERROR: integrate_statevec04 finds end point (" << endpoint << ") before starting point (" << startpoint << ")\n";
+    return(1);
+  } else if(refpoint<startpoint) {
+    cerr << "ERROR: integrate_statevec04 finds reference point " << refpoint << " before starting point " << startpoint << "\n";
+    return(2);
+  } else if(refpoint>endpoint) {
+    cerr << "ERROR: integrate_statevec04 finds reference point " << refpoint << " after end point " << endpoint << "\n";
+    return(2);
+  }
+
+  outnum = round(mjdend-mjdstart) + 1; // Daily sampling on output is hard-coded, for now
+  
+  make_dvec(outnum, outMJD);
+  make_dmat(outnum, 6, targ_statevecs);
+  // Load outMJD with the actual output times
+  for(i=0;i<outnum;i++) outMJD[i] = round(mjdstart) + static_cast<double>(i);
+  
+  // Calculate the entry corresponding to refpoint in the shorter,
+  // problem-specific vectors targ_statevecs amd outMJD.
+  ref_subct = round(mjdref-mjdstart);
+
+  if(refpoint<endpoint) {
+    // Perform forward integration
+    
+    long forwardnum = outnum - ref_subct;
+    vector <double> forwardMJD;
+    vector <vector <double>> forward_statevecs;
+    cout << "Launching integrate_everhart02() to perform forward integration\n";
+    status = integrate_everhart02(planetnum, planet_forward_mjd, planetmasses, planet_forward_statevecs, starting_statevec, refpoint, endpoint, forwardMJD,  forward_statevecs, timestep, hnum, hspace);
+    cout << "Foward integration complete with output vector lengths " << forwardMJD.size() << " and " << forward_statevecs.size() << "\n";
+    if(status!=0) {
+      cerr << "ERROR: integrate_everhart02() returned error status " << status << "\n";
+      return(status);
+    }
+    for(i=0;i<forwardnum;i++) {
+      if(DEBUG>0) cout << "i, forwardnum, ref_subct+i, outnum: " << i << " " << forwardnum<< " " << ref_subct+i << " " << outnum << " " << "\n";
+      targ_statevecs[ref_subct+i] = forward_statevecs[i];
+    }
+  }
+  if(refpoint>startpoint) {
+    // Perform a backward integration.
+    // Match mjdstart and mjdref to backward planet file.
+    long backrefpoint = -99;
+    long backstartpoint = -99;
+    for(j=0;j<long(planet_backward_mjd.size());j++) {
+      if(fabs(planet_backward_mjd[j]+mjdstart) < STATEMJD_TIMETOL) backstartpoint = j;
+      if(fabs(planet_backward_mjd[j]+mjdref) < STATEMJD_TIMETOL) backrefpoint = j;
+    }
+    if(backstartpoint<0 || backrefpoint<0) {
+      cerr << "ERROR: mjdref " << mjdref << " and/or mjdend " << mjdend << " could not be matched\nto any timestep in the backward planet files\n";
+      return(1);
+    } else {
+      cout << "mjdstart " << mjdstart << " corresponds to timestep " << backstartpoint << " in the backward planet files\n";
+      cout << "mjdref " << mjdref << " corresponds to timestep " << backrefpoint << " in the backward planet files\n";
+      vector <vector <double>> backward_statevecs;
+      vector <double> backward_startvec;
+      vector <double> backwardMJD;
+
+      // Copy the starting state vector into backward_startvec
+      backward_startvec = starting_statevec;
+      // Sign-flip the velocity
+      for(k=3;k<6;k++) backward_startvec[k] *= -1.0l;
+      cout << "Launching integrate_everhart02() to perform backward integration\n";
+      status = integrate_everhart02(planetnum, planet_backward_mjd, planetmasses, planet_backward_statevecs, backward_startvec, backrefpoint, backstartpoint, backwardMJD,  backward_statevecs, timestep, hnum, hspace);
+      cout << "Backward integration complete with output vector lengths " << backwardMJD.size() << " and " << backward_statevecs.size() << "\n";
+      if(status!=0) {
+	cerr << "ERROR: integrate_everhart_vareq02() returned error status " << status << "\n";
+	return(status);
+      }
+      for(i=0;i<=ref_subct;i++) {
+	if(DEBUG>0) cout << "i, ref_subct-i, outnum: " << i << " " << ref_subct-i << " " << outnum << " " << "\n";
+	// Position is copied verbatim
+	for(k=0;k<3;k++) targ_statevecs[ref_subct-i][k] = backward_statevecs[i][k];
+	// Velocity requires a sign-flip
+	for(k=3;k<6;k++) targ_statevecs[ref_subct-i][k] = -backward_statevecs[i][k];
+      }
+    }
+  }
+  return(0);
+}
+
+// obsint_everhart_vareq01: October 14, 2025
+// Like integrate_everhart_vareq02, but instead of evaluating
+// output every day, evaluates it only at specifing UTC times
+// provided in the vector obsMJD. This vector is assumed to
+// provide times in the same time system as the planetary ephemeris
+// files, which will be TDB if they are downloaded from JPL with
+// default parameters (recommended). Hence, if your observing times
+// are in UTC or TAI (likely), the calling function must convert
+// them to TDB before calling the current program.
+//
+// Description of ancestor program integrate_everhart_vareq02:
+// Everhart integrator for the variational equations, as well as
+// position and velocity. In order to obtain a major increase in
+// speed, this version requires that the input vectors planemjd and planet_statevecs
+// have already been interpolated to the exact, unequal sampling
+// intervals required for Everhart integration with the specified timestep
+// and hnum. Here, hnum is the number of small (unequal) timesteps
+// per big (equal) timestep, and the input argument timestep is the
+// length of the big timesteps. This input timestep is expected
+// to be in solar days, where 5 and 10 days are probably reasonable.
+// Planetary ephemeris files with the required sampling for
+// Everhart integration at a specific hnum and timestep can be produced
+// using Horizons_resample.cpp.
+// Note: this function handles only forward integration, but it is
+// designed to serve as the central engine for integrate_vareq02(), which
+// handles integration in both backward and forward directions as needed.
+int obsint_everhart_vareq01(int planetnum, const vector <double> &planetmjd, const vector <double> &planetmasses, const vector <vector <double>> &planet_statevecs, const vector <double> &starting_statevec, int startpoint, int endpoint, const vector <double> &obsMJD,  vector <vector <double>> &targ_statevecs, vector <vector <double>> &vareq_mat, double timestep, int hnum, const vector <double> &hspace, int verbose)
+{
+  vector <vector <double>> targpos;
+  vector <vector <double>> targvel;
+  vector <double> ldvec;
+  long i,j,k;
+  i=j=k=0;
+  long obsnum = obsMJD.size();
+  long obsct=0;
+  double dt0=0L;
+  double mjd0;
+  double mjdnow;
+  vector <double> htimes;
+  vector <double> tvec; // one-indexed vector in units of timeunit
+  vector <vector <double>> F;
+  vector <vector <double>> alpha;
+  vector <vector <double>> oldalpha1;
+  vector <vector <double>> A;
+  vector <vector <double>> c;
+  vector <vector <double>> tmat; // tmat[n][j] = tvec[n] - tvec[j]
+  double timeunit = timestep/TIMEDOWNSCALE; // Units are solar days
+                                            // Purpose is to keep large powers of time from getting too large
+  long itct;
+  long stepct;
+  long horder=0;
+  vector <vector <double>> tidemat;
+  vector <vector <double>> phival;
+  vector <vector <double>> smat;
+  vector <vector <double>> phideriv;
+  vector <vector <double>> phivalmat;
+  vector <vector <double>> phiderivmat;
+  vector <vector <double>> phi_alpha;
+  vector <vector <double>> old_phi_alpha1;
+  vector <vector <double>> phi_A;
+  int pi,pj;
+  double fita,fitb,fitc;
+  fita = fitb = fitc = 0.0;
+  
+  if(verbose>0) {
+    cout << "Inside obsint_everhart_vareq01()\n";
+    cout << "Input state vector: " << starting_statevec[0] << " "  << starting_statevec[1] << " "  << starting_statevec[2] << " "  << starting_statevec[3] << " "  << starting_statevec[4] << " "  << starting_statevec[5] << "\n";
+    cout << "startpoint, endpoint, planetmjd.size(): " << startpoint << " " << endpoint << " " << planetmjd.size() << "\n";
+  }
+  
+  if(endpoint<startpoint) {
+    cerr << "ERROR: obsint_everhart_vareq01 called with end point (" << endpoint << ") before starting point (" << startpoint << ")\n";
+    return(1);
+  } else if(startpoint<0 || endpoint>=long(planetmjd.size())) {
+    cerr << "ERROR: obsint_everhart_vareq01 called with starting point " << startpoint << " or endpoint" << endpoint << " outside range of planet vectors (0 - " << planetmjd.size() << ")\n";
+    return(1);
+  }
+  // Allocate the output vectors
+  make_dmat(obsnum, 6, targ_statevecs);
+  make_dmat(obsnum, 36, vareq_mat);
+
+  // Everything after this will be one-indexed rather than zero-indexed,
+  // for consistency with the equations in Everhart (1974)
+  make_dmat(hnum+1, 3, F);
+  make_dmat(hnum+1, 3, alpha);
+  make_dmat(3, 3, oldalpha1);
+  make_dmat(hnum+1, 3, A);
+  make_dvec(hnum+1, htimes);
+  make_dmat(hnum+1, hnum+1, tmat);
+  make_dmat(hnum+1, hnum+1, c);
+  make_dvec(hnum+1, tvec);
+  make_dmat(6,6,phival);
+  make_dmat(6,6,smat);
+  make_dmat(6,6,phideriv);
+  make_dmat(hnum+1,36,phivalmat);
+  make_dmat(hnum+1,36,phiderivmat);
+  make_dmat(hnum+1,36, phi_alpha);
+  make_dmat(hnum+1,36, phi_A);
+  make_dmat(3, 36, old_phi_alpha1);
+
+  // Make sure that relevant vectors for the polynomial fitting
+  // are all large enough.
+  make_dmat(hnum+1, 3, targpos);
+  make_dmat(hnum+1, 3, targvel);
+
+  // Load the time vector tvec.
+  // All of this is one-indexed, like all the calculations that follow,
+  // for consistency with Everhart (1974).
+  mjd0 = planetmjd[startpoint];
+  for(i=1;i<=hnum;i++) {
+    htimes[i] = timestep*hspace[i-1]; // Units are days
+    mjdnow = mjd0+htimes[i];
+    if(fabs(mjdnow - planetmjd[startpoint+i-1]) > STATEMJD_TIMETOL) {
+      cerr << "ERROR: time mismatch at point " << startpoint+i-1 << " " << mjdnow << " vs. " << planetmjd[startpoint+i-1] << "\n";
+      return(2);
+    }
+    tvec[i] = htimes[i]/timeunit; // Units are timeunit
+  }
+  for(i=1;i<=hnum;i++) {
+    for(j=1;j<=hnum;j++) tmat[i][j] = tvec[i] - tvec[j]; // Units are timeunit
+  }
+  // Load c matrix
+  c[1][1] = 1.0l;
+  for(i=2;i<=hnum;i++) {
+    c[i][1] = -tvec[i]*c[i-1][1];
+    for(j=2;j<i;j++) c[i][j] = c[i-1][j-1] - tvec[i]*c[i-1][j];
+    c[i][i] = 1.0l;
+  }
+
+  // Load the starting position and velocity
+  for(k=0;k<3;k++) {
+    targpos[1][k] = starting_statevec[k];
+    targvel[1][k] = starting_statevec[3+k]*timeunit*SOLARDAY; // units are km/timeunit
+  }
+  // Initialize the variational equation matrix phival
+  for(pi=0;pi<6;pi++) {
+    for(pj=0;pj<6;pj++) {
+      if(pi==pj) phival[pi][pj] = 1.0;
+      else phival[pi][pj] = 0.0;
+    }
+  }
+  // Initialize the sensitivity matrix smat. Only the lower-left quadrant will ever change.
+  for(pi=0;pi<3;pi++) {
+    for(pj=0;pj<3;pj++) {
+      smat[pi][pj] = 0.0;
+    }
+    for(pj=3;pj<6;pj++) {
+      if(pi == pj-3) smat[pi][pj] = 1.0;
+      else smat[pi][pj] = 0.0;
+    }
+  }
+  for(pi=3;pi<6;pi++) {
+    for(pj=0;pj<3;pj++) {
+      smat[pi][pj] = 0.0;
+    }
+    for(pj=3;pj<6;pj++) {
+      smat[pi][pj] = 0.0;
+    }
+  }
+
+  // Calculate the initial acceleration and store it in the F matrix
+  i=1;
+  tidecalc01(planetnum, planetmasses, planet_statevecs[startpoint+i-1], targpos[i], F[i], tidemat); // Acceleration is exact
+  for(k=0;k<3;k++) F[i][k] *= timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are now km/timeunit^2
+  // Update the sensitivity matrix with the new tidal parameters.
+  for(pi=3;pi<6;pi++) {
+    for(pj=0;pj<3;pj++) {
+      smat[pi][pj] = tidemat[pi-3][pj] * timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are 1/timeunit^2
+    }
+  }
+  // Calculate the derivative matrix
+  matXmat(smat, phival, phideriv);
+  // Unroll phival and phideriv into phivalmat and phiderivmat
+  for(pi=0;pi<6;pi++) {
+    for(pj=0;pj<6;pj++) {
+      phivalmat[i][pi*6+pj] = phival[pi][pj];
+      phiderivmat[i][pi*6+pj] = phideriv[pi][pj];
+    }
+  }
+  
+  if(verbose>0) {
+    cout << "Starting conditions:\n";
+    cout << "F[" << i << "]: " << F[i][0] << " " << F[i][1] << " " << F[i][2] << "\n";
+    cout << "targpos[" << i << "]: " << targpos[i][0] << " " << targpos[i][1] << " " << targpos[i][2] << "\n";
+    cout << "targvel[" << i << "]: " << targvel[i][0]/timeunit/SOLARDAY << " " << targvel[i][1]/timeunit/SOLARDAY << " " << targvel[i][2]/timeunit/SOLARDAY << "\n";
+  }
+
+  // Using the approximation of constant acceleration,
+  // calculate the position, velocity, and phival at tvec[2]
+  i=2;
+  dt0 = tvec[i] - tvec[i-1]; // units of dt0 are timeunit
+  for(k=0;k<3;k++) {
+    targpos[i][k] = targpos[i-1][k] + targvel[i-1][k]*dt0 + 0.5l*F[i-1][k]*dt0*dt0;
+    targvel[i][k] = targvel[i-1][k] + F[i-1][k]*dt0;
+  }
+  for(pi=0;pi<36;pi++) {
+    phivalmat[i][pi] = phivalmat[i-1][pi] + phiderivmat[i-1][pi]*dt0;
+  }
+  
+  // Calculate the acceleration and phider at tvec[2], and store it in the F matrix
+  if(verbose>0) cout << "Launching tidecalc01 on planet_statevecs[" << startpoint+i-1 << "], targpos[" << i << "], F[" << i << "]\n";
+  tidecalc01(planetnum, planetmasses, planet_statevecs[startpoint+i-1], targpos[i], F[i], tidemat);
+  if(verbose>0) cout << "Finished with tidecalc01\n";
+  for(k=0;k<3;k++) F[i][k] *= timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are now km/timeunit^2
+  if(verbose>0) {
+    cout << "Constant acceleration approx:\n";
+    cout << "F[" << i << "]: " << F[i][0] << " " << F[i][1] << " " << F[i][2] << "\n";
+    cout << "targpos[" << i << "]: " << targpos[i][0] << " " << targpos[i][1] << " " << targpos[i][2] << "\n";
+    cout << "targvel[" << i << "]: " << targvel[i][0]/timeunit/SOLARDAY << " " << targvel[i][1]/timeunit/SOLARDAY << " " << targvel[i][2]/timeunit/SOLARDAY << "\n";
+  }
+
+  // Re-roll phivalmat[i] into phival
+  for(pi=0;pi<6;pi++) {
+    for(pj=0;pj<6;pj++) {
+      phival[pi][pj] = phivalmat[i][pi*6+pj];
+    }
+  }
+  // Update the sensitivity matrix with the new tidal parameters.
+  for(pi=3;pi<6;pi++) {
+    for(pj=0;pj<3;pj++) {
+      smat[pi][pj] = tidemat[pi-3][pj] * timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are 1/timeunit^2
+    }
+  }
+  // Calculate the new derivative matrix
+  matXmat(smat, phival, phideriv);
+  // Unroll phimat and phideriv into phivalmat and phiderivmat
+  for(pi=0;pi<6;pi++) {
+    for(pj=0;pj<6;pj++) {
+      phivalmat[i][pi*6+pj] = phival[pi][pj];
+      phiderivmat[i][pi*6+pj] = phideriv[pi][pj];
+    }
+  }
+  
+  // Bootstrap iterations. horder is the highest term considered for F.
+  horder=2;
+  for(itct=1;itct<=hnum+3;itct++) {
+    for(i=2;i<=horder;i++) {
+      for(k=0;k<3;k++) alpha[i-1][k] = (F[i][k] - F[1][k])/tvec[i];
+      for(pi=0;pi<36;pi++) phi_alpha[i-1][pi] = (phiderivmat[i][pi] - phiderivmat[1][pi])/tvec[i];
+      for(j=2;j<i;j++) {
+	for(k=0;k<3;k++) {
+	  alpha[i-1][k] -= alpha[j-1][k];
+	  alpha[i-1][k] /= tvec[i] - tvec[j];
+	}
+	for(pi=0;pi<36;pi++) {
+	  phi_alpha[i-1][pi] -= phi_alpha[j-1][pi];
+	  phi_alpha[i-1][pi] /= tvec[i] - tvec[j];
+	}
+      }
+    }
+
+    // Make sure high-order terms of matrix A start out at zero.
+    for(j=1;j<hnum;j++) {
+      for(k=0;k<3;k++) A[j][k] = 0.0l;
+      for(pi=0;pi<36;pi++) phi_A[j][pi] = 0.0l;
+    }
+    // Calculate all available terms in matrix A from matrix alpha
+    for(j=1;j<horder;j++) {
+      for(k=0;k<3;k++) A[j][k] = 0.0l;
+      for(pi=0;pi<36;pi++) phi_A[j][pi] = 0.0l;
+      for(i=horder-1;i>=j;i--) {
+	for(k=0;k<3;k++) A[j][k] += c[i][j]*alpha[i][k];
+	for(pi=0;pi<36;pi++) phi_A[j][pi] += c[i][j]*phi_alpha[i][pi];
+      }
+    }
+  
+    if(verbose>0) {
+      cout << "F matrix, horder = " << horder << ":\n";
+      for(j=1;j<=horder;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << F[j][k] << " ";
+	cout << "\n";
+      }
+      cout << "alpha matrix:\n";
+      for(j=1;j<hnum;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << alpha[j][k] << " ";
+	cout << "\n";
+      }
+      cout << "A matrix:\n";
+      for(j=1;j<hnum;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << A[j][k] << " ";
+	cout << "\n";
+      }
+    }
+    if(horder<hnum) horder++;
+    for(j=2;j<=horder;j++) {
+      dt0 = tvec[j] - tvec[1]; // units of dt0 are timeunit
+      for(k=0;k<3;k++) targpos[j][k] = targvel[j][k] = 0.0l;
+      for(pi=0;pi<36;pi++) phivalmat[j][pi] = 0.0l;
+      for(i=horder-1;i>=1;i--) {
+ 	for(k=0;k<3;k++) targpos[j][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+	for(k=0;k<3;k++) targvel[j][k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+	for(pi=0;pi<36;pi++) phivalmat[j][pi] += phi_A[i][pi] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+      }
+      for(k=0;k<3;k++) targpos[j][k] += targpos[1][k] + targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+      for(k=0;k<3;k++) targvel[j][k] += targvel[1][k] + F[1][k]*dt0;
+      for(pi=0;pi<36;pi++) phivalmat[j][pi] += phivalmat[1][pi] + phiderivmat[1][pi]*dt0;
+    }
+    // Re-calculate the accelerations (that is, the vector F) at these revised positions
+    for(i=2;i<=horder;i++) {
+      tidecalc01(planetnum, planetmasses, planet_statevecs[startpoint+i-1], targpos[i], F[i], tidemat);
+      for(k=0;k<3;k++) F[i][k] *= timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are now km/timeunit^2
+      if(verbose>0) {
+	cout << "Interating at itct " << itct << ", horder = " << horder << "\n";
+	cout << "F[" << i << "]: " << F[i][0] << " " << F[i][1] << " " << F[i][2] << "\n";
+	cout << "targpos[" << i << "]: " << targpos[i][0] << " " << targpos[i][1] << " " << targpos[i][2] << "\n";
+	cout << "targvel[" << i << "]: " << targvel[i][0]/timeunit/SOLARDAY << " " << targvel[i][1]/timeunit/SOLARDAY << " " << targvel[i][2]/timeunit/SOLARDAY << "\n";
+      }
+      // Re-roll phivalmat[i] into phival
+      for(pi=0;pi<6;pi++) {
+	for(pj=0;pj<6;pj++) {
+	  phival[pi][pj] = phivalmat[i][pi*6+pj];
+	}
+      }
+      // Update the sensitivity matrix with the new tidal parameters.
+      for(pi=3;pi<6;pi++) {
+	for(pj=0;pj<3;pj++) {
+	  smat[pi][pj] = tidemat[pi-3][pj] * timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are 1/timeunit^2
+	}
+      }
+      // Calculate the new derivative matrix
+      matXmat(smat, phival, phideriv);
+      // Unroll phimat and phideriv into phivalmat and phiderivmat
+      for(pi=0;pi<6;pi++) {
+	for(pj=0;pj<6;pj++) {
+	  phivalmat[i][pi*6+pj] = phival[pi][pj];
+	  phiderivmat[i][pi*6+pj] = phideriv[pi][pj];
+	}
+      }
+    }
+  }
+  
+  obsct=0;
+  // Load output position and velocity spanning the first timestep
+  while(obsct<obsnum && obsMJD[obsct] <= mjd0+timestep) {
+    dt0 = (obsMJD[obsct] - mjd0)/timeunit;
+    for(k=0;k<3;k++) targ_statevecs[obsct][k] = targpos[1][k] + targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+    for(k=0;k<3;k++) targ_statevecs[obsct][3+k] = targvel[1][k] + F[1][k]*dt0;
+    for(pi=0;pi<36;pi++) vareq_mat[obsct][pi] = phivalmat[1][pi] + phiderivmat[1][pi]*dt0;
+    for(i=1;i<hnum;i++) {
+      for(k=0;k<3;k++) targ_statevecs[obsct][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+      for(k=0;k<3;k++) targ_statevecs[obsct][3+k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+      for(pi=0;pi<36;pi++) vareq_mat[obsct][pi] += phi_A[i][pi] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+    }
+    // Convert the velocity from km/timeunit to km/sec
+    for(k=0;k<3;k++) targ_statevecs[obsct][3+k] /= timeunit*SOLARDAY;
+    if(verbose>0) cout << "obsct = " << obsct << ", statevecs = " << targ_statevecs[obsct][0] << " "  << targ_statevecs[obsct][1] << " "  << targ_statevecs[obsct][2] << " "  << targ_statevecs[obsct][3] << " " << targ_statevecs[obsct][4] << " " << targ_statevecs[obsct][5] << " " << "\n";
+    for(pi=0;pi<3;pi++) {
+      for(pj=3;pj<6;pj++) {
+	vareq_mat[obsct][pi*6+pj] *= timeunit*SOLARDAY; // Derivatives with velocity in the denominator
+      }
+    }
+    for(pi=3;pi<6;pi++) {
+      for(pj=0;pj<3;pj++) {
+	vareq_mat[obsct][pi*6+pj] /= timeunit*SOLARDAY; // Derivatives with velocity in the numerator
+      }
+    }
+    obsct++;
+  }
+
+  // Finished with the iterations, calculate precise position
+  // and velocity at the end of the first timestep, and store
+  // in targpos[1] and targvel[1], to set up for the next
+  // integration step.
+  dt0 = timestep/timeunit; // units of dt0 are timeunit
+  for(k=0;k<3;k++) targpos[1][k] += targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+  for(k=0;k<3;k++) targvel[1][k] += F[1][k]*dt0;
+  for(pi=0;pi<36;pi++) phivalmat[1][pi] += phiderivmat[1][pi]*dt0;
+  for(i=1;i<hnum;i++) {
+    for(k=0;k<3;k++) targvel[1][k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+    for(k=0;k<3;k++) targpos[1][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+    for(pi=0;pi<36;pi++) phivalmat[1][pi] += phi_A[i][pi] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+  }
+  if(verbose>0) cout << "targpos = " << targpos[1][0] << " "  << targpos[1][1] << " " << targpos[1][2] << " " << targvel[1][0]/timeunit/SOLARDAY << " "  << targvel[1][1]/timeunit/SOLARDAY << " "  << targvel[1][2]/timeunit/SOLARDAY << "\n";
+  
+  // Save current value of alpha[1] in oldalpha1
+  for(k=0;k<3;k++) oldalpha1[2][k] = alpha[1][k];
+  for(pi=0;pi<36;pi++) old_phi_alpha1[2][pi] = phi_alpha[1][pi];
+  
+  // Launch full-precision integration
+  stepct=1;
+  mjd0 = planetmjd[startpoint] + timestep * static_cast<double>(stepct);
+  while(mjd0 <= planetmjd[endpoint]) {
+    // Test time-consistency with the planetary ephemerides throughout this timestep.
+    for(i=1;i<=hnum;i++) {
+      mjdnow = mjd0+htimes[i];
+      if(fabs(mjdnow-planetmjd[startpoint+stepct*hnum+i-1]) > STATEMJD_TIMETOL) {
+	cerr << "ERROR: time mismatch at point " << stepct*hnum+i << " " << mjdnow << " vs. " << planetmjd[startpoint+stepct*hnum+i-1] << "\n";
+	return(2);
+      }
+    }
+    // Calculate new value of F[1]
+    i=1;
+    tidecalc01(planetnum, planetmasses, planet_statevecs[startpoint+stepct*hnum+i-1], targpos[i], F[i], tidemat);
+    for(k=0;k<3;k++) F[i][k] *= timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are now km/timeunit^2
+    // Re-roll phivalmat[i] into phival
+    for(pi=0;pi<6;pi++) {
+      for(pj=0;pj<6;pj++) {
+	phival[pi][pj] = phivalmat[i][pi*6+pj];
+      }
+    }
+    // Update the sensitivity matrix with the new tidal parameters.
+    for(pi=3;pi<6;pi++) {
+      for(pj=0;pj<3;pj++) {
+	smat[pi][pj] = tidemat[pi-3][pj] * timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are 1/timeunit^2
+      }
+    }
+    // Calculate the new derivative matrix
+    matXmat(smat, phival, phideriv);
+    // Unroll phimat and phideriv into phivalmat and phiderivmat
+    for(pi=0;pi<6;pi++) {
+      for(pj=0;pj<6;pj++) {
+	phivalmat[i][pi*6+pj] = phival[pi][pj];
+	phiderivmat[i][pi*6+pj] = phideriv[pi][pj];
+      }
+    }
+
+    // Integrate over the next timestep
+    if(stepct==2) {
+      // Obtain new value of alpha[1] by linear extrapolation from the old
+      for(k=0;k<3;k++) alpha[1][k] = 2.0l*oldalpha1[2][k] - oldalpha1[1][k];
+      for(pi=0;pi<36;pi++) phi_alpha[1][pi] = 2.0*old_phi_alpha1[2][pi] - old_phi_alpha1[1][pi];
+    } else if(stepct>2) {
+      // Obtain new value of alpha[1] by quadratic extrapolation from the old
+      for(k=0;k<3;k++) {
+	fita = (oldalpha1[2][k] - 2.0l*oldalpha1[1][k] + oldalpha1[0][k])/2.0l;
+	fitb = (-oldalpha1[2][k] + 4.0l*oldalpha1[1][k] - 3.0l*oldalpha1[0][k])/2.0l;
+	fitc = oldalpha1[0][k];
+	alpha[1][k] = 9.0l*fita + 3.0l*fitb + fitc;
+      }
+      for(pi=0;pi<36;pi++) {
+	fita = (old_phi_alpha1[2][pi] - 2.0l*old_phi_alpha1[1][pi] + old_phi_alpha1[0][pi])/2.0l;
+	fitb = (-old_phi_alpha1[2][pi] + 4.0l*old_phi_alpha1[1][pi] - 3.0l*old_phi_alpha1[0][pi])/2.0l;
+	fitc = old_phi_alpha1[0][pi];
+	phi_alpha[1][pi] = 9.0l*fita + 3.0l*fitb + fitc;
+      }
+    }
+
+    // Iteratively improve initial estimate of the alpha matrix,
+    // and the A matrix, positions, and velocities that depend on it.
+    for(itct=1;itct<=2;itct++) {
+      // First calculate the A matrix from the best current values of alpha
+      for(j=1;j<hnum;j++) {
+	for(k=0;k<3;k++) A[j][k] = 0.0l;
+	for(pi=0;pi<36;pi++) phi_A[j][pi] = 0.0;
+	for(i=j;i<hnum;i++) {
+	  for(k=0;k<3;k++) A[j][k] += c[i][j]*alpha[i][k];
+	  for(pi=0;pi<36;pi++) phi_A[j][pi] += c[i][j]*phi_alpha[i][pi];
+	}
+      }
+      // predict all the positions and velocities from the A values,
+      // using Everhart Equations 4 and 5
+      for(j=2;j<=hnum;j++) {
+	dt0 = tvec[j] - tvec[1]; // units of dt0 are timeunit
+	for(k=0;k<3;k++) targpos[j][k] = targpos[1][k] + targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+	for(k=0;k<3;k++) targvel[j][k] = targvel[1][k] + F[1][k]*dt0;
+	for(pi=0;pi<36;pi++) phivalmat[j][pi] = phivalmat[1][pi] + phiderivmat[1][pi]*dt0; 
+	for(i=1;i<hnum;i++) {
+	  for(k=0;k<3;k++) targpos[j][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+	  for(k=0;k<3;k++) targvel[j][k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+	  for(pi=0;pi<36;pi++) phivalmat[j][pi] += phi_A[i][pi] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+	}
+      }
+      // Re-calculate the accelerations (that is, the vector F) at these revised positions
+      for(i=2;i<=hnum;i++) {
+	tidecalc01(planetnum, planetmasses, planet_statevecs[startpoint+stepct*hnum+i-1], targpos[i], F[i], tidemat);
+	for(k=0;k<3;k++) F[i][k] *= timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are now km/timeunit^2
+	// Re-roll phivalmat[i] into phival
+	for(pi=0;pi<6;pi++) {
+	  for(pj=0;pj<6;pj++) {
+	    phival[pi][pj] = phivalmat[i][pi*6+pj];
+	  }
+	}
+	// Update the sensitivity matrix with the new tidal parameters.
+	for(pi=3;pi<6;pi++) {
+	  for(pj=0;pj<3;pj++) {
+	    smat[pi][pj] = tidemat[pi-3][pj] * timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are 1/timeunit^2
+	  }
+	}
+	// Calculate the new derivative matrix
+	matXmat(smat, phival, phideriv);
+	// Unroll phimat and phideriv into phivalmat and phiderivmat
+	for(pi=0;pi<6;pi++) {
+	  for(pj=0;pj<6;pj++) {
+	    phivalmat[i][pi*6+pj] = phival[pi][pj];
+	    phiderivmat[i][pi*6+pj] = phideriv[pi][pj];
+	  }
+	}
+      }
+      // Re-calculate alpha based on the revised vector F
+      for(i=2;i<=hnum;i++) {
+	for(k=0;k<3;k++) alpha[i-1][k] = (F[i][k] - F[1][k])/tvec[i];
+	for(pi=0;pi<36;pi++) phi_alpha[i-1][pi] = (phiderivmat[i][pi] - phiderivmat[1][pi])/tvec[i];
+	for(j=2;j<i;j++) {
+	  for(k=0;k<3;k++) {
+	    alpha[i-1][k] -= alpha[j-1][k];
+	    alpha[i-1][k] /= tvec[i] - tvec[j];
+	  }
+	  for(pi=0;pi<36;pi++) {
+	    phi_alpha[i-1][pi] -= phi_alpha[j-1][pi];
+	    phi_alpha[i-1][pi] /= tvec[i] - tvec[j];
+	  }
+	}
+      }
+    }
+    // Done with iterations, alpha matrix should be very accurate now.
+    // Calculate a revised A matrix from final-iteration values of alpha
+    for(j=1;j<hnum;j++) {
+      for(k=0;k<3;k++) A[j][k] = 0.0l;
+      for(pi=0;pi<36;pi++) phi_A[j][pi] = 0.0l;
+      for(i=j;i<hnum;i++) {
+	for(k=0;k<3;k++) A[j][k] += c[i][j]*alpha[i][k];
+	for(pi=0;pi<36;pi++) phi_A[j][pi] += c[i][j]*phi_alpha[i][pi];
+      }
+    }
+    if(verbose>0) {
+      cout << "F matrix, stepct = " << stepct << ":\n";
+      for(j=1;j<=horder;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << F[j][k] << " ";
+	cout << "\n";
+      }
+      cout << "alpha matrix:\n";
+      for(j=1;j<hnum;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << alpha[j][k] << " ";
+	cout << "\n";
+      }
+      cout << "A matrix:\n";
+      for(j=1;j<hnum;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << A[j][k] << " ";
+	cout << "\n";
+      }
+    }
+  
+    // Load output position and velocity spanning the latest timestep
+    while(obsct<obsnum && obsMJD[obsct] <= mjd0+timestep) {
+      dt0 = (obsMJD[obsct] - mjd0)/timeunit;
+      for(k=0;k<3;k++) targ_statevecs[obsct][k] = targpos[1][k] + targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+      for(k=0;k<3;k++) targ_statevecs[obsct][3+k] = targvel[1][k] + F[1][k]*dt0;
+      for(pi=0;pi<36;pi++) vareq_mat[obsct][pi] = phivalmat[1][pi] + phiderivmat[1][pi]*dt0;
+      for(i=1;i<hnum;i++) {
+	for(k=0;k<3;k++) targ_statevecs[obsct][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+	for(k=0;k<3;k++) targ_statevecs[obsct][3+k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+	for(pi=0;pi<36;pi++) vareq_mat[obsct][pi] += phi_A[i][pi] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+      }
+      // Convert the velocity from km/timeunit to km/sec
+      for(k=0;k<3;k++) targ_statevecs[obsct][3+k] /= timeunit*SOLARDAY;
+      for(pi=0;pi<3;pi++) {
+	for(pj=3;pj<6;pj++) {
+	  vareq_mat[obsct][pi*6+pj] *= timeunit*SOLARDAY; // Derivatives with velocity in the denominator
+	}
+      }
+      for(pi=3;pi<6;pi++) {
+	for(pj=0;pj<3;pj++) {
+	  vareq_mat[obsct][pi*6+pj] /= timeunit*SOLARDAY; // Derivatives with velocity in the numerator
+	}
+      }
+      obsct++;
+    }
+
+    // Calculate precise position and velocity at the end of this timestep, and store
+    // in targpos[1] and targvel[1], to set up for the next integration step.
+    dt0 = timestep/timeunit; // units of dt0 are timeunit
+    for(k=0;k<3;k++) targpos[1][k] += targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+    for(k=0;k<3;k++) targvel[1][k] += F[1][k]*dt0;
+    for(pi=0;pi<36;pi++) phivalmat[1][pi] += phiderivmat[1][pi]*dt0;
+    for(i=1;i<hnum;i++) {
+      for(k=0;k<3;k++) targvel[1][k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+      for(k=0;k<3;k++) targpos[1][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+      for(pi=0;pi<36;pi++) phivalmat[1][pi] += phi_A[i][pi] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+    }
+  
+    // Cycle oldalpha1
+    for(k=0;k<3;k++) oldalpha1[0][k] = oldalpha1[1][k];
+    for(k=0;k<3;k++) oldalpha1[1][k] = oldalpha1[2][k];
+    for(k=0;k<3;k++) oldalpha1[2][k] = alpha[1][k];
+    for(pi=0;pi<36;pi++) old_phi_alpha1[0][pi] = old_phi_alpha1[1][pi];
+    for(pi=0;pi<36;pi++) old_phi_alpha1[1][pi] = old_phi_alpha1[2][pi];
+    for(pi=0;pi<36;pi++) old_phi_alpha1[2][pi] = phi_alpha[1][pi];
+    
+    stepct++;
+    mjd0 = planetmjd[startpoint] + timestep * static_cast<double>(stepct);
+  }
+  return(0);
+}
+
+// obsint_everhart01: October 21, 2025
+// Like obsint_everhart_vareq01, but does not integrate the variational
+// equations. Evaluates the state vectors only at specifing UTC times
+// provided in the vector obsMJD. This vector is assumed to
+// provide times in the same time system as the planetary ephemeris
+// files, which will be TDB if they are downloaded from JPL with
+// default parameters (recommended). Hence, if your observing times
+// are in UTC or TAI (likely), the calling function must convert
+// them to TDB before calling the current program.
+// Note: this function handles only forward integration, but it is
+// designed to serve as the central engine for obsint_everuse01, which
+// handles integration in both backward and forward directions as needed.
+int obsint_everhart01(int planetnum, const vector <double> &planetmjd, const vector <double> &planetmasses, const vector <vector <double>> &planet_statevecs, const vector <double> &starting_statevec, int startpoint, int endpoint, const vector <double> &obsMJD,  vector <vector <double>> &targ_statevecs, double timestep, int hnum, const vector <double> &hspace, int verbose)
+{
+  vector <vector <double>> targpos;
+  vector <vector <double>> targvel;
+  vector <double> ldvec;
+  long i,j,k;
+  i=j=k=0;
+  long obsnum = obsMJD.size();
+  long obsct=0;
+  double dt0=0L;
+  double mjd0;
+  double mjdnow;
+  vector <double> htimes;
+  vector <double> tvec; // one-indexed vector in units of timeunit
+  vector <vector <double>> F;
+  vector <vector <double>> alpha;
+  vector <vector <double>> oldalpha1;
+  vector <vector <double>> A;
+  vector <vector <double>> c;
+  vector <vector <double>> tmat; // tmat[n][j] = tvec[n] - tvec[j]
+  double timeunit = timestep/TIMEDOWNSCALE; // Units are solar days
+                                            // Purpose is to keep large powers of time from getting too large
+  long itct;
+  long stepct;
+  long horder=0;
+  double fita,fitb,fitc;
+  fita = fitb = fitc = 0.0;
+  
+  if(verbose>0) {
+    cout << "Inside obsint_everhart01\n";
+    cout << "Input state vector: " << starting_statevec[0] << " "  << starting_statevec[1] << " "  << starting_statevec[2] << " "  << starting_statevec[3] << " "  << starting_statevec[4] << " "  << starting_statevec[5] << "\n";
+    cout << "startpoint, endpoint, planetmjd.size(): " << startpoint << " " << endpoint << " " << planetmjd.size() << "\n";
+  }
+  
+  if(endpoint<startpoint) {
+    cerr << "ERROR: obsint_everhart01 called with end point (" << endpoint << ") before starting point (" << startpoint << ")\n";
+    return(1);
+  } else if(startpoint<0 || endpoint>=long(planetmjd.size())) {
+    cerr << "ERROR: obsint_everhart01 called with starting point " << startpoint << " or endpoint" << endpoint << " outside range of planet vectors (0 - " << planetmjd.size() << ")\n";
+    return(1);
+  }
+  // Allocate the output vectors
+  make_dmat(obsnum, 6, targ_statevecs);
+
+  // Everything after this will be one-indexed rather than zero-indexed,
+  // for consistency with the equations in Everhart (1974)
+  make_dmat(hnum+1, 3, F);
+  make_dmat(hnum+1, 3, alpha);
+  make_dmat(3, 3, oldalpha1);
+  make_dmat(hnum+1, 3, A);
+  make_dvec(hnum+1, htimes);
+  make_dmat(hnum+1, hnum+1, tmat);
+  make_dmat(hnum+1, hnum+1, c);
+  make_dvec(hnum+1, tvec);
+
+  // Make sure that relevant vectors for the polynomial fitting
+  // are all large enough.
+  make_dmat(hnum+1, 3, targpos);
+  make_dmat(hnum+1, 3, targvel);
+
+  // Load the time vector tvec.
+  // All of this is one-indexed, like all the calculations that follow,
+  // for consistency with Everhart (1974).
+  mjd0 = planetmjd[startpoint];
+  for(i=1;i<=hnum;i++) {
+    htimes[i] = timestep*hspace[i-1]; // Units are days
+    mjdnow = mjd0+htimes[i];
+    if(fabs(mjdnow - planetmjd[startpoint+i-1]) > STATEMJD_TIMETOL) {
+      cerr << "ERROR: time mismatch at point " << startpoint+i-1 << " " << mjdnow << " vs. " << planetmjd[startpoint+i-1] << "\n";
+      return(2);
+    }
+    tvec[i] = htimes[i]/timeunit; // Units are timeunit
+  }
+  for(i=1;i<=hnum;i++) {
+    for(j=1;j<=hnum;j++) tmat[i][j] = tvec[i] - tvec[j]; // Units are timeunit
+  }
+  // Load c matrix
+  c[1][1] = 1.0l;
+  for(i=2;i<=hnum;i++) {
+    c[i][1] = -tvec[i]*c[i-1][1];
+    for(j=2;j<i;j++) c[i][j] = c[i-1][j-1] - tvec[i]*c[i-1][j];
+    c[i][i] = 1.0l;
+  }
+
+  // Load the starting position and velocity
+  for(k=0;k<3;k++) {
+    targpos[1][k] = starting_statevec[k];
+    targvel[1][k] = starting_statevec[3+k]*timeunit*SOLARDAY; // units are km/timeunit
+  }
+
+  // Calculate the initial acceleration and store it in the F matrix
+  i=1;
+  accelcalc02(planetnum, planetmasses, planet_statevecs[startpoint+i-1], targpos[i], F[i]); // Acceleration is exact
+  for(k=0;k<3;k++) F[i][k] *= timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are now km/timeunit^2
+  
+  if(verbose>0) {
+    cout << "Starting conditions:\n";
+    cout << "F[" << i << "]: " << F[i][0] << " " << F[i][1] << " " << F[i][2] << "\n";
+    cout << "targpos[" << i << "]: " << targpos[i][0] << " " << targpos[i][1] << " " << targpos[i][2] << "\n";
+    cout << "targvel[" << i << "]: " << targvel[i][0]/timeunit/SOLARDAY << " " << targvel[i][1]/timeunit/SOLARDAY << " " << targvel[i][2]/timeunit/SOLARDAY << "\n";
+  }
+
+  // Using the approximation of constant acceleration,
+  // calculate the position, velocity, and phival at tvec[2]
+  i=2;
+  dt0 = tvec[i] - tvec[i-1]; // units of dt0 are timeunit
+  for(k=0;k<3;k++) {
+    targpos[i][k] = targpos[i-1][k] + targvel[i-1][k]*dt0 + 0.5l*F[i-1][k]*dt0*dt0;
+    targvel[i][k] = targvel[i-1][k] + F[i-1][k]*dt0;
+  }
+  
+  // Calculate the acceleration and phider at tvec[2], and store it in the F matrix
+  accelcalc02(planetnum, planetmasses, planet_statevecs[startpoint+i-1], targpos[i], F[i]);
+  for(k=0;k<3;k++) F[i][k] *= timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are now km/timeunit^2
+  if(verbose>0) {
+    cout << "Constant acceleration approx:\n";
+    cout << "F[" << i << "]: " << F[i][0] << " " << F[i][1] << " " << F[i][2] << "\n";
+    cout << "targpos[" << i << "]: " << targpos[i][0] << " " << targpos[i][1] << " " << targpos[i][2] << "\n";
+    cout << "targvel[" << i << "]: " << targvel[i][0]/timeunit/SOLARDAY << " " << targvel[i][1]/timeunit/SOLARDAY << " " << targvel[i][2]/timeunit/SOLARDAY << "\n";
+  }
+  
+  // Bootstrap iterations. horder is the highest term considered for F.
+  horder=2;
+  for(itct=1;itct<=hnum+3;itct++) {
+    for(i=2;i<=horder;i++) {
+      for(k=0;k<3;k++) alpha[i-1][k] = (F[i][k] - F[1][k])/tvec[i];
+      for(j=2;j<i;j++) {
+	for(k=0;k<3;k++) {
+	  alpha[i-1][k] -= alpha[j-1][k];
+	  alpha[i-1][k] /= tvec[i] - tvec[j];
+	}
+      }
+    }
+
+    // Make sure high-order terms of matrix A start out at zero.
+    for(j=1;j<hnum;j++) {
+      for(k=0;k<3;k++) A[j][k] = 0.0l;
+    }
+    // Calculate all available terms in matrix A from matrix alpha
+    for(j=1;j<horder;j++) {
+      for(k=0;k<3;k++) A[j][k] = 0.0l;
+      for(i=horder-1;i>=j;i--) {
+	for(k=0;k<3;k++) A[j][k] += c[i][j]*alpha[i][k];
+      }
+    }
+  
+    if(verbose>0) {
+      cout << "F matrix, horder = " << horder << ":\n";
+      for(j=1;j<=horder;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << F[j][k] << " ";
+	cout << "\n";
+      }
+      cout << "alpha matrix:\n";
+      for(j=1;j<hnum;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << alpha[j][k] << " ";
+	cout << "\n";
+      }
+      cout << "A matrix:\n";
+      for(j=1;j<hnum;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << A[j][k] << " ";
+	cout << "\n";
+      }
+    }
+    if(horder<hnum) horder++;
+    for(j=2;j<=horder;j++) {
+      dt0 = tvec[j] - tvec[1]; // units of dt0 are timeunit
+      for(k=0;k<3;k++) targpos[j][k] = targvel[j][k] = 0.0l;
+      for(i=horder-1;i>=1;i--) {
+ 	for(k=0;k<3;k++) targpos[j][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+	for(k=0;k<3;k++) targvel[j][k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+      }
+      for(k=0;k<3;k++) targpos[j][k] += targpos[1][k] + targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+      for(k=0;k<3;k++) targvel[j][k] += targvel[1][k] + F[1][k]*dt0;
+    }
+    // Re-calculate the accelerations (that is, the vector F) at these revised positions
+    for(i=2;i<=horder;i++) {
+      accelcalc02(planetnum, planetmasses, planet_statevecs[startpoint+i-1], targpos[i], F[i]);
+      for(k=0;k<3;k++) F[i][k] *= timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are now km/timeunit^2
+      if(verbose>0) {
+	cout << "Interating at itct " << itct << ", horder = " << horder << "\n";
+	cout << "F[" << i << "]: " << F[i][0] << " " << F[i][1] << " " << F[i][2] << "\n";
+	cout << "targpos[" << i << "]: " << targpos[i][0] << " " << targpos[i][1] << " " << targpos[i][2] << "\n";
+	cout << "targvel[" << i << "]: " << targvel[i][0]/timeunit/SOLARDAY << " " << targvel[i][1]/timeunit/SOLARDAY << " " << targvel[i][2]/timeunit/SOLARDAY << "\n";
+      }
+    }
+  }
+  
+  obsct=0;
+  // Load output position and velocity spanning the first timestep
+  while(obsct<obsnum && obsMJD[obsct] <= mjd0+timestep) {
+    dt0 = (obsMJD[obsct] - mjd0)/timeunit;
+    for(k=0;k<3;k++) targ_statevecs[obsct][k] = targpos[1][k] + targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+    for(k=0;k<3;k++) targ_statevecs[obsct][3+k] = targvel[1][k] + F[1][k]*dt0;
+    for(i=1;i<hnum;i++) {
+      for(k=0;k<3;k++) targ_statevecs[obsct][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+      for(k=0;k<3;k++) targ_statevecs[obsct][3+k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+    }
+    // Convert the velocity from km/timeunit to km/sec
+    for(k=0;k<3;k++) targ_statevecs[obsct][3+k] /= timeunit*SOLARDAY;
+    if(verbose>0) cout << "obsct = " << obsct << ", statevecs = " << targ_statevecs[obsct][0] << " "  << targ_statevecs[obsct][1] << " "  << targ_statevecs[obsct][2] << " "  << targ_statevecs[obsct][3] << " " << targ_statevecs[obsct][4] << " " << targ_statevecs[obsct][5] << " " << "\n";
+    obsct++;
+  }
+
+  // Finished with the iterations, calculate precise position
+  // and velocity at the end of the first timestep, and store
+  // in targpos[1] and targvel[1], to set up for the next
+  // integration step.
+  dt0 = timestep/timeunit; // units of dt0 are timeunit
+  for(k=0;k<3;k++) targpos[1][k] += targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+  for(k=0;k<3;k++) targvel[1][k] += F[1][k]*dt0;
+  for(i=1;i<hnum;i++) {
+    for(k=0;k<3;k++) targvel[1][k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+    for(k=0;k<3;k++) targpos[1][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+  }
+  if(verbose>0) cout << "targpos = " << targpos[1][0] << " "  << targpos[1][1] << " " << targpos[1][2] << " " << targvel[1][0]/timeunit/SOLARDAY << " "  << targvel[1][1]/timeunit/SOLARDAY << " "  << targvel[1][2]/timeunit/SOLARDAY << "\n";
+  
+  // Save current value of alpha[1] in oldalpha1
+  for(k=0;k<3;k++) oldalpha1[2][k] = alpha[1][k];
+  
+  // Launch full-precision integration
+  stepct=1;
+  mjd0 = planetmjd[startpoint] + timestep * static_cast<double>(stepct);
+  while(mjd0 <= planetmjd[endpoint]) {
+    // Test time-consistency with the planetary ephemerides throughout this timestep.
+    for(i=1;i<=hnum;i++) {
+      mjdnow = mjd0+htimes[i];
+      if(fabs(mjdnow-planetmjd[startpoint+stepct*hnum+i-1]) > STATEMJD_TIMETOL) {
+	cerr << "ERROR: time mismatch at point " << stepct*hnum+i << " " << mjdnow << " vs. " << planetmjd[startpoint+stepct*hnum+i-1] << "\n";
+	return(2);
+      }
+    }
+    // Calculate new value of F[1]
+    i=1;
+    accelcalc02(planetnum, planetmasses, planet_statevecs[startpoint+stepct*hnum+i-1], targpos[i], F[i]);
+    for(k=0;k<3;k++) F[i][k] *= timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are now km/timeunit^2
+
+    // Integrate over the next timestep
+    if(stepct==2) {
+      // Obtain new value of alpha[1] by linear extrapolation from the old
+      for(k=0;k<3;k++) alpha[1][k] = 2.0l*oldalpha1[2][k] - oldalpha1[1][k];
+    } else if(stepct>2) {
+      // Obtain new value of alpha[1] by quadratic extrapolation from the old
+      for(k=0;k<3;k++) {
+	fita = (oldalpha1[2][k] - 2.0l*oldalpha1[1][k] + oldalpha1[0][k])/2.0l;
+	fitb = (-oldalpha1[2][k] + 4.0l*oldalpha1[1][k] - 3.0l*oldalpha1[0][k])/2.0l;
+	fitc = oldalpha1[0][k];
+	alpha[1][k] = 9.0l*fita + 3.0l*fitb + fitc;
+      }
+    }
+
+    // Iteratively improve initial estimate of the alpha matrix,
+    // and the A matrix, positions, and velocities that depend on it.
+    for(itct=1;itct<=2;itct++) {
+      // First calculate the A matrix from the best current values of alpha
+      for(j=1;j<hnum;j++) {
+	for(k=0;k<3;k++) A[j][k] = 0.0l;
+	for(i=j;i<hnum;i++) {
+	  for(k=0;k<3;k++) A[j][k] += c[i][j]*alpha[i][k];
+	}
+      }
+      // predict all the positions and velocities from the A values,
+      // using Everhart Equations 4 and 5
+      for(j=2;j<=hnum;j++) {
+	dt0 = tvec[j] - tvec[1]; // units of dt0 are timeunit
+	for(k=0;k<3;k++) targpos[j][k] = targpos[1][k] + targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+	for(k=0;k<3;k++) targvel[j][k] = targvel[1][k] + F[1][k]*dt0;
+	for(i=1;i<hnum;i++) {
+	  for(k=0;k<3;k++) targpos[j][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+	  for(k=0;k<3;k++) targvel[j][k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+	}
+      }
+      // Re-calculate the accelerations (that is, the vector F) at these revised positions
+      for(i=2;i<=hnum;i++) {
+	accelcalc02(planetnum, planetmasses, planet_statevecs[startpoint+stepct*hnum+i-1], targpos[i], F[i]);
+	for(k=0;k<3;k++) F[i][k] *= timeunit*timeunit*SOLARDAY*SOLARDAY; // Units are now km/timeunit^2
+      }
+      // Re-calculate alpha based on the revised vector F
+      for(i=2;i<=hnum;i++) {
+	for(k=0;k<3;k++) alpha[i-1][k] = (F[i][k] - F[1][k])/tvec[i];
+	for(j=2;j<i;j++) {
+	  for(k=0;k<3;k++) {
+	    alpha[i-1][k] -= alpha[j-1][k];
+	    alpha[i-1][k] /= tvec[i] - tvec[j];
+	  }
+	}
+      }
+    }
+    // Done with iterations, alpha matrix should be very accurate now.
+    // Calculate a revised A matrix from final-iteration values of alpha
+    for(j=1;j<hnum;j++) {
+      for(k=0;k<3;k++) A[j][k] = 0.0l;
+      for(i=j;i<hnum;i++) {
+	for(k=0;k<3;k++) A[j][k] += c[i][j]*alpha[i][k];
+      }
+    }
+    if(verbose>0) {
+      cout << "F matrix, stepct = " << stepct << ":\n";
+      for(j=1;j<=horder;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << F[j][k] << " ";
+	cout << "\n";
+      }
+      cout << "alpha matrix:\n";
+      for(j=1;j<hnum;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << alpha[j][k] << " ";
+	cout << "\n";
+      }
+      cout << "A matrix:\n";
+      for(j=1;j<hnum;j++) {
+	cout << j << " ";
+	for(k=0;k<3;k++) cout << A[j][k] << " ";
+	cout << "\n";
+      }
+    }
+  
+    // Load output position and velocity spanning the latest timestep
+    while(obsct<obsnum && obsMJD[obsct] <= mjd0+timestep) {
+      dt0 = (obsMJD[obsct] - mjd0)/timeunit;
+      for(k=0;k<3;k++) targ_statevecs[obsct][k] = targpos[1][k] + targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+      for(k=0;k<3;k++) targ_statevecs[obsct][3+k] = targvel[1][k] + F[1][k]*dt0;
+      for(i=1;i<hnum;i++) {
+	for(k=0;k<3;k++) targ_statevecs[obsct][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+	for(k=0;k<3;k++) targ_statevecs[obsct][3+k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+      }
+      // Convert the velocity from km/timeunit to km/sec
+      for(k=0;k<3;k++) targ_statevecs[obsct][3+k] /= timeunit*SOLARDAY;
+      obsct++;
+    }
+
+    // Calculate precise position and velocity at the end of this timestep, and store
+    // in targpos[1] and targvel[1], to set up for the next integration step.
+    dt0 = timestep/timeunit; // units of dt0 are timeunit
+    for(k=0;k<3;k++) targpos[1][k] += targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
+    for(k=0;k<3;k++) targvel[1][k] += F[1][k]*dt0;
+    for(i=1;i<hnum;i++) {
+      for(k=0;k<3;k++) targvel[1][k] += A[i][k] * intpowD(dt0,i+1) / static_cast<double>(i+1);
+      for(k=0;k<3;k++) targpos[1][k] += A[i][k] * intpowD(dt0,i+2) / static_cast<double>(i+2) / static_cast<double>(i+1);
+    }
+  
+    // Cycle oldalpha1
+    for(k=0;k<3;k++) oldalpha1[0][k] = oldalpha1[1][k];
+    for(k=0;k<3;k++) oldalpha1[1][k] = oldalpha1[2][k];
+    for(k=0;k<3;k++) oldalpha1[2][k] = alpha[1][k];
+    stepct++;
+    mjd0 = planetmjd[startpoint] + timestep * static_cast<double>(stepct);
+  }
+  return(0);
+}
+
+
+// obsint_vareq01: October 14, 2025:
+// Like integrate_vareq02(), but instead of evaluating
+// output every day, evaluates it only at specifing UTC times
+// provided in the vector obsMJD. Uses obsint_everhart_vareq01
+// as the central calculating engine.
+//
+// Description of ancestor program integrate_vareq02:
+// Using integrate_everhart_vareq02() as the central caculating engine,
+// integrate an orbit forward and/or backward in time, as needed, integrating
+// both the state vectors (position and velocity) and the variational equations.
+// In order to obtain a major increase in speed, requires input vectors
+// planet_backward_mjd, planet_backward_statevecs, planet_forward_mjd, and
+// planet_forward_statevecs to have already been interpolated to the exact, unequal sampling
+// intervals required for Everhart integration with the specified timestep
+// and hnum, where the backward vectors are in time-reversed order with
+// MJD and velocity sign-flipped. Files containing such vectors, in both backwards
+// and forwards directions, can be produced with the required sampling for
+// Everhart integration at a specific hnum and timestep using Horizons_resample.cpp.
+// Here, hnum is the number of small (unequal) timesteps
+// per big (equal) timestep, and the input argument timestep is the
+// length of the big timesteps. This input timestep is expected
+// to be in solar days, where 5 and 10 days are probably reasonable. 
+int obsint_vareq01(int planetnum, const vector <double> &planetmasses, const vector <double> &planet_backward_mjd, const vector <vector <double>> &planet_backward_statevecs, const vector <double> &planet_forward_mjd, const vector <vector <double>> &planet_forward_statevecs, const vector <double> &starting_statevec, double mjdstart, double mjdref, double mjdend, const vector <double> &obsMJD,  vector <vector <double>> &targ_statevecs, vector <vector <double>> &vareq_mat, double timestep, int hnum, const vector <double> &hspace, int verbose)
+{
+  long i,j,k,pi,pj;
+  i=j=k=pi=pj=0;
+  int ref_subct=0;
+  int status=0;
+  long obsnum = obsMJD.size();
+  long obsct=0;
+  long startpoint,endpoint,refpoint;
+  targ_statevecs={};
+  vareq_mat={};
+  
+  if(verbose>0) cout << "Inside obsint_vareq01()\n";
+
+  // Match mjdstart and mjdend to forward planet file.
+  startpoint = endpoint = refpoint = -99;
+  for(j=0;j<long(planet_forward_mjd.size());j++) {
+    if(fabs(planet_forward_mjd[j]-mjdstart) < STATEMJD_TIMETOL) startpoint = j;
+    if(fabs(planet_forward_mjd[j]-mjdref) < STATEMJD_TIMETOL) refpoint = j;
+    if(fabs(planet_forward_mjd[j]-mjdend) < STATEMJD_TIMETOL) endpoint = j;
+  }
+  if(startpoint<0 || refpoint<0 || endpoint<0) {
+    cerr << "ERROR: mjdstart " << mjdstart << " and/or mjdref " << mjdref << " and/or mjdend " << mjdend << " could not be matched\nto any timestep in the planet files\n";
+    return(1);
+  } else {
+    cout << "mjdstart " << mjdstart << " corresponds to timestep " << startpoint << " in the forward planet files\n";
+    cout << "mjdref " << mjdref << " corresponds to timestep " << refpoint << " in the forward planet files\n";
+    cout << "mjdend " << mjdend << " corresponds to timestep " << endpoint << " in the forward planet files\n";
+  }
+  
+  if(endpoint<startpoint) {
+    cerr << "ERROR: obsint_vareq01 finds end point (" << endpoint << ") before starting point (" << startpoint << ")\n";
+    return(1);
+  } else if(refpoint<startpoint) {
+    cerr << "ERROR: obsint_vareq01 finds reference point " << refpoint << " before starting point " << startpoint << "\n";
+    return(2);
+  } else if(refpoint>endpoint) {
+    cerr << "ERROR: obsint_vareq01 finds reference point " << refpoint << " after end point " << endpoint << "\n";
+    return(2);
+  }
+  
+  make_dmat(obsnum, 6, targ_statevecs);
+  make_dmat(obsnum, 36, vareq_mat);
+  
+  // Calculate the first point after the reference time in obsMJD
+  if(obsMJD[0] >= mjdref) {
+    // All of the observing times are after the reference time.
+    ref_subct=0;
+  } else if(obsMJD[obsnum-1] <= mjdref) {
+    // All of the observing times are before the reference time.
+    ref_subct = obsnum-1;
+  } else {
+    ref_subct=0;
+    while(obsMJD[ref_subct] < mjdref) ref_subct++;
+  }
+  // We prefer forward integration to backward integration, so the above
+  // logic is designed such that if one of the observing times
+  // falls directly on mjdref, we will set ref_subct to the index of
+  // that time. Hence, obsMJD[ref_subct] == mjdref
+  // is possible, and we set the forward integration to calculate that
+  // point, while the latest point calculated by the backward integration
+  // is always ref_subct-1 and must always fall before mjdref.
+  
+  if(ref_subct < obsnum-1) {
+    // Perform forward integration
+    vector <double> forwardMJD;
+    for(obsct=ref_subct; obsct<obsnum;obsct++) forwardMJD.push_back(obsMJD[obsct]);
+    long forwardnum = forwardMJD.size();
+    vector <vector <double>> forward_statevecs;
+    vector <vector <double>> forward_vareq;
+    
+    cout << "Launching obsint_everhart_vareq01 to perform forward integration\n";
+    status = obsint_everhart_vareq01(planetnum, planet_forward_mjd, planetmasses, planet_forward_statevecs, starting_statevec, refpoint, endpoint, forwardMJD,  forward_statevecs, forward_vareq, timestep, hnum, hspace, verbose);
+    cout << "Foward integration complete with output vector lengths " << forwardMJD.size() << " and " << forward_statevecs.size() << "\n";
+    if(status!=0) {
+      cerr << "ERROR: obsint_everhart_vareq01() returned error status " << status << "\n";
+      return(status);
+    }
+    for(i=0;i<forwardnum;i++) {
+      if(verbose>0) cout << "i, forwardnum, ref_subct+i, obsnum: " << i << " " << forwardnum<< " " << ref_subct+i << " " << obsnum << " " << "\n";
+      targ_statevecs[ref_subct+i] = forward_statevecs[i];
+      vareq_mat[ref_subct+i] = forward_vareq[i];
+    }
+  }
+  if(ref_subct > 0) {
+    // Perform a backward integration.
+    // Match mjdstart and mjdref to backward planet file.
+    long backrefpoint = -99;
+    long backstartpoint = -99;
+    for(j=0;j<long(planet_backward_mjd.size());j++) {
+      if(fabs(planet_backward_mjd[j]+mjdstart) < STATEMJD_TIMETOL) backstartpoint = j;
+      if(fabs(planet_backward_mjd[j]+mjdref) < STATEMJD_TIMETOL) backrefpoint = j;
+    }
+    if(backstartpoint<0 || backrefpoint<0) {
+      cerr << "ERROR: mjdref " << mjdref << " and/or mjdend " << mjdend << " could not be matched\nto any timestep in the backward planet files\n";
+      return(1);
+    } else {
+      cout << "mjdstart " << mjdstart << " corresponds to timestep " << backstartpoint << " in the backward planet files\n";
+      cout << "mjdref " << mjdref << " corresponds to timestep " << backrefpoint << " in the backward planet files\n";
+      vector <vector <double>> backward_statevecs;
+      vector <vector <double>> backward_vareq;
+      vector <double> backward_startvec;
+      vector <double> backwardMJD;
+      for(obsct=ref_subct-1; obsct>=0; obsct--) backwardMJD.push_back(-obsMJD[obsct]);
+
+      // Copy the starting state vector into backward_startvec
+      backward_startvec = starting_statevec;
+      // Sign-flip the velocity
+      for(k=3;k<6;k++) backward_startvec[k] *= -1.0l;
+      cout << "Launching obsint_everhart_vareq01() to perform backward integration\n";
+      status = obsint_everhart_vareq01(planetnum, planet_backward_mjd, planetmasses, planet_backward_statevecs, backward_startvec, backrefpoint, backstartpoint, backwardMJD,  backward_statevecs, backward_vareq, timestep, hnum, hspace, verbose);
+
+      cout << "Backward integration complete with output vector lengths " << backwardMJD.size() << " and " << backward_statevecs.size() << "\n";
+      if(status!=0) {
+	cerr << "ERROR: obsint_everhart_vareq01() returned error status " << status << "\n";
+	return(status);
+      }
+      for(i=0;i<ref_subct;i++) {
+	if(verbose>0) cout << "i, ref_subct-i, obsnum: " << i << " " << ref_subct-1-i << " " << obsnum << " " << "\n";
+	// Position is copied verbatim
+	for(k=0;k<3;k++) targ_statevecs[ref_subct-1-i][k] = backward_statevecs[i][k];
+	// Velocity requires a sign-flip
+	for(k=3;k<6;k++) targ_statevecs[ref_subct-1-i][k] = -backward_statevecs[i][k];
+	vareq_mat[ref_subct-1-i] = backward_vareq[i];
+	// Terms with velocity in only the numerator or only the denominator require a sign-flip:
+	for(pi=0;pi<3;pi++) {
+	  for(pj=3;pj<6;pj++) {
+	    vareq_mat[ref_subct-1-i][pi*6+pj] *= -1.0; // Derivatives with velocity in the denominator
+	  }
+	}
+	for(pi=3;pi<6;pi++) {
+	  for(pj=0;pj<3;pj++) {
+	    vareq_mat[ref_subct-1-i][pi*6+pj] *= -1.0; // Derivatives with velocity in the numerator
+	  }
+	}
+      }
+    }
+  }
+  return(0);
+}
+
+// obsint_everuse01: October 21, 2025:
+// Like obsint_vareq01, but does not integrate the variational equations.
+// Evaluates the state vectors only at specifing UTC times
+// provided in the vector obsMJD. Uses obsint_everhart01
+// as the central calculating engine.
+int obsint_everuse01(int planetnum, const vector <double> &planetmasses, const vector <double> &planet_backward_mjd, const vector <vector <double>> &planet_backward_statevecs, const vector <double> &planet_forward_mjd, const vector <vector <double>> &planet_forward_statevecs, const vector <double> &starting_statevec, double mjdstart, double mjdref, double mjdend, const vector <double> &obsMJD,  vector <vector <double>> &targ_statevecs, double timestep, int hnum, const vector <double> &hspace, int verbose)
+{
+  long i,j,k,pi,pj;
+  i=j=k=pi=pj=0;
+  int ref_subct=0;
+  int status=0;
+  long obsnum = obsMJD.size();
+  long obsct=0;
+  long startpoint,endpoint,refpoint;
+  targ_statevecs={};
+  
+  if(verbose>0) cout << "Inside obsint_vareq01()\n";
+
+  // Match mjdstart and mjdend to forward planet file.
+  startpoint = endpoint = refpoint = -99;
+  for(j=0;j<long(planet_forward_mjd.size());j++) {
+    if(fabs(planet_forward_mjd[j]-mjdstart) < STATEMJD_TIMETOL) startpoint = j;
+    if(fabs(planet_forward_mjd[j]-mjdref) < STATEMJD_TIMETOL) refpoint = j;
+    if(fabs(planet_forward_mjd[j]-mjdend) < STATEMJD_TIMETOL) endpoint = j;
+  }
+  if(startpoint<0 || refpoint<0 || endpoint<0) {
+    cerr << "ERROR: mjdstart " << mjdstart << " and/or mjdref " << mjdref << " and/or mjdend " << mjdend << " could not be matched\nto any timestep in the planet files\n";
+    return(1);
+  } else {
+    if(verbose>0) cout << "mjdstart " << mjdstart << " corresponds to timestep " << startpoint << " in the forward planet files\n";
+    if(verbose>0) cout << "mjdref " << mjdref << " corresponds to timestep " << refpoint << " in the forward planet files\n";
+    if(verbose>0) cout << "mjdend " << mjdend << " corresponds to timestep " << endpoint << " in the forward planet files\n";
+  }
+  
+  if(endpoint<startpoint) {
+    cerr << "ERROR: obsint_everuse01 finds end point (" << endpoint << ") before starting point (" << startpoint << ")\n";
+    return(1);
+  } else if(refpoint<startpoint) {
+    cerr << "ERROR: obsint_everuse01 finds reference point " << refpoint << " before starting point " << startpoint << "\n";
+    return(2);
+  } else if(refpoint>endpoint) {
+    cerr << "ERROR: obsint_everuse01 finds reference point " << refpoint << " after end point " << endpoint << "\n";
+    return(2);
+  }
+  
+  make_dmat(obsnum, 6, targ_statevecs);
+  
+  // Calculate the first point after the reference time in obsMJD
+  if(obsMJD[0] >= mjdref) {
+    // All of the observing times are after the reference time.
+    ref_subct=0;
+  } else if(obsMJD[obsnum-1] <= mjdref) {
+    // All of the observing times are before the reference time.
+    ref_subct = obsnum-1;
+  } else {
+    ref_subct=0;
+    while(obsMJD[ref_subct] < mjdref) ref_subct++;
+  }
+  // We prefer forward integration to backward integration, so the above
+  // logic is designed such that if one of the observing times
+  // falls directly on mjdref, we will set ref_subct to the index of
+  // that time. Hence, obsMJD[ref_subct] == mjdref
+  // is possible, and we set the forward integration to calculate that
+  // point, while the latest point calculated by the backward integration
+  // is always ref_subct-1 and must always fall before mjdref.
+  
+  if(ref_subct < obsnum-1) {
+    // Perform forward integration
+    vector <double> forwardMJD;
+    for(obsct=ref_subct; obsct<obsnum;obsct++) forwardMJD.push_back(obsMJD[obsct]);
+    long forwardnum = forwardMJD.size();
+    vector <vector <double>> forward_statevecs;
+    vector <vector <double>> forward_vareq;
+    
+    if(verbose>0) cout << "Launching obsint_everhart_vareq01 to perform forward integration\n";
+    status = obsint_everhart01(planetnum, planet_forward_mjd, planetmasses, planet_forward_statevecs, starting_statevec, refpoint, endpoint, forwardMJD, forward_statevecs, timestep, hnum, hspace, verbose);
+    if(verbose>0) cout << "Foward integration complete with output vector lengths " << forwardMJD.size() << " and " << forward_statevecs.size() << "\n";
+    if(status!=0) {
+      cerr << "ERROR: obsint_everhart01 returned error status " << status << "\n";
+      return(status);
+    }
+    for(i=0;i<forwardnum;i++) {
+      if(verbose>0) cout << "i, forwardnum, ref_subct+i, obsnum: " << i << " " << forwardnum<< " " << ref_subct+i << " " << obsnum << " " << "\n";
+      targ_statevecs[ref_subct+i] = forward_statevecs[i];
+    }
+  }
+  if(ref_subct > 0) {
+    // Perform a backward integration.
+    // Match mjdstart and mjdref to backward planet file.
+    long backrefpoint = -99;
+    long backstartpoint = -99;
+    for(j=0;j<long(planet_backward_mjd.size());j++) {
+      if(fabs(planet_backward_mjd[j]+mjdstart) < STATEMJD_TIMETOL) backstartpoint = j;
+      if(fabs(planet_backward_mjd[j]+mjdref) < STATEMJD_TIMETOL) backrefpoint = j;
+    }
+    if(backstartpoint<0 || backrefpoint<0) {
+      cerr << "ERROR: mjdref " << mjdref << " and/or mjdend " << mjdend << " could not be matched\nto any timestep in the backward planet files\n";
+      return(1);
+    } else {
+      if(verbose>0) cout << "mjdstart " << mjdstart << " corresponds to timestep " << backstartpoint << " in the backward planet files\n";
+      if(verbose>0) cout << "mjdref " << mjdref << " corresponds to timestep " << backrefpoint << " in the backward planet files\n";
+      vector <vector <double>> backward_statevecs;
+      vector <double> backward_startvec;
+      vector <double> backwardMJD;
+      for(obsct=ref_subct-1; obsct>=0; obsct--) backwardMJD.push_back(-obsMJD[obsct]);
+
+      // Copy the starting state vector into backward_startvec
+      backward_startvec = starting_statevec;
+      // Sign-flip the velocity
+      for(k=3;k<6;k++) backward_startvec[k] *= -1.0l;
+      if(verbose>0) cout << "Launching obsint_everhart01 to perform backward integration\n";
+      status = obsint_everhart01(planetnum, planet_backward_mjd, planetmasses, planet_backward_statevecs, backward_startvec, backrefpoint, backstartpoint, backwardMJD,  backward_statevecs, timestep, hnum, hspace, verbose);
+
+      if(verbose>0) cout << "Backward integration complete with output vector lengths " << backwardMJD.size() << " and " << backward_statevecs.size() << "\n";
+      if(status!=0) {
+	cerr << "ERROR: obsint_everhart_vareq01() returned error status " << status << "\n";
+	return(status);
+      }
+      for(i=0;i<ref_subct;i++) {
+	if(verbose>0) cout << "i, ref_subct-i, obsnum: " << i << " " << ref_subct-1-i << " " << obsnum << " " << "\n";
+	// Position is copied verbatim
+	for(k=0;k<3;k++) targ_statevecs[ref_subct-1-i][k] = backward_statevecs[i][k];
+	// Velocity requires a sign-flip
+	for(k=3;k<6;k++) targ_statevecs[ref_subct-1-i][k] = -backward_statevecs[i][k];
+      }
+    }
+  }
+  return(0);
+}
+
+// evertrace01: October 21, 2025:
+// Use the integration scheme implemented in obsint_vareq01 to fit an orbit to
+// a set of input observations, given the required custom-sampled forward and
+// backward planetary ephemeris vectors, and a starting guess starting_statevec
+// corresponding to the time mjdref. The best-fit orbit will be supplied on output
+// in out_statevecs, corresponding to the reference time.
+// The program will return assuming a successful orbit fit if the fractional change
+// in the chi-square value for two successive iterations drops below minchichange,
+// or the astrometric residual RMS drops below astromRMSthresh, or the number of
+// iterations reaches maxiter.
+int evertrace01(int planetnum, const vector <double> &planetmasses, const vector <double> &planet_backward_mjd, const vector <vector <double>> &planet_backward_statevecs, const vector <double> &planet_forward_mjd, const vector <vector <double>> &planet_forward_statevecs, const vector <double> &starting_statevec, double mjdref, const vector <double> &obsMJD, const vector <vector <double>> &observer_statevecs, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, vector <double> &out_statevec, double timestep, int hnum, const vector <double> &hspace, double minchichange, double astromRMSthresh, long maxiter, long &itnum, int verbose)
+{
+  vector <double> obsTDB;
+  long i,j,k,obsct,iterct;
+  i=j=k=obsct=iterct=0;
+  long obsnum = obsMJD.size();
+  if(obsnum != long(observer_statevecs.size())) {
+    cerr << "ERROR: evertrace01 has size mismatch " << obsnum << " vs " << observer_statevecs.size() << " for obsMJD vs observer_statevecs input vectors.\n";
+    return(1);
+  } else if(obsnum != long(obsRA.size())) {
+    cerr << "ERROR: evertrace01 has size mismatch " << obsnum << " vs " << obsRA.size() << " for obsMJD vs obsRA input vectors.\n";
+    return(1);
+  } else if(obsnum != long(obsDec.size())) {
+    cerr << "ERROR: evertrace01 has size mismatch " << obsnum << " vs " << obsDec.size() << " for obsMJD vs obsDec input vectors.\n";
+    return(1);
+  }
+  double mjdstart,mjdend,chisq,old_chisq,chichange,astromrms;
+  mjdstart = mjdend = 0.0;
+  chisq = old_chisq = chichange = astromrms = LARGERR2;
+  for(obsct=0;obsct<obsnum;obsct++) obsTDB.push_back(obsMJD[obsct]+TTDELTAT/SOLARDAY);
+  vector <double> RA_deriv;
+  vector <double> Dec_deriv;
+  vector <vector <double>> RA_deriv_mat;
+  vector <vector <double>> Dec_deriv_mat;
+  vector <vector <double>> Aobs_mat;
+  vector <vector <double>> Aobs_transpose;
+  vector <vector <double>> Qmat;
+  vector <vector <double>> Qinv;
+  vector <double> resid_B;
+  vector <double> AtransposeB;
+  vector <double> Xcor;
+  vector <vector <double>> targ_statevecs;
+  double ldval=0.0;
+  double light_travel_time,RA,Dec,dist;
+  int status=0;
+  out_statevec = starting_statevec;
+  long refpoint;
+  vector <vector <double>> vareq_mat;
+  
+  refpoint = -99;
+  for(j=0;j<long(planet_forward_mjd.size());j++) {
+    if(fabs(planet_forward_mjd[j]-mjdref) < STATEMJD_TIMETOL) refpoint = j;
+  }
+  if(refpoint<0) {
+    cerr << "ERROR: Input reference mjd " << mjdref << " did not match any point in the input Everhart-sampled ephemeris vectors\n";
+  }
+  if(verbose>0) cout << "Input reference MJD " << mjdref << " corresponds to point " << refpoint << " in the Everhart-sampled ephemeris vectors\n";
+
+  // Find an appropriate value for mjdstart, to make sure the integration
+  // will begin before any of the observation times.
+  i=1;
+  while(refpoint-i*hnum >= 0 && planet_forward_mjd[refpoint-i*hnum] >= obsTDB[0]) i++;
+  if(refpoint-i*hnum >= 0) mjdstart = planet_forward_mjd[refpoint-i*hnum];
+  else mjdstart = planet_forward_mjd[0];
+  // Find an appropriate value for mjdend, to make sure the integration
+  // will end after all of the observation times.
+  i=1;
+  while(refpoint+i*hnum < long(planet_forward_mjd.size()) && planet_forward_mjd[refpoint+i*hnum] <= obsTDB[obsTDB.size()-1]) i++;
+  if(refpoint+i*hnum < long(planet_forward_mjd.size())) mjdend = planet_forward_mjd[refpoint+i*hnum];
+  else mjdend = planet_forward_mjd[planet_forward_mjd.size()-1];
+
+  if(verbose>0) cout << "Integration will be performed from MJD_TDB " << mjdstart << " to " << mjdend << "\n";
+
+  if(verbose>0) cout << "Launching obsint_vareq01()\n";
+  iterct=0;
+  while(astromrms>astromRMSthresh && chichange>minchichange && iterct<maxiter) {
+    cout << "Iteration " << iterct <<"\n";
+    status = obsint_vareq01(planetnum, planetmasses, planet_backward_mjd, planet_backward_statevecs, planet_forward_mjd, planet_forward_statevecs, out_statevec, mjdstart, mjdref, mjdend, obsTDB, targ_statevecs, vareq_mat, timestep, hnum, hspace, verbose);
+    if(status!=0) {
+      cerr << "ERROR: obsint_vareq01 returned error status " << status << "\n";
+      return(status);
+    }
+    fitRA = fitDec = {};
+    RA_deriv_mat = Dec_deriv_mat = {};
+    for(i=0; i<obsnum; i++) {
+      // Initial approximation of the coordinates relative to the observer
+      vector <double> relpos;
+      make_dvec(3,relpos);
+      for(k=0;k<3;k++) relpos[k] = targ_statevecs[i][k] - observer_statevecs[i][k];
+      // Initial approximation of the observer-target distance
+      ldval = nvecabs(relpos);
+      // Convert to meters and divide by the speed of light to get the light travel time.
+      light_travel_time = ldval*1000.0/CLIGHT;
+      // Light-travel-time corrected version of coordinates relative to the observer
+      for(k=0;k<3;k++) relpos[k] = targ_statevecs[i][k] - light_travel_time*targ_statevecs[i][3+k] - observer_statevecs[i][k];
+      // Project onto the celestial sphere.
+      statevec_to_celederiv(relpos, RA, Dec, RA_deriv, Dec_deriv);
+      fitRA.push_back(RA);
+      fitDec.push_back(Dec);
+      RA_deriv_mat.push_back(RA_deriv);
+      Dec_deriv_mat.push_back(Dec_deriv);
+    }
+    // Construct vector of residuals, O-C, and calculate astrometric RMS
+    make_dvec(2*obsnum,resid_B);
+    old_chisq = chisq;
+    astromrms = chisq = 0.0;
+    for(obsct=0;obsct<obsnum;obsct++) {
+      // Account for possible wrapping in the case of the RA residual
+      ldval = obsRA[obsct] - fitRA[obsct];
+      if(ldval>180.0) resid_B[2*obsct] = ldval-360.0;
+      else if(ldval<-180.0) resid_B[2*obsct] = ldval+360.0;
+      else resid_B[2*obsct] = ldval;
+      // Dec residual is more simple.
+      resid_B[2*obsct+1] = obsDec[obsct] - fitDec[obsct];
+      dist = 3600.0*distradec01(obsRA[obsct],obsDec[obsct],fitRA[obsct],fitDec[obsct]);
+      astromrms += dist*dist;
+      chisq += intpowD((dist/sigastrom[obsct]),2);
+      if(verbose>0) cout << fixed << setprecision(4) << "Residvec " << obsct << " " << resid_B[2*obsct]*3600.0 << " " << resid_B[2*obsct+1]*3600.0 << "\n";
+    }
+    astromrms = sqrt(astromrms/(double)obsnum);
+    if(!isnormal(astromrms)) {
+      cerr << "ERROR: evertrace01 finds non-normal astromrms " << astromrms << " on iteration " << iterct << "\n";
+      return(3);
+    }
+    if(!isnormal(chisq)) {
+      cerr << "ERROR: evertrace01 finds non-normal chi square value " << chisq << " on iteration " << iterct << "\n";
+      return(4);
+    }
+    iterct++; // INCREMENT ITERATION COUNT
+    cout << fixed << setprecision(4) << "Iteration " << iterct << " astrometric RMS = " << astromrms << " arcsec\n";
+    chichange = old_chisq - chisq;
+    if(chichange<0.0) {
+      cerr << "WARNING: evertrace01 finds chi-square value increasing from " << old_chisq << " to " << chisq << " on iteration " << iterct << "\n";
+      chichange = fabs(chichange);
+    }
+    chichange/=chisq;
+    if(astromrms>astromRMSthresh && chichange>minchichange && iterct<maxiter) {
+      // Convergence criteria not met: calculate correction for the next iteration.
+      // Calculate the matrix A. First index is rows (2*obsnum), second is columns (6)
+      make_dmat(2*obsnum,6,Aobs_mat);
+      for(obsct=0;obsct<obsnum;obsct++) {
+	for(i=0;i<6;i++) {
+	  // Derivative of RA[obsct] w.r.t. each of the initial state vectors
+	  Aobs_mat[2*obsct][i] = 0.0l;
+	  for(k=0;k<3;k++) Aobs_mat[2*obsct][i] += RA_deriv_mat[obsct][k] * vareq_mat[obsct][k*6+i];
+	  // Derivative of Dec[obsct] w.r.t. each of the initial state vectors
+	  Aobs_mat[2*obsct+1][i] = 0.0l;
+	  for(k=0;k<3;k++) Aobs_mat[2*obsct+1][i] += Dec_deriv_mat[obsct][k] * vareq_mat[obsct][k*6+i];
+	}
+      }
+      Aobs_transpose = {};
+      matrix_transpose(Aobs_mat, Aobs_transpose);
+      Qmat = {};
+      matXmat(Aobs_transpose, Aobs_mat, Qmat);
+      Qinv = {};
+      status = invertmatrix01(Qmat, 6, Qinv, verbose);
+      if(status!=0) {
+	cerr << "ERROR: invertmatrix01 returned error status " << status << "\n";
+	return(status);
+      }
+      AtransposeB = {};
+      matXvec(Aobs_transpose, resid_B, AtransposeB);
+      Xcor = {};
+      matXvec(Qinv, AtransposeB, Xcor);
+      cout << "Xcor";;
+      for(k=0;k<3;k++) cout << " " << Xcor[k];
+      for(k=3;k<6;k++) cout << " " << Xcor[k];
+      cout << "\n";
+
+      //Apply new correction
+      for(k=0;k<6;k++) out_statevec[k] += Xcor[k];
+    }
+  }
+  cout << fixed << setprecision(4) << "evertrace01 returning on iteration " << iterct << " with astromrms = " << astromrms << " and chisq = " << chisq << "\n";
+  itnum = iterct;
+  return(0);
+}
+
+// everchi01: October 21, 2025:
+// Using obsint_everuse, integrate the orbit correspondingint to starting_statevec,
+// and compare the results to a series of observations specified by obsMJD obsRA, obsDec,
+// made by an observer whose positions are specified by observer_statevecs. Return
+// the predicted positions and the output chi square value for the orbit.
+double everchi01(int planetnum, const vector <double> &planetmasses, const vector <double> &planet_backward_mjd, const vector <vector <double>> &planet_backward_statevecs, const vector <double> &planet_forward_mjd, const vector <vector <double>> &planet_forward_statevecs, const vector <double> &starting_statevec, double mjdref, const vector <double> &obsMJD, const vector <vector <double>> &observer_statevecs, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, double timestep, int hnum, const vector <double> &hspace, double &astromrms, int verbose)
+{
+  vector <double> obsTDB;
+  long i,j,k,obsct,iterct;
+  i=j=k=obsct=iterct=0;
+  long obsnum = obsMJD.size();
+  if(obsnum != long(observer_statevecs.size())) {
+    cerr << "ERROR: everchi01 has size mismatch " << obsnum << " vs " << observer_statevecs.size() << " for obsMJD vs observer_statevecs input vectors.\n";
+    return(LARGERR2);
+  } else if(obsnum != long(obsRA.size())) {
+    cerr << "ERROR: evertrace01 has size mismatch " << obsnum << " vs " << obsRA.size() << " for obsMJD vs obsRA input vectors.\n";
+    return(LARGERR2);
+  } else if(obsnum != long(obsDec.size())) {
+    cerr << "ERROR: evertrace01 has size mismatch " << obsnum << " vs " << obsDec.size() << " for obsMJD vs obsDec input vectors.\n";
+    return(LARGERR2);
+  }
+  double mjdstart,mjdend,chisq;
+  mjdstart = mjdend = 0.0;
+  for(obsct=0;obsct<obsnum;obsct++) obsTDB.push_back(obsMJD[obsct]+TTDELTAT/SOLARDAY);
+  vector <vector <double>> targ_statevecs;
+  double ldval=0.0;
+  double light_travel_time,RA,Dec,dist;
+  int status=0;
+  long refpoint;
+  astromrms = chisq = 0.0;
+  
+  refpoint = -99;
+  for(j=0;j<long(planet_forward_mjd.size());j++) {
+    if(fabs(planet_forward_mjd[j]-mjdref) < STATEMJD_TIMETOL) refpoint = j;
+  }
+  if(refpoint<0) {
+    cerr << "ERROR: Input reference mjd " << mjdref << " did not match any point in the input Everhart-sampled ephemeris vectors\n";
+  }
+  if(verbose>0) cout << "Input reference MJD " << mjdref << " corresponds to point " << refpoint << " in the Everhart-sampled ephemeris vectors\n";
+
+  // Find an appropriate value for mjdstart, to make sure the integration
+  // will begin before any of the observation times.
+  i=1;
+  while(refpoint-i*hnum >= 0 && planet_forward_mjd[refpoint-i*hnum] >= obsTDB[0]) i++;
+  if(refpoint-i*hnum >= 0) mjdstart = planet_forward_mjd[refpoint-i*hnum];
+  else mjdstart = planet_forward_mjd[0];
+  // Find an appropriate value for mjdend, to make sure the integration
+  // will end after all of the observation times.
+  i=1;
+  while(refpoint+i*hnum < long(planet_forward_mjd.size()) && planet_forward_mjd[refpoint+i*hnum] <= obsTDB[obsTDB.size()-1]) i++;
+  if(refpoint+i*hnum < long(planet_forward_mjd.size())) mjdend = planet_forward_mjd[refpoint+i*hnum];
+  else mjdend = planet_forward_mjd[planet_forward_mjd.size()-1];
+
+  if(verbose>0) cout << "Integration will be performed from MJD_TDB " << mjdstart << " to " << mjdend << "\n";
+  status = obsint_everuse01(planetnum, planetmasses, planet_backward_mjd, planet_backward_statevecs, planet_forward_mjd, planet_forward_statevecs, starting_statevec, mjdstart, mjdref, mjdend, obsTDB, targ_statevecs, timestep, hnum, hspace, verbose);
+  if(status!=0) {
+    cerr << "ERROR: obsint_everuse01 returned error status " << status << "\n";
+    return(LARGERR2);
+  }
+  fitRA = fitDec = {};
+  for(i=0; i<obsnum; i++) {
+    // Initial approximation of the coordinates relative to the observer
+    vector <double> relpos;
+    make_dvec(3,relpos);
+    for(k=0;k<3;k++) relpos[k] = targ_statevecs[i][k] - observer_statevecs[i][k];
+    // Initial approximation of the observer-target distance
+    ldval = nvecabs(relpos);
+    // Convert to meters and divide by the speed of light to get the light travel time.
+    light_travel_time = ldval*1000.0/CLIGHT;
+    // Light-travel-time corrected version of coordinates relative to the observer
+    for(k=0;k<3;k++) relpos[k] = targ_statevecs[i][k] - light_travel_time*targ_statevecs[i][3+k] - observer_statevecs[i][k];
+    // Project onto the celestial sphere.
+    statevec_to_celestial(relpos, RA, Dec);
+    fitRA.push_back(RA);
+    fitDec.push_back(Dec);
+  }
+  // Construct vector of residuals, calculate chi-square value and astromrms
+  astromrms = chisq = 0.0;
+  for(obsct=0;obsct<obsnum;obsct++) {
+    dist = 3600.0*distradec01(obsRA[obsct],obsDec[obsct],fitRA[obsct],fitDec[obsct]);
+    astromrms += dist*dist;
+    chisq += intpowD((dist/sigastrom[obsct]),2);
+    if(verbose>0) cout << fixed << setprecision(4) << "Residuals " << obsct << " " << (obsRA[obsct] - fitRA[obsct])*cos(obsDec[obsct]/DEGPRAD)*3600.0 << " " << (obsDec[obsct]-fitDec[obsct])*3600.0 << " " << dist << "\n";
+  }
+  astromrms = sqrt(astromrms/(double)obsnum);
+  return(chisq);
+}
+
+#undef DEBUG
+#undef TIMEDOWNSCALE
