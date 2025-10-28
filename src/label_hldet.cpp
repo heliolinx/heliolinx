@@ -144,7 +144,7 @@ int main(int argc, char *argv[])
 	show_usage();
 	return(1);
       }
-    } else if(string(argv[i]) == "-matchrad") {
+    } else if(string(argv[i]) == "-matchrad" || string(argv[i]) == "-match_rad" || string(argv[i]) == "-mrad" || string(argv[i]) == "-matching_radius" || string(argv[i]) == "--matching_radius" || string(argv[i]) == "-searchrad") {
       if(i+1 < argc) {
 	//There is still something to read;
 	matchrad=stod(argv[++i]);
@@ -155,7 +155,7 @@ int main(int argc, char *argv[])
 	show_usage();
 	return(1);
       }
-    } else if(string(argv[i]) == "-timeoff" || string(argv[i]) == "-time_offset") {
+    } else if(string(argv[i]) == "-timeoff" || string(argv[i]) == "-timeoffset" || string(argv[i]) == "-time_offset" || string(argv[i]) == "-offset" || string(argv[i]) == "--time_offset" || string(argv[i]) == "--timeoffset" || string(argv[i]) == "-toff") {
       if(i+1 < argc) {
 	//There is still something to read;
 	time_offset=stod(argv[++i]);
@@ -166,7 +166,7 @@ int main(int argc, char *argv[])
 	show_usage();
 	return(1);
       }
-    } else if(string(argv[i]) == "-timescale") {
+    } else if(string(argv[i]) == "-timescale" || string(argv[i]) == "-time_scale" || string(argv[i]) == "-tscale" || string(argv[i]) == "-day2deg" || string(argv[i]) == "-day2degscale" || string(argv[i]) == "-day2deg_scale"|| string(argv[i]) == "--timescale" || string(argv[i]) == "--time_scale" || string(argv[i]) == "--day2deg" || string(argv[i]) == "--day2degscale" || string(argv[i]) == "--day2deg_scale") {
       if(i+1 < argc) {
 	//There is still something to read;
 	timescale=stod(argv[++i]);
