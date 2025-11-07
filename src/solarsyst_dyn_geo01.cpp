@@ -18330,7 +18330,7 @@ double Hergetfit01(double geodist1, double geodist2, double simplex_scale, int s
 // return of Hergetchi_vstar(). Hergetfit_vstar pushes back one additional
 // datum: the number of orbit evaluations (~iterations) required
 // to reach convergence [9].
-double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, int simptype, double ftol, int point1, int point2, const vector <point3d> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid, vector <double> &orbit, int verbose)
+double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, int simptype, double ftol, int point1, int point2, const vector <point3d> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, double unbound_scale, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid, vector <double> &orbit, int verbose)
 {
   int Hergetpoint1, Hergetpoint2;
   double simprange;
@@ -18387,6 +18387,8 @@ double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, i
     if(simpchi[i]>=LARGERR3) {
       cerr << "WARNING: Hergetchi_vstar() returned error code on simplex point " << i << ": " << simplex[i][0] << ", " << simplex[i][1] << "\n";
     }
+    // If interstellar, scale up the chi-square value by the factor unbound_scale (added Oct 30, 2025)
+    if(orbit[1]>1.0) simpchi[i] *= unbound_scale;
     simp_eval_ct++;
     simp_total_ct++;
   }
@@ -18448,6 +18450,8 @@ double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, i
     if(chisq>=LARGERR3) {
       cerr << "WARNING: Hergetchi_vstar() returned error code with input " << trialdist[0] << ", " << trialdist[1] << "\n";
     }
+    // If interstellar, scale up the chi-square value by the factor unbound_scale (added Oct 30, 2025)
+    if(orbit[1]>1.0) chisq *= unbound_scale;
     simp_eval_ct++;
     simp_total_ct++;
     if(chisq<bestchi) {
@@ -18466,6 +18470,8 @@ double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, i
       if(newchi>=LARGERR3) {
 	cerr << "WARNING: Hergetchi_vstar() returned error code with input " << trialdist[0] << ", " << trialdist[1] << "\n";
       }
+      // If interstellar, scale up the chi-square value by the factor unbound_scale (added Oct 30, 2025)
+      if(orbit[1]>1.0) newchi *= unbound_scale;
 
       simp_eval_ct++;
       simp_total_ct++;
@@ -18503,6 +18509,8 @@ double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, i
 	if(chisq>=LARGERR3) {
 	  cerr << "WARNING: Hergetchi_vstar() returned error code with input " << trialdist[0] << ", " << trialdist[1] << "\n";
 	}
+	// If interstellar, scale up the chi-square value by the factor unbound_scale (added Oct 30, 2025)
+	if(orbit[1]>1.0) chisq *= unbound_scale;
 	simp_eval_ct++;
 	simp_total_ct++;
 	if(chisq<worstchi) {
@@ -18528,6 +18536,8 @@ double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, i
 	      if(simpchi[i]>=LARGERR3) {
 		cerr << "WARNING: Hergetchi_vstar() returned error code on simplex point " << i << ": " << simplex[i][0] << ", " << simplex[i][1] << "\n";
 	      }
+	      // If interstellar, scale up the chi-square value by the factor unbound_scale (added Oct 30, 2025)
+	      if(orbit[1]>1.0) simpchi[i] *= unbound_scale;
 	      simp_eval_ct++;
 	      simp_total_ct++;
 	    }
@@ -18561,6 +18571,8 @@ double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, i
 	if(simpchi[i]>=LARGERR3) {
 	  cerr << "WARNING: Hergetchi_vstar() returned error code on simplex point " << i << ": " << simplex[i][0] << ", " << simplex[i][1] << "\n";
 	}
+	// If interstellar, scale up the chi-square value by the factor unbound_scale (added Oct 30, 2025)
+	if(orbit[1]>1.0) simpchi[i] *= unbound_scale;
       }
     }
 
@@ -18610,6 +18622,8 @@ double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, i
 	if(simpchi[i]>=LARGERR3) {
 	  cerr << "WARNING: Hergetchi_vstar() returned error code on simplex point " << i << ": " << simplex[i][0] << ", " << simplex[i][1] << "\n";
 	}
+	// If interstellar, scale up the chi-square value by the factor unbound_scale (added Oct 30, 2025)
+	if(orbit[1]>1.0) simpchi[i] *= unbound_scale;
 	simp_eval_ct++;
 	simp_total_ct++;
       }
@@ -19045,6 +19059,64 @@ int statevec2kep_easy(const double MGsun, vector <double> &statevec, double &a, 
   return(0);
 }
 
+// statevec2kep_incl: October 30, 2025:
+// Given an input state vector, calculate and return the Keplerian inclination.
+double statevec2kep_incl(const vector <double> &statevec)
+{
+  vector <double> incvec;
+  double incl=0.0;
+  make_dvec(3,incvec);
+  // Find the cross product r X v.
+  incvec[0] = statevec[1]*statevec[5] - statevec[2]*statevec[4];
+  incvec[1] = statevec[2]*statevec[3] - statevec[0]*statevec[5];
+  incvec[2] = statevec[0]*statevec[4] - statevec[1]*statevec[3];
+  // This vector points toward the orbit pole. Normalize it.
+  nvecnorm(incvec);
+  if(incvec[2]>=1.0) incl=0.0;
+  else if(incvec[2]<=-1.0) incl=180.0;
+  else incl = acos(incvec[2])*DEGPRAD;
+  return(incl);
+}
+
+// posvel2kep_easy: October 30, 2025:
+// Exactly like statevec2kep_easy, but uses the point3d class instead of pure
+// double-precision vectors.
+// Given an object's position and velocity in the point3d class, calculate the three 'easy' components
+// of a Keplerian orbit: orbital semimajor axis, eccentricity, and inclination.
+int posvel2kep_easy(const double MGsun, point3d objpos, point3d objvel, double &a, double &e, double &incl)
+{
+  double r0 = vecabs3d(objpos);
+  double v0 = vecabs3d(objvel);
+  double u = dotprod3d(objpos,objvel);
+  a = r0*MGsun/(2.0l*MGsun-v0*v0*r0);
+  double n = sqrt(MGsun/a/a/a);
+  double alpha = MGsun/a;
+  
+  double EC, ES, CH, SH;
+  EC = ES = CH = SH = e = incl = 0.0l;
+  
+  if(alpha>0.0l) {
+    // Bound, elliptical orbit
+    EC = 1.0l - r0/a;
+    ES = u/n/a/a;
+    e = sqrt(EC*EC + ES*ES);
+  } else if (alpha<0.0l) {
+    // Unbound, hyperbolic orbit
+    CH = 1.0l - r0/a;
+    SH = u/sqrt(-MGsun*a);
+    e = sqrt(CH*CH - SH*SH);
+  }
+  // Find the cross product r X v.
+  point3d incvec = crossprod3d(objpos,objvel);
+  // This vector points toward the orbit pole. Normalize it.
+  vecnorm3d(incvec);
+  if(incvec.z>=1.0) incl=0.0;
+  else if(incvec.z<=-1.0) incl=180.0;
+  else incl = acos(incvec.z)*DEGPRAD;
+  return(0);
+}
+
+  
 #define MACHEPS01 2.22e-10l
 #define FIRSTEPFAC 10.0l
 #define MAX_FAILED_STEPS 15 // Max number of steps we can go without any improvement.
@@ -19965,7 +20037,8 @@ int wrap_Hergetfit_vstar(double simplex_scale, int simptype, double ftol, const 
     if(verbose>=2) {
       cout << "wrap_Hergetfit_vstar calling Hergetfit02 with dists " << geodist1 << " and " << geodist2 << "\n";
     }
-    chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, simptype, ftol, 1, ptnum, observerpos[clusterct], obsMJD[clusterct], obsRA[clusterct], obsDec[clusterct], sigastrom[clusterct], fitRA, fitDec, resid, orbit, verbose);
+    double unbound_scale = 1.0;
+    chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, simptype, ftol, 1, ptnum, observerpos[clusterct], obsMJD[clusterct], obsRA[clusterct], obsDec[clusterct], sigastrom[clusterct], unbound_scale, fitRA, fitDec, resid, orbit, verbose);
     if(clusterct%1000==0) cout << fixed << setprecision(6) << "Thread " << threadct << " fit cluster " << clusterct << " with chisq = " << chisq << "\n";
     // orbit vector contains: semimajor axis [0], eccentricity [1],
     // mjd at epoch [2], the state vectors [3-8], and the number of
@@ -21711,12 +21784,12 @@ int read_clustersum_file(string sumfile, vector <hlclust> &clustvec, int verbose
   reference_MJD = heliohyp0 = heliohyp1 = heliohyp2 = 0.0l;
   double posX,posY,posZ,velX,velY,velZ;
   posX = posY = posZ = velX = velY = velZ = 0.0l;
-  double orbit_a,orbit_e,orbit_MJD;
-  orbit_a = orbit_e = orbit_MJD = 0.0l;
+  double orbit_a,orbit_e,orbit_incl,orbit_MJD;
+  orbit_a = orbit_e = orbit_incl = orbit_MJD = 0.0l;
   double orbitX,orbitY,orbitZ,orbitVX,orbitVY,orbitVZ;
   orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
   long orbit_eval_count=0;
-  hlclust onecluster = hlclust(clusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, metric, rating, reference_MJD, heliohyp0, heliohyp1, heliohyp2, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY,  orbitVZ, orbit_eval_count);
+  hlclust onecluster = hlclust(clusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, metric, rating, reference_MJD, heliohyp0, heliohyp1, heliohyp2, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_incl, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY,  orbitVZ, orbit_eval_count);
   ifstream instream1;
   string lnfromfile,stest;
   int badread=0;
@@ -21921,6 +21994,14 @@ int read_clustersum_file(string sumfile, vector <hlclust> &clustvec, int verbose
 	catch(...) { cerr << "ERROR: cannot read orbit_e string " << stest << " from line " << lnfromfile << "\n";
 	  badread = 1; }
       } else badread=1;
+      // Read the orbit_incl
+      startpoint = endpoint+1;
+      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
+      if(endpoint>0) {
+	try { orbit_incl = stod(stest); }
+	catch(...) { cerr << "ERROR: cannot read orbit_e string " << stest << " from line " << lnfromfile << "\n";
+	  badread = 1; }
+      } else badread=1;
       // Read the orbit_MJD
       startpoint = endpoint+1;
       if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
@@ -21986,7 +22067,7 @@ int read_clustersum_file(string sumfile, vector <hlclust> &clustvec, int verbose
 	  badread = 1; }
       } else badread=1;
       if(badread==0) {
-	onecluster = hlclust(clusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, metric, rating, reference_MJD, heliohyp0, heliohyp1, heliohyp2, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY,  orbitVZ, orbit_eval_count);
+	onecluster = hlclust(clusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, metric, rating, reference_MJD, heliohyp0, heliohyp1, heliohyp2, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_incl, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY,  orbitVZ, orbit_eval_count);
 	clustvec.push_back(onecluster);
       }
     } else if(instream1.eof()) reachedeof=1; //End of file, fine.
@@ -22042,12 +22123,12 @@ int append_clustersum_file(string sumfile, vector <hlclust> &clustvec, int verbo
   heliohyp0 = heliohyp1 = heliohyp2 = 0.0l;
   double posX,posY,posZ,velX,velY,velZ;
   posX = posY = posZ = velX = velY = velZ = 0.0l;
-  double orbit_a,orbit_e,orbit_MJD;
-  orbit_a = orbit_e = orbit_MJD = 0.0l;
+  double orbit_a,orbit_e,orbit_incl,orbit_MJD;
+  orbit_a = orbit_e = orbit_incl = orbit_MJD = 0.0l;
   double orbitX,orbitY,orbitZ,orbitVX,orbitVY,orbitVZ;
   orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
   long orbit_eval_count=0;
-  hlclust onecluster = hlclust(clusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, metric, rating, reference_MJD, heliohyp0, heliohyp1, heliohyp2, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY,  orbitVZ, orbit_eval_count);
+  hlclust onecluster = hlclust(clusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, metric, rating, reference_MJD, heliohyp0, heliohyp1, heliohyp2, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_incl, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY,  orbitVZ, orbit_eval_count);
   ifstream instream1;
   string lnfromfile,stest;
   int badread=0;
@@ -22250,6 +22331,14 @@ int append_clustersum_file(string sumfile, vector <hlclust> &clustvec, int verbo
 	catch(...) { cerr << "ERROR: cannot read orbit_e string " << stest << " from line " << lnfromfile << "\n";
 	  badread = 1; }
       } else badread=1;
+      // Read the orbit_incl
+      startpoint = endpoint+1;
+      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
+      if(endpoint>0) {
+	try { orbit_incl = stod(stest); }
+	catch(...) { cerr << "ERROR: cannot read orbit_e string " << stest << " from line " << lnfromfile << "\n";
+	  badread = 1; }
+      } else badread=1;
       // Read the orbit_MJD
       startpoint = endpoint+1;
       if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
@@ -22321,7 +22410,7 @@ int append_clustersum_file(string sumfile, vector <hlclust> &clustvec, int verbo
 	  cerr << "ERROR in append_clustersum_file: cluster index mismatch " << est_clusternum << " vs. " << clusternum << "\n";
 	  return(3);
 	}
-	onecluster = hlclust(clusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, metric, rating, reference_MJD, heliohyp0, heliohyp1, heliohyp2, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY,  orbitVZ, orbit_eval_count);
+	onecluster = hlclust(clusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, metric, rating, reference_MJD, heliohyp0, heliohyp1, heliohyp2, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_incl, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY,  orbitVZ, orbit_eval_count);
 	clustvec.push_back(onecluster);
       }
     } else if(instream1.eof()) reachedeof=1; //End of file, fine.
@@ -34777,7 +34866,7 @@ int form_clusters(const vector <point6ix2> &allstatevecs, const vector <hldet> &
   int daysteps = 0;
   int obsnights = 0;
   longpair c2d = longpair(0,0);
-  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
   double posRMS = 0.0l;
   double velRMS = 0.0l;
   double totRMS = 0.0l;
@@ -34786,8 +34875,8 @@ int form_clusters(const vector <point6ix2> &allstatevecs, const vector <hldet> &
   int uniquepoints = 0;
   double posX, posY, posZ, velX, velY, velZ;
   posX = posY = posZ = velX = velY = velZ = 0.0l;
-  double orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ;
-  orbit_a = orbit_e = orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
+  double orbit_a, orbit_e, orbit_incl, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ;
+  orbit_a = orbit_e = orbit_incl = orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
   long orbit_eval_count = 0;
   long clusterct=0;
   double clustmetric=0.0l;
@@ -34969,11 +35058,11 @@ int form_clusters(const vector <point6ix2> &allstatevecs, const vector <hldet> &
 	  velZ = kdclust[clusterct].meanvec[5]/chartimescale;
 	  // Some of the statistics in the hlclust class relate to orbit-fitting,
 	  // and are meant for later use. For now, set them all to zero.
-	  astromRMS = orbit_a = orbit_e = 0.0l;
+	  astromRMS = orbit_a = orbit_e = orbit_incl = 0.0l;
 	  orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
 	  orbit_eval_count = 0;
 	  // Write overall cluster statistics to the outclust array.	
-	  onecluster = hlclust(realclusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, clustmetric, rating, reference_MJD, heliodist/AU_KM, heliovel/SOLARDAY, helioacc*1000.0/SOLARDAY/SOLARDAY, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
+	  onecluster = hlclust(realclusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, clustmetric, rating, reference_MJD, heliodist/AU_KM, heliovel/SOLARDAY, helioacc*1000.0/SOLARDAY/SOLARDAY, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_incl, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
 	  // cout << "kdload velrms: " << velRMS << " " << kdclust[clusterct].rmsvec[7] << " " << onecluster.velRMS << "\n";
 	  outclust.push_back(onecluster);
 	  realclusternum++;
@@ -35251,7 +35340,7 @@ int form_clusters_kd(const vector <point6ix2> &allstatevecs, const vector <hldet
   int daysteps = 0;
   int obsnights = 0;
   longpair c2d = longpair(0,0);
-  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
   double posRMS = 0.0l;
   double velRMS = 0.0l;
   double totRMS = 0.0l;
@@ -35260,8 +35349,8 @@ int form_clusters_kd(const vector <point6ix2> &allstatevecs, const vector <hldet
   int uniquepoints = 0;
   double posX, posY, posZ, velX, velY, velZ;
   posX = posY = posZ = velX = velY = velZ = 0.0l;
-  double orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ;
-  orbit_a = orbit_e = orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
+  double orbit_a, orbit_e, orbit_incl, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ;
+  orbit_a = orbit_e = orbit_incl = orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
   long orbit_eval_count = 0;
   long clusterct=0;
   double clustmetric=0.0l;
@@ -35431,11 +35520,11 @@ int form_clusters_kd(const vector <point6ix2> &allstatevecs, const vector <hldet
 	  velZ = kdclust[clusterct].meanvec[5]/chartimescale;
 	  // Some of the statistics in the hlclust class relate to orbit-fitting,
 	  // and are meant for later use. For now, set them all to zero.
-	  astromRMS = orbit_a = orbit_e = 0.0l;
+	  astromRMS = orbit_a = orbit_e = orbit_incl = 0.0l;
 	  orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
 	  orbit_eval_count = 0;
 	  // Write overall cluster statistics to the outclust array.	
-	  onecluster = hlclust(realclusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, clustmetric, rating, reference_MJD, heliodist/AU_KM, heliovel/SOLARDAY, helioacc*1000.0/SOLARDAY/SOLARDAY, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
+	  onecluster = hlclust(realclusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, clustmetric, rating, reference_MJD, heliodist/AU_KM, heliovel/SOLARDAY, helioacc*1000.0/SOLARDAY/SOLARDAY, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_incl, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
 	  // cout << "kdload velrms: " << velRMS << " " << kdclust[clusterct].rmsvec[7] << " " << onecluster.velRMS << "\n";
 	  outclust.push_back(onecluster);
 	  realclusternum++;
@@ -35576,7 +35665,7 @@ int form_clusters_kd2(const vector <point6ix2> &allstatevecs, const vector <hlde
   int daysteps = 0;
   int obsnights = 0;
   longpair c2d = longpair(0,0);
-  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
   double posRMS = 0.0l;
   double velRMS = 0.0l;
   double totRMS = 0.0l;
@@ -35585,8 +35674,8 @@ int form_clusters_kd2(const vector <point6ix2> &allstatevecs, const vector <hlde
   int uniquepoints = 0;
   double posX, posY, posZ, velX, velY, velZ;
   posX = posY = posZ = velX = velY = velZ = 0.0l;
-  double orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ;
-  orbit_a = orbit_e = orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
+  double orbit_a, orbit_e, orbit_incl, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ;
+  orbit_a = orbit_e = orbit_incl = orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
   long orbit_eval_count = 0;
   long clusterct=0;
   double clustmetric=0.0l;
@@ -35795,11 +35884,11 @@ int form_clusters_kd2(const vector <point6ix2> &allstatevecs, const vector <hlde
 	  velZ = kdclust[clusterct].meanvec[5]/chartimescale;
 	  // Some of the statistics in the hlclust class relate to orbit-fitting,
 	  // and are meant for later use. For now, set them all to zero.
-	  astromRMS = orbit_a = orbit_e = 0.0l;
+	  astromRMS = orbit_a = orbit_e = orbit_incl = 0.0l;
 	  orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
 	  orbit_eval_count = 0;
 	  // Write overall cluster statistics to the outclust array.	
-	  onecluster = hlclust(realclusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, clustmetric, rating, reference_MJD, heliodist/AU_KM, heliovel/SOLARDAY, helioacc*1000.0/SOLARDAY/SOLARDAY, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
+	  onecluster = hlclust(realclusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, clustmetric, rating, reference_MJD, heliodist/AU_KM, heliovel/SOLARDAY, helioacc*1000.0/SOLARDAY/SOLARDAY, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_incl, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
 	  // cout << "kdload velrms: " << velRMS << " " << kdclust[clusterct].rmsvec[7] << " " << onecluster.velRMS << "\n";
 	  outclust.push_back(onecluster);
 	  //	  pointind_mat.push_back(pointind);
@@ -35839,7 +35928,7 @@ int form_clusters_kd3(const vector <point6ix2> &allstatevecs, const vector <hlde
   int daysteps = 0;
   int obsnights = 0;
   longpair c2d = longpair(0,0);
-  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
   double posRMS = 0.0l;
   double velRMS = 0.0l;
   double totRMS = 0.0l;
@@ -35848,8 +35937,8 @@ int form_clusters_kd3(const vector <point6ix2> &allstatevecs, const vector <hlde
   int uniquepoints = 0;
   double posX, posY, posZ, velX, velY, velZ;
   posX = posY = posZ = velX = velY = velZ = 0.0l;
-  double orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ;
-  orbit_a = orbit_e = orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
+  double orbit_a, orbit_e, orbit_incl, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ;
+  orbit_a = orbit_e = orbit_incl = orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
   long orbit_eval_count = 0;
   long clusterct=0;
   long clusterct2=0;
@@ -36065,11 +36154,11 @@ int form_clusters_kd3(const vector <point6ix2> &allstatevecs, const vector <hlde
 	  velZ = kdclust[clusterct].meanvec[5]/chartimescale;
 	  // Some of the statistics in the hlclust class relate to orbit-fitting,
 	  // and are meant for later use. For now, set them all to zero.
-	  astromRMS = orbit_a = orbit_e = 0.0l;
+	  astromRMS = orbit_a = orbit_e = orbit_incl = 0.0l;
 	  orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
 	  orbit_eval_count = 0;
 	  // Write overall cluster statistics to the outclust array.	
-	  onecluster = hlclust(realclusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, clustmetric, rating, reference_MJD, heliodist/AU_KM, heliovel/SOLARDAY, helioacc*1000.0/SOLARDAY/SOLARDAY, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
+	  onecluster = hlclust(realclusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, clustmetric, rating, reference_MJD, heliodist/AU_KM, heliovel/SOLARDAY, helioacc*1000.0/SOLARDAY/SOLARDAY, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_incl, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
 	  // cout << "kdload velrms: " << velRMS << " " << kdclust[clusterct].rmsvec[7] << " " << onecluster.velRMS << "\n";
 	  outclust.push_back(onecluster);
 	  realclusternum++;
@@ -36118,7 +36207,7 @@ int form_clusters_kd4(const vector <point6ix2> &allstatevecs, const vector <hlde
   int daysteps = 0;
   int obsnights = 0;
   longpair c2d = longpair(0,0);
-  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
   double posRMS = 0.0l;
   double velRMS = 0.0l;
   double totRMS = 0.0l;
@@ -36127,8 +36216,8 @@ int form_clusters_kd4(const vector <point6ix2> &allstatevecs, const vector <hlde
   int uniquepoints = 0;
   double posX, posY, posZ, velX, velY, velZ;
   posX = posY = posZ = velX = velY = velZ = 0.0l;
-  double orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ;
-  orbit_a = orbit_e = orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
+  double orbit_a, orbit_e, orbit_incl, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ;
+  orbit_a = orbit_e = orbit_incl = orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
   long orbit_eval_count = 0;
   long clusterct=0;
   long clusterct2=0;
@@ -36351,11 +36440,11 @@ int form_clusters_kd4(const vector <point6ix2> &allstatevecs, const vector <hlde
 	  velZ = kdclust[clusterct].meanvec[5]/chartimescale;
 	  // Some of the statistics in the hlclust class relate to orbit-fitting,
 	  // and are meant for later use. For now, set them all to zero.
-	  astromRMS = orbit_a = orbit_e = 0.0l;
+	  astromRMS = orbit_a = orbit_e = orbit_incl = 0.0l;
 	  orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
 	  orbit_eval_count = 0;
 	  // Write overall cluster statistics to the outclust2 array.	
-	  onecluster = hlclust(0, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, clustmetric, rating, reference_MJD, heliodist/AU_KM, heliovel/SOLARDAY, helioacc*1000.0/SOLARDAY/SOLARDAY, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
+	  onecluster = hlclust(0, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, clustmetric, rating, reference_MJD, heliodist/AU_KM, heliovel/SOLARDAY, helioacc*1000.0/SOLARDAY/SOLARDAY, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_incl, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
 	  // cout << "kdload velrms: " << velRMS << " " << kdclust[clusterct].rmsvec[7] << " " << onecluster.velRMS << "\n";
 	  outclust2.push_back(onecluster);
 	  pointind_mat.push_back(pointind);
@@ -36797,15 +36886,15 @@ int form_clusters_RR(const vector <point6ix2> &allstatevecs, const vector <hldet
   int daysteps = 0;
   int obsnights = 0;
   longpair c2d = longpair(0,0);
-  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
   double posRMS = 0.0l;
   double velRMS = 0.0l;
   double totRMS = 0.0l;
   double astromRMS = 0.0l;
   int pairnum = 0;
   int uniquepoints = 0;
-  double orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ;
-  orbit_a = orbit_e = orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
+  double orbit_a, orbit_e, orbit_incl, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ;
+  orbit_a = orbit_e = orbit_incl = orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
   long orbit_eval_count = 0;
   long clusterct=0;
   long clusterct2=0;
@@ -37040,11 +37129,11 @@ int form_clusters_RR(const vector <point6ix2> &allstatevecs, const vector <hldet
 
 	  // Some of the statistics in the hlclust class relate to orbit-fitting,
 	  // and are meant for later use. For now, set them all to zero.
-	  astromRMS = orbit_a = orbit_e = 0.0l;
+	  astromRMS = orbit_a = orbit_e = orbit_incl = 0.0l;
 	  orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
 	  orbit_eval_count = 0;
 	  // Write overall cluster statistics to the outclust2 array.	
-	  onecluster = hlclust(0, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, clustmetric, rating, reference_MJD, heliodist/AU_KM, heliovel/SOLARDAY, helioacc*1000.0/SOLARDAY/SOLARDAY, endpos.x, endpos.y, endpos.z, endvel.x, endvel.y, endvel.z, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
+	  onecluster = hlclust(0, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, clustmetric, rating, reference_MJD, heliodist/AU_KM, heliovel/SOLARDAY, helioacc*1000.0/SOLARDAY/SOLARDAY, endpos.x, endpos.y, endpos.z, endvel.x, endvel.y, endvel.z, orbit_a, orbit_e, orbit_incl, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
 	  // cout << "kdload velrms: " << velRMS << " " << kdclust[clusterct].rmsvec[7] << " " << onecluster.velRMS << "\n";
 	  outclust2.push_back(onecluster);
 	  pointind_mat.push_back(pointind);
@@ -37494,7 +37583,7 @@ int form_clusters_kdR(const vector <point6ix2> &allstatevecs, const vector <hlde
   int daysteps = 0;
   int obsnights = 0;
   longpair c2d = longpair(0,0);
-  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
   double posRMS = 0.0l;
   double velRMS = 0.0l;
   double totRMS = 0.0l;
@@ -37503,8 +37592,8 @@ int form_clusters_kdR(const vector <point6ix2> &allstatevecs, const vector <hlde
   int uniquepoints = 0;
   double posX, posY, posZ, velX, velY, velZ;
   posX = posY = posZ = velX = velY = velZ = 0.0l;
-  double orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ;
-  orbit_a = orbit_e = orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
+  double orbit_a, orbit_e, orbit_incl, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ;
+  orbit_a = orbit_e = orbit_incl = orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
   long orbit_eval_count = 0;
   long clusterct=0;
   long clusterct2=0;
@@ -37732,11 +37821,11 @@ int form_clusters_kdR(const vector <point6ix2> &allstatevecs, const vector <hlde
 	  velZ = kdclust[clusterct].meanvec[5]/chartimescale;
 	  // Some of the statistics in the hlclust class relate to orbit-fitting,
 	  // and are meant for later use. For now, set them all to zero.
-	  astromRMS = orbit_a = orbit_e = 0.0l;
+	  astromRMS = orbit_a = orbit_e = orbit_incl = 0.0l;
 	  orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
 	  orbit_eval_count = 0;
 	  // Write overall cluster statistics to the outclust2 array.	
-	  onecluster = hlclust(0, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, clustmetric, rating, reference_MJD, heliodist/AU_KM, heliovel/SOLARDAY, helioacc*1000.0/SOLARDAY/SOLARDAY, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
+	  onecluster = hlclust(0, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, clustmetric, rating, reference_MJD, heliodist/AU_KM, heliovel/SOLARDAY, helioacc*1000.0/SOLARDAY/SOLARDAY, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_incl, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
 	  // cout << "kdload velrms: " << velRMS << " " << kdclust[clusterct].rmsvec[7] << " " << onecluster.velRMS << "\n";
 	  outclust2.push_back(onecluster);
 	  pointind_mat.push_back(pointind);
@@ -41333,7 +41422,7 @@ int heliolinc_alg_lowmem(const vector <hlimage> &image_log, const vector <hldet>
   int automjd=0;
   long i=0;
   longpair onepair = longpair(0,0);
-  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
   double posRMS,velRMS,totRMS;
   posRMS = velRMS = totRMS = 0.0;
   vector <long> clustind;
@@ -41558,7 +41647,7 @@ int heliolinc_alg_lowmem(const vector <hlimage> &image_log, const vector <hldet>
     else velRMS = 0.0;
     accelct = outclust_lowmem2[clusterct].hypindex;
     // Load the new cluster as an item of class hlclust
-    onecluster = hlclust(outclust_lowmem2[clusterct].clusternum, posRMS, velRMS, totRMS, 0.0, outclust_lowmem2[clusterct].pairnum, timespan, uniquepoints, obsnights, outclust_lowmem2[clusterct].metric, rating, config.MJDref, heliodist[accelct]/AU_KM, heliovel[accelct]/SOLARDAY, helioacc[accelct]*1000.0/SOLARDAY/SOLARDAY, outclust_lowmem2[clusterct].posX, outclust_lowmem2[clusterct].posY, outclust_lowmem2[clusterct].posZ, outclust_lowmem2[clusterct].velX, outclust_lowmem2[clusterct].velY,outclust_lowmem2[clusterct].velZ, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,  0.0, 0);
+    onecluster = hlclust(outclust_lowmem2[clusterct].clusternum, posRMS, velRMS, totRMS, 0.0, outclust_lowmem2[clusterct].pairnum, timespan, uniquepoints, obsnights, outclust_lowmem2[clusterct].metric, rating, config.MJDref, heliodist[accelct]/AU_KM, heliovel[accelct]/SOLARDAY, helioacc[accelct]*1000.0/SOLARDAY/SOLARDAY, outclust_lowmem2[clusterct].posX, outclust_lowmem2[clusterct].posY, outclust_lowmem2[clusterct].posZ, outclust_lowmem2[clusterct].velX, outclust_lowmem2[clusterct].velY,outclust_lowmem2[clusterct].velZ, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0);
     outclust.push_back(onecluster);
   }
   cout << "Conversion complete for outclust: size is " << outclust.size() << "\n";
@@ -41787,7 +41876,7 @@ int link_refine_Herget(const vector <hlimage> &image_log, const vector <hldet> &
   long inclustct=0;
   long clusternum=0;
   double clustmetric = 0.0l;
-  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
   vector <long> clustind;
   vector <hldet> clusterdets;
   vector <hlclust> holdclust;
@@ -42063,7 +42152,7 @@ int link_refine_Herget_univar(const vector <hlimage> &image_log, const vector <h
   long inclustct=0;
   long clusternum=0;
   double clustmetric = 0.0l;
-  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
   vector <long> clustind;
   vector <hldet> clusterdets;
   vector <hlclust> holdclust;
@@ -42216,7 +42305,8 @@ int link_refine_Herget_univar(const vector <hlimage> &image_log, const vector <h
 	if(config.verbose>=2) cout << "Cluster " << inclustct << " of " << inclustnum << " is good: ";
 	if(config.verbose>=2) cout << "\n";
 	if(config.verbose>=1 || inclustct%1000==0) cout << "Fitting cluster " << inclustct << " of " << inclustnum << ": ";
-	chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, config.simptype, ftol, 1, ptnum, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, config.verbose);
+	double unbound_scale = 1.0;
+	chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, config.simptype, ftol, 1, ptnum, observerpos, obsMJD, obsRA, obsDec, sigastrom, unbound_scale, fitRA, fitDec, resid, orbit, config.verbose);
 	if(chisq>=LARGERR3) {
 	  cerr << "WARNING: Hergetfit_vstar() returned error code on input " << geodist1 << ", " << geodist2 << "\n";
 	}
@@ -42589,7 +42679,7 @@ int link_purify(const vector <hlimage> &image_log, const vector <hldet> &detvec,
   long inclustct=0;
   long clusternum=0;
   double clustmetric = 0.0l;
-  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
   vector <long> clustind;
   vector <hldet> clusterdets;
   vector <hldet> clusterdets2;
@@ -42599,7 +42689,7 @@ int link_purify(const vector <hlimage> &image_log, const vector <hldet> &detvec,
   ptnum=ptct=istimedup=detsused=0;
   point3d onepoint = point3d(0.0L,0.0L,0.0L);
   vector <point3d> observerpos;
-  vector <double> obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, mjdstep;
+  vector <double> obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, mjdstep, statevec;
   double geodist1,geodist2, astromrms, chisq;
   double ftol = FTOL_HERGET_SIMPLEX;
   double simplex_scale = SIMPLEX_SCALEFAC;
@@ -42810,7 +42900,7 @@ int link_purify(const vector <hlimage> &image_log, const vector <hldet> &detvec,
       if(config.verbose>=2) cout << "Cluster " << inclustct << " of " << inclustnum << " is good: ";
       if(config.verbose>=2) cout << "\n";
       if(config.verbose>=1 || inclustct%1000==0) cout << "Fitting cluster " << inclustct << " of " << inclustnum << ": ";
-      chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, config.simptype, ftol, 1, ptnum, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, config.verbose);
+      chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, config.simptype, ftol, 1, ptnum, observerpos, obsMJD, obsRA, obsDec, sigastrom, config.unbound_scale, fitRA, fitDec, resid, orbit, config.verbose);
       if(chisq>=LARGERR3) {
 	cerr << "WARNING: Hergetfit_vstar() returned error code on input " << geodist1 << ", " << geodist2 << "\n";
       }
@@ -42865,6 +42955,9 @@ int link_purify(const vector <hlimage> &image_log, const vector <hldet> &detvec,
 	                                                                  // prioritizing low astrometric error even more.
 	onecluster.orbit_a = orbit[0]/AU_KM;
 	onecluster.orbit_e = orbit[1];
+	statevec={};
+	for(i=0;i<6;i++) statevec.push_back(orbit[3+i]);
+	onecluster.orbit_incl = statevec2kep_incl(statevec);
 	onecluster.orbit_MJD = orbit[2];
 	onecluster.orbitX = orbit[3];
 	onecluster.orbitY = orbit[4];
@@ -43011,7 +43104,7 @@ int link_purify(const vector <hlimage> &image_log, const vector <hldet> &detvec,
 	    }
 	  }
 	  if(config.verbose>=1 || inclustct%1000==0) cout << "Fitting cluster " << inclustct << " of " << inclustnum << " minus " << rejnum << " outliers: ";
-	  chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, config.simptype, ftol, 1, ptnum, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, config.verbose);
+	  chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, config.simptype, ftol, 1, ptnum, observerpos, obsMJD, obsRA, obsDec, sigastrom, config.unbound_scale, fitRA, fitDec, resid, orbit, config.verbose);
 	  if(chisq>=LARGERR3) {
 	    cerr << "WARNING: Hergetfit_vstar() returned error code on input " << geodist1 << ", " << geodist2 << "\n";
 	  }
@@ -43072,6 +43165,9 @@ int link_purify(const vector <hlimage> &image_log, const vector <hldet> &detvec,
 	                                                                      // prioritizing low astrometric error even more.
 	    onecluster.orbit_a = orbit[0]/AU_KM;
 	    onecluster.orbit_e = orbit[1];
+	    statevec={};
+	    for(i=0;i<6;i++) statevec.push_back(orbit[3+i]);
+	    onecluster.orbit_incl = statevec2kep_incl(statevec);
 	    onecluster.orbit_MJD = orbit[2];
 	    onecluster.orbitX = orbit[3];
 	    onecluster.orbitY = orbit[4];
@@ -43189,7 +43285,8 @@ int link_purify2(const vector <hlimage> &image_log, const vector <hldet> &detvec
   long inclustct=0;
   long clusternum=0;
   double clustmetric = 0.0l;
-  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  vector <double> statevec;
   vector <long> clustind;
   vector <hldet> clusterdets;
   vector <hlclust> holdclust;
@@ -43383,7 +43480,7 @@ int link_purify2(const vector <hlimage> &image_log, const vector <hldet> &detvec
       if(config.verbose>=2) cout << "Cluster " << inclustct << " of " << inclustnum << " is good: ";
       if(config.verbose>=2) cout << "\n";
       if(config.verbose>=1 || inclustct%1000==0) cout << "Fitting cluster " << inclustct << " of " << inclustnum << ": ";
-      chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, config.simptype, ftol, 1, ptnum, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, config.verbose);
+      chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, config.simptype, ftol, 1, ptnum, observerpos, obsMJD, obsRA, obsDec, sigastrom, config.unbound_scale, fitRA, fitDec, resid, orbit, config.verbose);
       if(chisq>=LARGERR3) {
 	cerr << "WARNING: Hergetfit_vstar() returned error code on input " << geodist1 << ", " << geodist2 << "\n";
       }
@@ -43411,6 +43508,9 @@ int link_purify2(const vector <hlimage> &image_log, const vector <hldet> &detvec
 	                                                                  // prioritizing low astrometric error even more.
 	onecluster.orbit_a = orbit[0]/AU_KM;
 	onecluster.orbit_e = orbit[1];
+	statevec={};
+	for(i=0;i<6;i++) statevec.push_back(orbit[3+i]);
+	onecluster.orbit_incl = statevec2kep_incl(statevec);
 	onecluster.orbit_MJD = orbit[2];
 	onecluster.orbitX = orbit[3];
 	onecluster.orbitY = orbit[4];
@@ -43554,7 +43654,7 @@ int link_purify2(const vector <hlimage> &image_log, const vector <hldet> &detvec
 	    }
 	  }
 	  if(config.verbose>=1 || inclustct%1000==0) cout << "Fitting cluster " << inclustct << " of " << inclustnum << " minus " << rejnum << " outliers: ";
-	  chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, config.simptype, ftol, 1, ptnum, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, config.verbose);
+	  chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, config.simptype, ftol, 1, ptnum, observerpos, obsMJD, obsRA, obsDec, sigastrom, config.unbound_scale, fitRA, fitDec, resid, orbit, config.verbose);
 	  if(chisq>=LARGERR3) {
 	    cerr << "WARNING: Hergetfit_vstar() returned error code on input " << geodist1 << ", " << geodist2 << "\n";
 	  }
@@ -43588,6 +43688,9 @@ int link_purify2(const vector <hlimage> &image_log, const vector <hldet> &detvec
 	                                                                      // prioritizing low astrometric error even more.
 	    onecluster.orbit_a = orbit[0]/AU_KM;
 	    onecluster.orbit_e = orbit[1];
+	    statevec={};
+	    for(i=0;i<6;i++) statevec.push_back(orbit[3+i]);
+	    onecluster.orbit_incl = statevec2kep_incl(statevec);
 	    onecluster.orbit_MJD = orbit[2];
 	    onecluster.orbitX = orbit[3];
 	    onecluster.orbitY = orbit[4];
@@ -43703,7 +43806,8 @@ int link_purify_graddec(const vector <hlimage> &image_log, const vector <hldet> 
   long inclustct=0;
   long clusternum=0;
   double clustmetric = 0.0l;
-  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  vector <double> statevec;
   vector <long> clustind;
   vector <hldet> clusterdets;
   vector <hlclust> holdclust;
@@ -43909,6 +44013,9 @@ int link_purify_graddec(const vector <hlimage> &image_log, const vector <hldet> 
 	                                                                  // prioritizing low astrometric error even more.
 	onecluster.orbit_a = orbit[0]/AU_KM;
 	onecluster.orbit_e = orbit[1];
+	statevec={};
+	for(i=0;i<6;i++) statevec.push_back(orbit[3+i]);
+	onecluster.orbit_incl = statevec2kep_incl(statevec);
 	onecluster.orbit_MJD = orbit[2];
 	onecluster.orbitX = orbit[3];
 	onecluster.orbitY = orbit[4];
@@ -44085,6 +44192,9 @@ int link_purify_graddec(const vector <hlimage> &image_log, const vector <hldet> 
 	                                                                      // prioritizing low astrometric error even more.
 	    onecluster.orbit_a = orbit[0]/AU_KM;
 	    onecluster.orbit_e = orbit[1];
+	    statevec={};
+	    for(i=0;i<6;i++) statevec.push_back(orbit[3+i]);
+	    onecluster.orbit_incl = statevec2kep_incl(statevec);
 	    onecluster.orbit_MJD = orbit[2];
 	    onecluster.orbitX = orbit[3];
 	    onecluster.orbitY = orbit[4];
@@ -44207,7 +44317,8 @@ int link_purify_quad1(const vector <hlimage> &image_log, const vector <hldet> &d
   long inclustct=0;
   long clusternum=0;
   double clustmetric = 0.0l;
-  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  vector <double> statevec;
   vector <long> clustind;
   vector <hldet> clusterdets;
   vector <hlclust> holdclust;
@@ -44417,6 +44528,9 @@ int link_purify_quad1(const vector <hlimage> &image_log, const vector <hldet> &d
 	                                                                  // prioritizing low astrometric error even more.
 	onecluster.orbit_a = orbit[0]/AU_KM;
 	onecluster.orbit_e = orbit[1];
+	statevec={};
+	for(i=0;i<6;i++) statevec.push_back(orbit[3+i]);
+	onecluster.orbit_incl = statevec2kep_incl(statevec);
 	onecluster.orbit_MJD = orbit[2];
 	onecluster.orbitX = orbit[3];
 	onecluster.orbitY = orbit[4];
@@ -44594,6 +44708,9 @@ int link_purify_quad1(const vector <hlimage> &image_log, const vector <hldet> &d
 	                                                                      // prioritizing low astrometric error even more.
 	    onecluster.orbit_a = orbit[0]/AU_KM;
 	    onecluster.orbit_e = orbit[1];
+	    statevec={};
+	    for(i=0;i<6;i++) statevec.push_back(orbit[3+i]);
+	    onecluster.orbit_incl = statevec2kep_incl(statevec);	    
 	    onecluster.orbit_MJD = orbit[2];
 	    onecluster.orbitX = orbit[3];
 	    onecluster.orbitY = orbit[4];
@@ -44710,7 +44827,8 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
   long inclustct=0;
   long clusternum=0;
   double clustmetric = 0.0l;
-  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  vector <double> statevec;
   vector <long> clustind;
   vector <hldet> clusterdets;
   vector <hldet> clusterdets2;
@@ -45347,7 +45465,7 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
     if(config.verbose>=2) cout << "Cluster " << inclustct << " of " << inclustnum << " is good: ";
     if(config.verbose>=2) cout << "\n";
     if(config.verbose>=1 || inclustct%1000==0) cout << "Fitting cluster " << inclustct << " of " << inclustnum << ": ";
-    chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, config.simptype, ftol, 1, ptnum, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, config.verbose);
+    chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, config.simptype, ftol, 1, ptnum, observerpos, obsMJD, obsRA, obsDec, sigastrom, config.unbound_scale, fitRA, fitDec, resid, orbit, config.verbose);
     if(chisq>=LARGERR3) {
       cerr << "WARNING: Hergetfit_vstar() returned error code on input " << geodist1 << ", " << geodist2 << "\n";
     }
@@ -45404,6 +45522,9 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
 	                                                                // prioritizing low astrometric error even more.
       onecluster.orbit_a = orbit[0]/AU_KM;
       onecluster.orbit_e = orbit[1];
+      statevec={};
+      for(i=0;i<6;i++) statevec.push_back(orbit[3+i]);
+      onecluster.orbit_incl = statevec2kep_incl(statevec);
       onecluster.orbit_MJD = orbit[2];
       onecluster.orbitX = orbit[3];
       onecluster.orbitY = orbit[4];
@@ -45552,7 +45673,7 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
 	  }
 	}
 	if(config.verbose>=1 || inclustct%1000==0) cout << "Fitting cluster " << inclustct << " of " << inclustnum << " minus " << rejnum << " outliers: ";
-	chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, config.simptype, ftol, 1, ptnum, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, orbit, config.verbose);
+	chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, config.simptype, ftol, 1, ptnum, observerpos, obsMJD, obsRA, obsDec, sigastrom, config.unbound_scale, fitRA, fitDec, resid, orbit, config.verbose);
 	if(chisq>=LARGERR3) {
 	  cerr << "WARNING: Hergetfit_vstar() returned error code on input " << geodist1 << ", " << geodist2 << "\n";
 	}
@@ -45613,6 +45734,9 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
 	                                                                    // prioritizing low astrometric error even more.
 	  onecluster.orbit_a = orbit[0]/AU_KM;
 	  onecluster.orbit_e = orbit[1];
+	  statevec={};
+	  for(i=0;i<6;i++) statevec.push_back(orbit[3+i]);
+	  onecluster.orbit_incl = statevec2kep_incl(statevec);	  
 	  onecluster.orbit_MJD = orbit[2];
 	  onecluster.orbitX = orbit[3];
 	  onecluster.orbitY = orbit[4];
@@ -45773,7 +45897,7 @@ int link_refine_Herget_omp(const vector <hlimage> &image_log, const vector <hlde
     int ithread = omp_get_thread_num();
     long inclustct=0;
     double clustmetric = 0.0l;
-    hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+    hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
     vector <long> clustind;
     vector <hldet> clusterdets;
     int ptnum,ptct,istimedup;
@@ -45972,7 +46096,7 @@ int link_refine_Herget_omp(const vector <hlimage> &image_log, const vector <hlde
   clustindmat={};
   clusterct=0;
   for(threadct=0; threadct<nt; threadct++) {
-    hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+    hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
     long clusternum = holdclust.size();
     for(long i=0;i<long(holdclust_mat[threadct].size());i++) {
       onecluster = holdclust_mat[threadct][i];
@@ -46319,7 +46443,7 @@ int link_refine_Herget_omp2(const vector <hlimage> &image_log, const vector <hld
   clustindmat={};
   clusterct=0;
   for(threadct=0; threadct<nt; threadct++) {
-    hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+    hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
     long clusternum = holdclust.size();
     for(long i=0;i<long(holdclust_mat[threadct].size());i++) {
       onecluster = holdclust_mat[threadct][i];
@@ -46469,7 +46593,7 @@ int link_refine_Herget_omp3(const vector <hlimage> &image_log, const vector <hld
 
   // Make sure the matrices have the right size.
   for(long threadct=0; threadct<nt; threadct++) {
-    hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+    hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
     vector <point3d> ov1;
     vector <double> ov2;
     vector <long> ov3;
@@ -49320,7 +49444,8 @@ int arctrace01(int polyorder, int planetnum, const vector <long double> &planetm
     cout << Kepobserverpos[i].x << " " << Kepobserverpos[i].y << " " << Kepobserverpos[i].z << " " << KepMJD[i] << " " << KepRA[i] << " " << KepDec[i] << "\n";
   }
   fitDec = fitRA = fitresid = orbit = {};
-  chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, simptype, ftol, 1, kepnum, Kepobserverpos, KepMJD, KepRA, KepDec, Kepsig, fitRA, fitDec, fitresid, orbit, verbose);
+  double unbound_scale = 1.0;
+  chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, simptype, ftol, 1, kepnum, Kepobserverpos, KepMJD, KepRA, KepDec, Kepsig, unbound_scale, fitRA, fitDec, fitresid, orbit, verbose);
   cout << "Keplerian fit produced chisq = " << chisq << "\n";
 
   planetfile_startpoint = planetfile_refpoint = planetfile_endpoint = -99;
@@ -50146,7 +50271,8 @@ int arctrace02(int polyorder, int planetnum, const vector <long double> &planetm
     cout << Kepobserverpos[i].x << " " << Kepobserverpos[i].y << " " << Kepobserverpos[i].z << " " << KepMJD[i] << " " << KepRA[i] << " " << KepDec[i] << "\n";
   }
   fitDec = fitRA = fitresid = orbit = {};
-  chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, simptype, ftol, 1, kepnum, Kepobserverpos, KepMJD, KepRA, KepDec, Kepsig, fitRA, fitDec, fitresid, orbit, verbose);
+  double unbound_scale = 1.0;
+  chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, simptype, ftol, 1, kepnum, Kepobserverpos, KepMJD, KepRA, KepDec, Kepsig, unbound_scale, fitRA, fitDec, fitresid, orbit, verbose);
   cout << "Keplerian fit produced chisq = " << chisq << "\n";
 
   planetfile_refpoint = -99;
@@ -50260,7 +50386,8 @@ int arctrace03(int polyorder, int planetnum, const vector <long double> &planetm
   //  cout << Kepobserverpos[i].x << " " << Kepobserverpos[i].y << " " << Kepobserverpos[i].z << " " << KepMJD[i] << " " << KepRA[i] << " " << KepDec[i] << "\n";
   //}
   fitDec = fitRA = fitresid = orbit = {};
-  chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, simptype, ftol, 1, kepnum, Kepobserverpos, KepMJD, KepRA, KepDec, Kepsig, fitRA, fitDec, fitresid, orbit, verbose);
+  double unbound_scale = 1.0;
+  chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, simptype, ftol, 1, kepnum, Kepobserverpos, KepMJD, KepRA, KepDec, Kepsig, unbound_scale, fitRA, fitDec, fitresid, orbit, verbose);
   if(verbose>0) cout << "Keplerian fit produced chisq = " << chisq << "\n";
 
   planetfile_refpoint = -99;

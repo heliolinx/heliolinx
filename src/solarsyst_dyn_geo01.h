@@ -535,6 +535,7 @@ struct LinkPurifyConfig {
   long maxrejnum = 50;         // Maximum number of points that can be rejected. Of rejfrac and maxrej, 
                                // whichever results in the smallest number of rejected points is operative.
   double max_astrom_rms = 1.0; // Maximum RMS astrometric residual, in arcsec.
+  double unbound_scale = 1.0;  // Factor by which to boost chi-square value to disfavor interstellar orbit solutions.
   int minobsnights = 3;        // Minimum number of distinct observing nights for a valid linkage
   int minpointnum = 6;         // Minimum number of individual detections for a valid linkage
   int use_heliovane = 0;       // Are we analyzing data from heliovane rather than heliolinc?
@@ -625,6 +626,7 @@ public:
   double velZ;
   double orbit_a;
   double orbit_e;
+  double orbit_incl;
   double orbit_MJD;
   double orbitX;
   double orbitY;
@@ -633,7 +635,7 @@ public:
   double orbitVY;
   double orbitVZ;
   long orbit_eval_count;
-  hlclust(long clusternum, double posRMS, double velRMS, double totRMS, double astromRMS, int pairnum, double timespan, int uniquepoints, int obsnights, double metric, const string &rating, double reference_MJD, double heliohyp0, double heliohyp1, double heliohyp2, double posX, double posY, double posZ, double velX, double velY, double velZ, double orbit_a, double orbit_e, double orbit_MJD, double orbitX, double orbitY, double orbitZ, double orbitVX, double orbitVY, double orbitVZ, long orbit_eval_count) :clusternum(clusternum), posRMS(posRMS), velRMS(velRMS), totRMS(totRMS), astromRMS(astromRMS), pairnum(pairnum), timespan(timespan), uniquepoints(uniquepoints), obsnights(obsnights), metric(metric), reference_MJD(reference_MJD), heliohyp0(heliohyp0), heliohyp1(heliohyp1), heliohyp2(heliohyp2), posX(posX), posY(posY), posZ(posZ), velX(velX), velY(velY), velZ(velZ), orbit_a(orbit_a), orbit_e(orbit_e), orbit_MJD(orbit_MJD), orbitX(orbitX), orbitY(orbitY), orbitZ(orbitZ), orbitVX(orbitVX), orbitVY(orbitVY), orbitVZ(orbitVZ), orbit_eval_count(orbit_eval_count) { 
+  hlclust(long clusternum, double posRMS, double velRMS, double totRMS, double astromRMS, int pairnum, double timespan, int uniquepoints, int obsnights, double metric, const string &rating, double reference_MJD, double heliohyp0, double heliohyp1, double heliohyp2, double posX, double posY, double posZ, double velX, double velY, double velZ, double orbit_a, double orbit_e, double orbit_incl, double orbit_MJD, double orbitX, double orbitY, double orbitZ, double orbitVX, double orbitVY, double orbitVZ, long orbit_eval_count) :clusternum(clusternum), posRMS(posRMS), velRMS(velRMS), totRMS(totRMS), astromRMS(astromRMS), pairnum(pairnum), timespan(timespan), uniquepoints(uniquepoints), obsnights(obsnights), metric(metric), reference_MJD(reference_MJD), heliohyp0(heliohyp0), heliohyp1(heliohyp1), heliohyp2(heliohyp2), posX(posX), posY(posY), posZ(posZ), velX(velX), velY(velY), velZ(velZ), orbit_a(orbit_a), orbit_e(orbit_e), orbit_incl(orbit_incl), orbit_MJD(orbit_MJD), orbitX(orbitX), orbitY(orbitY), orbitZ(orbitZ), orbitVX(orbitVX), orbitVY(orbitVY), orbitVZ(orbitVZ), orbit_eval_count(orbit_eval_count) { 
     // Copy input value of rating, making sure it's not too long
     assert(rating.size() < sizeof(this->rating));
     std::strncpy(this->rating, rating.c_str(), sizeof(this->rating));
@@ -1888,12 +1890,13 @@ double Hergetchi01(double geodist1, double geodist2, int Hergetpoint1, int Herge
 double Hergetchi_vstar(double geodist1, double geodist2, int Hergetpoint1, int Hergetpoint2, const vector <point3d> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid, vector <double> &orbit, int verbose);
 double Hergetchi_vstarSV(double geodist1, double geodist2, int Hergetpoint1, int Hergetpoint2, const vector <vector <double>> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid, vector <double> &out_statevec, double &stateMJD, int verbose);
 int statevec2kep_easy(const double MGsun, vector <double> &statevec, double &a, double &e, double &incl);
+double statevec2kep_incl(const vector <double> &statevec);
+int posvel2kep_easy(const double MGsun, point3d objpos, point3d objvel, double &a, double &e, double &incl);
 int Herget_simplex_int(long double geodist1, long double geodist2, long double simpscale, long double simplex[3][2], int simptype);
 int Herget_simplex_int(double geodist1, double geodist2, double simpscale, double simplex[3][2], int simptype);
 long double Hergetfit01(long double geodist1, long double geodist2, long double simplex_scale, int simptype, long double ftol, int point1, int point2, const vector <point3LD> &observerpos, const vector <long double> &obsMJD, const vector <long double> &obsRA, const vector <long double> &obsDec, const vector <long double> &sigastrom, vector <long double> &fitRA, vector <long double> &fitDec, vector <long double> &resid, vector <long double> &orbit, int verbose);
-double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, int simptype, double ftol, int point1, int point2, const vector <point3d> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid, vector <double> &orbit, int verbose);
+double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, int simptype, double ftol, int point1, int point2, const vector <point3d> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, double unbound_scale, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid, vector <double> &orbit, int verbose);
 double Hergetfit_vstarSV(double geodist1, double geodist2, double simplex_scale, int simptype, double ftol, int point1, int point2, const vector <vector <double>> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid, vector <double> &out_statevec, double &stateMJD, long &itnum, int verbose);
-int statevec2kep_easy(vector <double> &statevec, double &a, double &e, double &incl);
 double Hergetfit_graddec(double geodist1, double geodist2, int point1, int point2, const vector <point3d> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid, vector <double> &orbit, int verbose);
 double Hergetfit_quad1(double geodist1, double geodist2, double stepsize, double ftol, int point1, int point2, const vector <point3d> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid, vector <double> &orbit, int verbose);
 int wrap_Hergetfit01(double simplex_scale, int simptype, double ftol, int point1, int point2, const vector <point3d> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, double MJDref, int rmspow, int verbose, hlclust &onecluster);

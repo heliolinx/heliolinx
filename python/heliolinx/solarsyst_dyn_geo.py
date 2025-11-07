@@ -95,6 +95,7 @@ hlclust = np.dtype(list(dict(
     velZ=float,
     orbit_a=float,
     orbit_e=float,
+    orbit_incl=float,
     orbit_MJD=float,
     orbitX=float,
     orbitY=float,

@@ -100,6 +100,7 @@ void fill_struct(hlclust & out, hlclust const& in) {
     out.velZ = in.velZ;
     out.orbit_a = in.orbit_a;
     out.orbit_e = in.orbit_e;
+    out.orbit_incl = in.orbit_incl;
     out.orbit_MJD = in.orbit_MJD;
     out.orbitX = in.orbitX;
     out.orbitY = in.orbitY;
@@ -617,6 +618,7 @@ PYBIND11_MODULE(heliolinx, m) {
       .def_readwrite("rejfrac", &LinkPurifyConfig::rejfrac)
       .def_readwrite("maxrejnum", &LinkPurifyConfig::maxrejnum)
       .def_readwrite("max_astrom_rms", &LinkPurifyConfig::max_astrom_rms)
+      .def_readwrite("unbound_scale", &LinkPurifyConfig::unbound_scale)
       .def_readwrite("minobsnights", &LinkPurifyConfig::minobsnights) 
       .def_readwrite("minpointnum", &LinkPurifyConfig::minpointnum) 
       .def_readwrite("use_heliovane", &LinkPurifyConfig::use_heliovane) 
@@ -647,5 +649,3 @@ PYBIND11_MODULE(heliolinx, m) {
     m.def("findGlints", &findGlints, "Identify glint trails produced by space junk, using pixel x,y coordinates");
     m.def("findGlintsRadec", &findGlintsRadec, "Identify glint trails produced by space junk, using RA, Dec coordinates");
   }
-
-

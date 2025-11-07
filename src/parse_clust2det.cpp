@@ -380,11 +380,11 @@ int main(int argc, char *argv[])
       }
       magvec={};
       
-      outstream1 << "\n#clusternum,posRMS,velRMS,totRMS,astromRMS,timespan,uniquepoints,obsnights,metric,orbit_a,orbit_e,orbit_MJD,orbitX,orbitY,orbitZ,orbitVX,orbitVY,orbitVZ,orbit_eval_count,avg_det_qual,max_known_obj,minvel,maxvel,minGCR,maxGCR,minpa,maxpa,mintimespan,maxtimespan,minarc,maxarc,stringID,min_nightstep,max_nightstep,magmean,magrms,magrange,rating,crossaccel,alongaccel,totalaccel\n";
+      outstream1 << "\n#clusternum,posRMS,velRMS,totRMS,astromRMS,timespan,uniquepoints,obsnights,metric,orbit_a,orbit_e,orbit_incl,orbit_MJD,orbitX,orbitY,orbitZ,orbitVX,orbitVY,orbitVZ,orbit_eval_count,avg_det_qual,max_known_obj,minvel,maxvel,minGCR,maxGCR,minpa,maxpa,mintimespan,maxtimespan,minarc,maxarc,stringID,min_nightstep,max_nightstep,magmean,magrms,magrange,rating,crossaccel,alongaccel,totalaccel\n";
       outstream1 << fixed << setprecision(3) << inclustvec[clustct].clusternum << "," << inclustvec[clustct].posRMS << "," << inclustvec[clustct].velRMS << "," << inclustvec[clustct].totRMS << ",";
       outstream1 << fixed << setprecision(4) << inclustvec[clustct].astromRMS << ",";
       outstream1 << fixed << setprecision(6) << inclustvec[clustct].timespan << "," << inclustvec[clustct].uniquepoints << "," << inclustvec[clustct].obsnights << "," << inclustvec[clustct].metric << ",";
-      outstream1 << fixed << setprecision(6) << inclustvec[clustct].orbit_a << "," << inclustvec[clustct].orbit_e << "," << inclustvec[clustct].orbit_MJD << ",";
+      outstream1 << fixed << setprecision(6) << inclustvec[clustct].orbit_a << "," << inclustvec[clustct].orbit_e << "," << inclustvec[clustct].orbit_incl << "," << inclustvec[clustct].orbit_MJD << ",";
       outstream1 << fixed << setprecision(1) << inclustvec[clustct].orbitX << "," << inclustvec[clustct].orbitY << "," << inclustvec[clustct].orbitZ << ",";
       outstream1 << fixed << setprecision(4) << inclustvec[clustct].orbitVX << "," << inclustvec[clustct].orbitVY << "," << inclustvec[clustct].orbitVZ << "," << inclustvec[clustct].orbit_eval_count << ",";
       outstream1 << fixed << setprecision(1) << avg_det_qual << "," << max_known_obj << ",";
