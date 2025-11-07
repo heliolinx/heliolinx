@@ -27,7 +27,7 @@
 
 static void show_usage()
 {
-  cerr << "Usage: link_purify -imgs imfile -pairdet pairdet_file -lflist link_file_list -simptype simplex_type -rejfrac max fraction of points that can be rejected -rejnum max number of points that can be rejected -max_astrom_rms max astrometric RMS (arcsec) -minobsnights min number of distinct nights -minpointnum min number of individual detections -useorbMJD 1=use_orbitMJD_if_available -ptpow point_num_exponent -nightpow night_num_exponent -timepow timespan_exponent -rmspow astrom_rms_exponent -maxrms maxrms -unbound_scale unbound_scale -outsum summary_file -clust2det clust2detfile -verbose verbosity\n\nOR, at minimum:\nlink_purify -imgs imfile -pairdet pairdet_file -lflist link_file_list\n";
+  cerr << "Usage: link_purify -imgs imfile -pairdet pairdet_file -lflist link_file_list -simptype simplex_type -rejfrac max fraction of points that can be rejected -rejnum max number of points that can be rejected -max_astrom_rms max astrometric RMS (arcsec) -minobsnights min number of distinct nights -minpointnum min number of individual detections -useorbMJD 1=use_orbitMJD_if_available -ptpow point_num_exponent -nightpow night_num_exponent -timepow timespan_exponent -rmspow astrom_rms_exponent -maxrms maxrms -ecc_penalty ecc_penalty -outsum summary_file -clust2det clust2detfile -verbose verbosity\n\nOR, at minimum:\nlink_purify -imgs imfile -pairdet pairdet_file -lflist link_file_list\n";
 }
 
 int main(int argc, char *argv[])
@@ -58,7 +58,7 @@ int main(int argc, char *argv[])
   default_rmspow = default_maxrms = default_sumfile = default_clust2det = 1;
   int default_maxrejnum, default_minpointnum, default_max_astrom_rms, default_minobsnights, default_rejfrac;
   default_maxrejnum = default_max_astrom_rms = default_minpointnum = default_minobsnights = default_rejfrac = 1;
-  int default_unbound_scale = 1;
+  int default_ecc_penalty = 1;
   //  vector <long> pointind;
   //  vector <long> deletelist;
   //  vector <vector <long>> pointind_mat;
@@ -251,15 +251,15 @@ int main(int argc, char *argv[])
 	show_usage();
 	return(1);
       }
-    } else if(string(argv[i]) == "-unbound_scale" || string(argv[i]) == "-unbound" || string(argv[i]) == "-isoscale" || string(argv[i]) == "-hyperbolic" || string(argv[i]) == "-iso_scale" || string(argv[i]) == "-hyperbolic_scale" || string(argv[i]) == "-unbound_penalty" || string(argv[i]) == "-hyperpenalty" || string(argv[i]) == "-isopenalty" || string(argv[i]) == "-iso_penalty" || string(argv[i]) == "-hyperbolic_penalty") {
+    } else if(string(argv[i]) == "-ecc_penalty" || string(argv[i]) == "-eccen_penalty" || string(argv[i]) == "-ecp" || string(argv[i]) == "-unbound_scale" || string(argv[i]) == "-unbound" || string(argv[i]) == "-isoscale" || string(argv[i]) == "-hyperbolic" || string(argv[i]) == "-iso_scale" || string(argv[i]) == "-hyperbolic_scale" || string(argv[i]) == "-unbound_penalty" || string(argv[i]) == "-hyperpenalty" || string(argv[i]) == "-isopenalty" || string(argv[i]) == "-iso_penalty" || string(argv[i]) == "-hyperbolic_penalty") {
       if(i+1 < argc) {
 	//There is still something to read;
-	config.unbound_scale=stod(argv[++i]);
-	default_unbound_scale=0;
+	config.ecc_penalty=stod(argv[++i]);
+	default_ecc_penalty=0;
 	i++;
       }
       else {
-	cerr << "Unbound scale keyword supplied with no corresponding argument";
+	cerr << "Eccentricity penalty keyword supplied with no corresponding argument";
 	show_usage();
 	return(1);
       }
@@ -378,9 +378,11 @@ int main(int argc, char *argv[])
   cout << "Maximum permitted astrometric residual RMS is " << config.max_astrom_rms << " arcsec, ";
   if(default_max_astrom_rms==1) cout << "which is the default.\n";
   else cout << "as specified by the user\n";
-  cout << "Nominal chi-square values for interstellar orbit fits will be multiplied by " << config.unbound_scale << "\n";
-  if(default_unbound_scale==1) cout << "which is the default.\n";
-  else cout << "as specified by the user\n";
+  if(config.ecc_penalty>1.0) {
+    cout << "Nominal chi-square values for high-eccentricty orbits will be penalized by " << config.ecc_penalty << "\n";
+    if(default_ecc_penalty==1) cout << "which is the default.\n";
+    else cout << "as specified by the user\n";
+  }
   if(default_sumfile==1) cout << "WARNING: using default name " << outsumfile << " for summary output file\n";
   else cout << "summary output file " << outsumfile << "\n";
   if(default_clust2det==1) cout << "WARNING: using default name " << outclust2detfile << " for output clust2det file\n";

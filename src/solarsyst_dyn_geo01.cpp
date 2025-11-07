@@ -18330,7 +18330,7 @@ double Hergetfit01(double geodist1, double geodist2, double simplex_scale, int s
 // return of Hergetchi_vstar(). Hergetfit_vstar pushes back one additional
 // datum: the number of orbit evaluations (~iterations) required
 // to reach convergence [9].
-double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, int simptype, double ftol, int point1, int point2, const vector <point3d> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, double unbound_scale, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid, vector <double> &orbit, int verbose)
+double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, int simptype, double ftol, int point1, int point2, const vector <point3d> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, double ecc_penalty, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid, vector <double> &orbit, int verbose)
 {
   int Hergetpoint1, Hergetpoint2;
   double simprange;
@@ -18387,8 +18387,8 @@ double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, i
     if(simpchi[i]>=LARGERR3) {
       cerr << "WARNING: Hergetchi_vstar() returned error code on simplex point " << i << ": " << simplex[i][0] << ", " << simplex[i][1] << "\n";
     }
-    // If interstellar, scale up the chi-square value by the factor unbound_scale (added Oct 30, 2025)
-    if(orbit[1]>1.0) simpchi[i] *= unbound_scale;
+    // If interstellar, scale up the chi-square value by the factor ecc_penalty (added Oct 30, 2025)
+    if(orbit[1]>1.0) simpchi[i] *= ecc_penalty;
     simp_eval_ct++;
     simp_total_ct++;
   }
@@ -18450,8 +18450,8 @@ double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, i
     if(chisq>=LARGERR3) {
       cerr << "WARNING: Hergetchi_vstar() returned error code with input " << trialdist[0] << ", " << trialdist[1] << "\n";
     }
-    // If interstellar, scale up the chi-square value by the factor unbound_scale (added Oct 30, 2025)
-    if(orbit[1]>1.0) chisq *= unbound_scale;
+    // If interstellar, scale up the chi-square value by the factor ecc_penalty (added Oct 30, 2025)
+    if(orbit[1]>1.0) chisq *= ecc_penalty;
     simp_eval_ct++;
     simp_total_ct++;
     if(chisq<bestchi) {
@@ -18470,8 +18470,8 @@ double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, i
       if(newchi>=LARGERR3) {
 	cerr << "WARNING: Hergetchi_vstar() returned error code with input " << trialdist[0] << ", " << trialdist[1] << "\n";
       }
-      // If interstellar, scale up the chi-square value by the factor unbound_scale (added Oct 30, 2025)
-      if(orbit[1]>1.0) newchi *= unbound_scale;
+      // If interstellar, scale up the chi-square value by the factor ecc_penalty (added Oct 30, 2025)
+      if(orbit[1]>1.0) newchi *= ecc_penalty;
 
       simp_eval_ct++;
       simp_total_ct++;
@@ -18509,8 +18509,8 @@ double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, i
 	if(chisq>=LARGERR3) {
 	  cerr << "WARNING: Hergetchi_vstar() returned error code with input " << trialdist[0] << ", " << trialdist[1] << "\n";
 	}
-	// If interstellar, scale up the chi-square value by the factor unbound_scale (added Oct 30, 2025)
-	if(orbit[1]>1.0) chisq *= unbound_scale;
+	// If interstellar, scale up the chi-square value by the factor ecc_penalty (added Oct 30, 2025)
+	if(orbit[1]>1.0) chisq *= ecc_penalty;
 	simp_eval_ct++;
 	simp_total_ct++;
 	if(chisq<worstchi) {
@@ -18536,8 +18536,8 @@ double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, i
 	      if(simpchi[i]>=LARGERR3) {
 		cerr << "WARNING: Hergetchi_vstar() returned error code on simplex point " << i << ": " << simplex[i][0] << ", " << simplex[i][1] << "\n";
 	      }
-	      // If interstellar, scale up the chi-square value by the factor unbound_scale (added Oct 30, 2025)
-	      if(orbit[1]>1.0) simpchi[i] *= unbound_scale;
+	      // If interstellar, scale up the chi-square value by the factor ecc_penalty (added Oct 30, 2025)
+	      if(orbit[1]>1.0) simpchi[i] *= ecc_penalty;
 	      simp_eval_ct++;
 	      simp_total_ct++;
 	    }
@@ -18571,8 +18571,8 @@ double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, i
 	if(simpchi[i]>=LARGERR3) {
 	  cerr << "WARNING: Hergetchi_vstar() returned error code on simplex point " << i << ": " << simplex[i][0] << ", " << simplex[i][1] << "\n";
 	}
-	// If interstellar, scale up the chi-square value by the factor unbound_scale (added Oct 30, 2025)
-	if(orbit[1]>1.0) simpchi[i] *= unbound_scale;
+	// If interstellar, scale up the chi-square value by the factor ecc_penalty (added Oct 30, 2025)
+	if(orbit[1]>1.0) simpchi[i] *= ecc_penalty;
       }
     }
 
@@ -18622,8 +18622,8 @@ double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, i
 	if(simpchi[i]>=LARGERR3) {
 	  cerr << "WARNING: Hergetchi_vstar() returned error code on simplex point " << i << ": " << simplex[i][0] << ", " << simplex[i][1] << "\n";
 	}
-	// If interstellar, scale up the chi-square value by the factor unbound_scale (added Oct 30, 2025)
-	if(orbit[1]>1.0) simpchi[i] *= unbound_scale;
+	// If interstellar, scale up the chi-square value by the factor ecc_penalty (added Oct 30, 2025)
+	if(orbit[1]>1.0) simpchi[i] *= ecc_penalty;
 	simp_eval_ct++;
 	simp_total_ct++;
       }
@@ -20037,8 +20037,8 @@ int wrap_Hergetfit_vstar(double simplex_scale, int simptype, double ftol, const 
     if(verbose>=2) {
       cout << "wrap_Hergetfit_vstar calling Hergetfit02 with dists " << geodist1 << " and " << geodist2 << "\n";
     }
-    double unbound_scale = 1.0;
-    chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, simptype, ftol, 1, ptnum, observerpos[clusterct], obsMJD[clusterct], obsRA[clusterct], obsDec[clusterct], sigastrom[clusterct], unbound_scale, fitRA, fitDec, resid, orbit, verbose);
+    double ecc_penalty = 1.0;
+    chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, simptype, ftol, 1, ptnum, observerpos[clusterct], obsMJD[clusterct], obsRA[clusterct], obsDec[clusterct], sigastrom[clusterct], ecc_penalty, fitRA, fitDec, resid, orbit, verbose);
     if(clusterct%1000==0) cout << fixed << setprecision(6) << "Thread " << threadct << " fit cluster " << clusterct << " with chisq = " << chisq << "\n";
     // orbit vector contains: semimajor axis [0], eccentricity [1],
     // mjd at epoch [2], the state vectors [3-8], and the number of
@@ -42305,8 +42305,8 @@ int link_refine_Herget_univar(const vector <hlimage> &image_log, const vector <h
 	if(config.verbose>=2) cout << "Cluster " << inclustct << " of " << inclustnum << " is good: ";
 	if(config.verbose>=2) cout << "\n";
 	if(config.verbose>=1 || inclustct%1000==0) cout << "Fitting cluster " << inclustct << " of " << inclustnum << ": ";
-	double unbound_scale = 1.0;
-	chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, config.simptype, ftol, 1, ptnum, observerpos, obsMJD, obsRA, obsDec, sigastrom, unbound_scale, fitRA, fitDec, resid, orbit, config.verbose);
+	double ecc_penalty = 1.0;
+	chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, config.simptype, ftol, 1, ptnum, observerpos, obsMJD, obsRA, obsDec, sigastrom, ecc_penalty, fitRA, fitDec, resid, orbit, config.verbose);
 	if(chisq>=LARGERR3) {
 	  cerr << "WARNING: Hergetfit_vstar() returned error code on input " << geodist1 << ", " << geodist2 << "\n";
 	}
@@ -42900,7 +42900,7 @@ int link_purify(const vector <hlimage> &image_log, const vector <hldet> &detvec,
       if(config.verbose>=2) cout << "Cluster " << inclustct << " of " << inclustnum << " is good: ";
       if(config.verbose>=2) cout << "\n";
       if(config.verbose>=1 || inclustct%1000==0) cout << "Fitting cluster " << inclustct << " of " << inclustnum << ": ";
-      chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, config.simptype, ftol, 1, ptnum, observerpos, obsMJD, obsRA, obsDec, sigastrom, config.unbound_scale, fitRA, fitDec, resid, orbit, config.verbose);
+      chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, config.simptype, ftol, 1, ptnum, observerpos, obsMJD, obsRA, obsDec, sigastrom, config.ecc_penalty, fitRA, fitDec, resid, orbit, config.verbose);
       if(chisq>=LARGERR3) {
 	cerr << "WARNING: Hergetfit_vstar() returned error code on input " << geodist1 << ", " << geodist2 << "\n";
       }
@@ -43104,7 +43104,7 @@ int link_purify(const vector <hlimage> &image_log, const vector <hldet> &detvec,
 	    }
 	  }
 	  if(config.verbose>=1 || inclustct%1000==0) cout << "Fitting cluster " << inclustct << " of " << inclustnum << " minus " << rejnum << " outliers: ";
-	  chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, config.simptype, ftol, 1, ptnum, observerpos, obsMJD, obsRA, obsDec, sigastrom, config.unbound_scale, fitRA, fitDec, resid, orbit, config.verbose);
+	  chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, config.simptype, ftol, 1, ptnum, observerpos, obsMJD, obsRA, obsDec, sigastrom, config.ecc_penalty, fitRA, fitDec, resid, orbit, config.verbose);
 	  if(chisq>=LARGERR3) {
 	    cerr << "WARNING: Hergetfit_vstar() returned error code on input " << geodist1 << ", " << geodist2 << "\n";
 	  }
@@ -43480,7 +43480,7 @@ int link_purify2(const vector <hlimage> &image_log, const vector <hldet> &detvec
       if(config.verbose>=2) cout << "Cluster " << inclustct << " of " << inclustnum << " is good: ";
       if(config.verbose>=2) cout << "\n";
       if(config.verbose>=1 || inclustct%1000==0) cout << "Fitting cluster " << inclustct << " of " << inclustnum << ": ";
-      chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, config.simptype, ftol, 1, ptnum, observerpos, obsMJD, obsRA, obsDec, sigastrom, config.unbound_scale, fitRA, fitDec, resid, orbit, config.verbose);
+      chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, config.simptype, ftol, 1, ptnum, observerpos, obsMJD, obsRA, obsDec, sigastrom, config.ecc_penalty, fitRA, fitDec, resid, orbit, config.verbose);
       if(chisq>=LARGERR3) {
 	cerr << "WARNING: Hergetfit_vstar() returned error code on input " << geodist1 << ", " << geodist2 << "\n";
       }
@@ -43654,7 +43654,7 @@ int link_purify2(const vector <hlimage> &image_log, const vector <hldet> &detvec
 	    }
 	  }
 	  if(config.verbose>=1 || inclustct%1000==0) cout << "Fitting cluster " << inclustct << " of " << inclustnum << " minus " << rejnum << " outliers: ";
-	  chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, config.simptype, ftol, 1, ptnum, observerpos, obsMJD, obsRA, obsDec, sigastrom, config.unbound_scale, fitRA, fitDec, resid, orbit, config.verbose);
+	  chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, config.simptype, ftol, 1, ptnum, observerpos, obsMJD, obsRA, obsDec, sigastrom, config.ecc_penalty, fitRA, fitDec, resid, orbit, config.verbose);
 	  if(chisq>=LARGERR3) {
 	    cerr << "WARNING: Hergetfit_vstar() returned error code on input " << geodist1 << ", " << geodist2 << "\n";
 	  }
@@ -45465,7 +45465,7 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
     if(config.verbose>=2) cout << "Cluster " << inclustct << " of " << inclustnum << " is good: ";
     if(config.verbose>=2) cout << "\n";
     if(config.verbose>=1 || inclustct%1000==0) cout << "Fitting cluster " << inclustct << " of " << inclustnum << ": ";
-    chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, config.simptype, ftol, 1, ptnum, observerpos, obsMJD, obsRA, obsDec, sigastrom, config.unbound_scale, fitRA, fitDec, resid, orbit, config.verbose);
+    chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, config.simptype, ftol, 1, ptnum, observerpos, obsMJD, obsRA, obsDec, sigastrom, config.ecc_penalty, fitRA, fitDec, resid, orbit, config.verbose);
     if(chisq>=LARGERR3) {
       cerr << "WARNING: Hergetfit_vstar() returned error code on input " << geodist1 << ", " << geodist2 << "\n";
     }
@@ -45673,7 +45673,7 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
 	  }
 	}
 	if(config.verbose>=1 || inclustct%1000==0) cout << "Fitting cluster " << inclustct << " of " << inclustnum << " minus " << rejnum << " outliers: ";
-	chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, config.simptype, ftol, 1, ptnum, observerpos, obsMJD, obsRA, obsDec, sigastrom, config.unbound_scale, fitRA, fitDec, resid, orbit, config.verbose);
+	chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, config.simptype, ftol, 1, ptnum, observerpos, obsMJD, obsRA, obsDec, sigastrom, config.ecc_penalty, fitRA, fitDec, resid, orbit, config.verbose);
 	if(chisq>=LARGERR3) {
 	  cerr << "WARNING: Hergetfit_vstar() returned error code on input " << geodist1 << ", " << geodist2 << "\n";
 	}
@@ -49444,8 +49444,8 @@ int arctrace01(int polyorder, int planetnum, const vector <long double> &planetm
     cout << Kepobserverpos[i].x << " " << Kepobserverpos[i].y << " " << Kepobserverpos[i].z << " " << KepMJD[i] << " " << KepRA[i] << " " << KepDec[i] << "\n";
   }
   fitDec = fitRA = fitresid = orbit = {};
-  double unbound_scale = 1.0;
-  chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, simptype, ftol, 1, kepnum, Kepobserverpos, KepMJD, KepRA, KepDec, Kepsig, unbound_scale, fitRA, fitDec, fitresid, orbit, verbose);
+  double ecc_penalty = 1.0;
+  chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, simptype, ftol, 1, kepnum, Kepobserverpos, KepMJD, KepRA, KepDec, Kepsig, ecc_penalty, fitRA, fitDec, fitresid, orbit, verbose);
   cout << "Keplerian fit produced chisq = " << chisq << "\n";
 
   planetfile_startpoint = planetfile_refpoint = planetfile_endpoint = -99;
@@ -50271,8 +50271,8 @@ int arctrace02(int polyorder, int planetnum, const vector <long double> &planetm
     cout << Kepobserverpos[i].x << " " << Kepobserverpos[i].y << " " << Kepobserverpos[i].z << " " << KepMJD[i] << " " << KepRA[i] << " " << KepDec[i] << "\n";
   }
   fitDec = fitRA = fitresid = orbit = {};
-  double unbound_scale = 1.0;
-  chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, simptype, ftol, 1, kepnum, Kepobserverpos, KepMJD, KepRA, KepDec, Kepsig, unbound_scale, fitRA, fitDec, fitresid, orbit, verbose);
+  double ecc_penalty = 1.0;
+  chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, simptype, ftol, 1, kepnum, Kepobserverpos, KepMJD, KepRA, KepDec, Kepsig, ecc_penalty, fitRA, fitDec, fitresid, orbit, verbose);
   cout << "Keplerian fit produced chisq = " << chisq << "\n";
 
   planetfile_refpoint = -99;
@@ -50386,8 +50386,8 @@ int arctrace03(int polyorder, int planetnum, const vector <long double> &planetm
   //  cout << Kepobserverpos[i].x << " " << Kepobserverpos[i].y << " " << Kepobserverpos[i].z << " " << KepMJD[i] << " " << KepRA[i] << " " << KepDec[i] << "\n";
   //}
   fitDec = fitRA = fitresid = orbit = {};
-  double unbound_scale = 1.0;
-  chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, simptype, ftol, 1, kepnum, Kepobserverpos, KepMJD, KepRA, KepDec, Kepsig, unbound_scale, fitRA, fitDec, fitresid, orbit, verbose);
+  double ecc_penalty = 1.0;
+  chisq = Hergetfit_vstar(geodist1, geodist2, simplex_scale, simptype, ftol, 1, kepnum, Kepobserverpos, KepMJD, KepRA, KepDec, Kepsig, ecc_penalty, fitRA, fitDec, fitresid, orbit, verbose);
   if(verbose>0) cout << "Keplerian fit produced chisq = " << chisq << "\n";
 
   planetfile_refpoint = -99;

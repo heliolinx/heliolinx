@@ -618,7 +618,7 @@ PYBIND11_MODULE(heliolinx, m) {
       .def_readwrite("rejfrac", &LinkPurifyConfig::rejfrac)
       .def_readwrite("maxrejnum", &LinkPurifyConfig::maxrejnum)
       .def_readwrite("max_astrom_rms", &LinkPurifyConfig::max_astrom_rms)
-      .def_readwrite("unbound_scale", &LinkPurifyConfig::unbound_scale)
+      .def_readwrite("ecc_penalty", &LinkPurifyConfig::ecc_penalty)
       .def_readwrite("minobsnights", &LinkPurifyConfig::minobsnights) 
       .def_readwrite("minpointnum", &LinkPurifyConfig::minpointnum) 
       .def_readwrite("use_heliovane", &LinkPurifyConfig::use_heliovane) 
