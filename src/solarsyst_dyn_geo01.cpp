@@ -2985,7 +2985,7 @@ int kdrange_6i01(const vector <KD_point6ix2> &kdvec, const point6ix2 &querypoint
       if(goleft && goright) {
 	// Current point might be within range.
 	pdist2 = point6ix2_dist2(querypoint,kdvec[currentpoint].point);
-	if(pdist2 <= rng2) {
+	if(pdist2>=0 && pdist2 <= rng2) {
 	  // Current point is within range. Add it to the output vector
 	  indexvec.push_back(currentpoint);
 	}
@@ -5795,7 +5795,7 @@ int invertmatrix01(const vector <vector <double>> &inmat, int N, vector <vector 
     xvec={};
     make_dvec(N,xvec);
     status = solvematrix01(solvemat, N, xvec, verbose);
-    cout << "solvematrix finished OK, xvec = " << xvec[0] << " " << xvec[1] << "\n";
+    if(verbose>1) cout << "solvematrix finished OK, xvec = " << xvec[0] << " " << xvec[1] << "\n";
     if(status!=0) {
       cerr << "ERROR: solvematrix01, called from invertmatrix01, returns error code " << status << "\n";
       return(status);
@@ -31019,7 +31019,10 @@ int record_pairs(vector <hldet> &detvec, vector <hldet> &detvec_fixed, vector <t
 	image2 = detvec[crossindex].image;
 	onepair = longpair(tracklets.size(),crossindex);
 	trk2det.push_back(onepair);
-	track1 = tracklet(image1,trackdetvec[0].RA,trackdetvec[0].Dec,image2,outra2,outdec2,trackdetvec.size(),tracklets.size());
+	// Fixed a bug here on 2025 November 12. The line below used to read
+	// track1 = tracklet(image1,trackdetvec[0].RA,trackdetvec[0].Dec,image2,outra2,outdec2,trackdetvec.size(),tracklets.size());
+	// This made no sense because outra2 and outdec2 are never set for the two-point case.
+	track1 = tracklet(image1,trackdetvec[0].RA,trackdetvec[0].Dec,image2,trackdetvec[1].RA,trackdetvec[1].Dec,trackdetvec.size(),tracklets.size());
 	distradec02(trackdetvec[0].RA, trackdetvec[0].Dec, trackdetvec[1].RA, trackdetvec[1].Dec, &dist, &pa);
 	angvel = dist/(trackdetvec[1].MJD-trackdetvec[0].MJD);
 	dist*=3600.0l;
@@ -42736,6 +42739,16 @@ int link_purify(const vector <hlimage> &image_log, const vector <hldet> &detvec,
   cout << "The total timespan will be raised to the power of " << config.timepow << ",\n";
   cout << "and the astrometric RMS will be raised to the power of (negative) " << config.rmspow << "\n";
   if(config.verbose>=1) cout << "verbose output has been selected\n";
+
+  cout << "Maximum astrometric RMS: " << config.max_astrom_rms << "\n";
+  cout << "Minimum number of observing nights: " << config.minobsnights << "\n";
+  cout << "Minimum number of unique detections: " << config.minpointnum << "\n";
+  cout << "Simplex type = " << config.simptype << "\n";
+  cout << "Maximum fraction of points that can be rejected = " << config.rejfrac << "\n";
+  cout << "Maximum number of points that can be rejected = " << config.maxrejnum << "\n";
+  cout << "Minimum number of distinct nights of observations for a discovery is " << config.minobsnights << "\n";
+  cout << "Minimum number of unique observations for a discovery is " << config.minpointnum << "\n";
+  if(config.ecc_penalty>1.0) cout << "Nominal chi-square values for high-eccentricty orbits will be penalized by " << config.ecc_penalty << "\n";
   
   // Cull out exact duplicates using link_dedup().
   status =  link_dedup(inclust1, inclust2det1, inclust, inclust2det);
@@ -54515,7 +54528,7 @@ int obsint_vareq01(int planetnum, const vector <double> &planetmasses, const vec
       return(status);
     }
     for(i=0;i<forwardnum;i++) {
-      if(verbose>0) cout << "i, forwardnum, ref_subct+i, obsnum: " << i << " " << forwardnum<< " " << ref_subct+i << " " << obsnum << " " << "\n";
+      if(verbose>1) cout << "i, forwardnum, ref_subct+i, obsnum: " << i << " " << forwardnum<< " " << ref_subct+i << " " << obsnum << " " << "\n";
       targ_statevecs[ref_subct+i] = forward_statevecs[i];
       vareq_mat[ref_subct+i] = forward_vareq[i];
     }
@@ -54554,7 +54567,7 @@ int obsint_vareq01(int planetnum, const vector <double> &planetmasses, const vec
 	return(status);
       }
       for(i=0;i<ref_subct;i++) {
-	if(verbose>0) cout << "i, ref_subct-i, obsnum: " << i << " " << ref_subct-1-i << " " << obsnum << " " << "\n";
+	if(verbose>1) cout << "i, ref_subct-i, obsnum: " << i << " " << ref_subct-1-i << " " << obsnum << " " << "\n";
 	// Position is copied verbatim
 	for(k=0;k<3;k++) targ_statevecs[ref_subct-1-i][k] = backward_statevecs[i][k];
 	// Velocity requires a sign-flip
@@ -54659,7 +54672,7 @@ int obsint_everuse01(int planetnum, const vector <double> &planetmasses, const v
       return(status);
     }
     for(i=0;i<forwardnum;i++) {
-      if(verbose>0) cout << "i, forwardnum, ref_subct+i, obsnum: " << i << " " << forwardnum<< " " << ref_subct+i << " " << obsnum << " " << "\n";
+      if(verbose>1) cout << "i, forwardnum, ref_subct+i, obsnum: " << i << " " << forwardnum<< " " << ref_subct+i << " " << obsnum << " " << "\n";
       targ_statevecs[ref_subct+i] = forward_statevecs[i];
     }
   }
@@ -54696,7 +54709,7 @@ int obsint_everuse01(int planetnum, const vector <double> &planetmasses, const v
 	return(status);
       }
       for(i=0;i<ref_subct;i++) {
-	if(verbose>0) cout << "i, ref_subct-i, obsnum: " << i << " " << ref_subct-1-i << " " << obsnum << " " << "\n";
+	if(verbose>1) cout << "i, ref_subct-i, obsnum: " << i << " " << ref_subct-1-i << " " << obsnum << " " << "\n";
 	// Position is copied verbatim
 	for(k=0;k<3;k++) targ_statevecs[ref_subct-1-i][k] = backward_statevecs[i][k];
 	// Velocity requires a sign-flip
@@ -54717,7 +54730,7 @@ int obsint_everuse01(int planetnum, const vector <double> &planetmasses, const v
 // in the chi-square value for two successive iterations drops below minchichange,
 // or the astrometric residual RMS drops below astromRMSthresh, or the number of
 // iterations reaches maxiter.
-int evertrace01(int planetnum, const vector <double> &planetmasses, const vector <double> &planet_backward_mjd, const vector <vector <double>> &planet_backward_statevecs, const vector <double> &planet_forward_mjd, const vector <vector <double>> &planet_forward_statevecs, const vector <double> &starting_statevec, double mjdref, const vector <double> &obsMJD, const vector <vector <double>> &observer_statevecs, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, vector <double> &out_statevec, double timestep, int hnum, const vector <double> &hspace, double minchichange, double astromRMSthresh, long maxiter, long &itnum, int verbose)
+int evertrace01(int planetnum, const vector <double> &planetmasses, const vector <double> &planet_backward_mjd, const vector <vector <double>> &planet_backward_statevecs, const vector <double> &planet_forward_mjd, const vector <vector <double>> &planet_forward_statevecs, const vector <double> &starting_statevec, double mjdref, const vector <double> &obsMJD, const vector <vector <double>> &observer_statevecs, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, vector <double> &out_statevec, double timestep, int hnum, const vector <double> &hspace, double minchichange, double astromRMSthresh, long maxiter, long &itnum, double &chisquare, double &astrom_rms, int verbose)
 {
   vector <double> obsTDB;
   long i,j,k,obsct,iterct;
@@ -54783,7 +54796,7 @@ int evertrace01(int planetnum, const vector <double> &planetmasses, const vector
   if(verbose>0) cout << "Launching obsint_vareq01()\n";
   iterct=0;
   while(astromrms>astromRMSthresh && chichange>minchichange && iterct<maxiter) {
-    cout << "Iteration " << iterct <<"\n";
+    if(verbose>0) cout << "Iteration " << iterct <<"\n";
     status = obsint_vareq01(planetnum, planetmasses, planet_backward_mjd, planet_backward_statevecs, planet_forward_mjd, planet_forward_statevecs, out_statevec, mjdstart, mjdref, mjdend, obsTDB, targ_statevecs, vareq_mat, timestep, hnum, hspace, verbose);
     if(status!=0) {
       cerr << "ERROR: obsint_vareq01 returned error status " << status << "\n";
@@ -54803,7 +54816,11 @@ int evertrace01(int planetnum, const vector <double> &planetmasses, const vector
       // Light-travel-time corrected version of coordinates relative to the observer
       for(k=0;k<3;k++) relpos[k] = targ_statevecs[i][k] - light_travel_time*targ_statevecs[i][3+k] - observer_statevecs[i][k];
       // Project onto the celestial sphere.
-      statevec_to_celederiv(relpos, RA, Dec, RA_deriv, Dec_deriv);
+      status = statevec_to_celederiv(relpos, RA, Dec, RA_deriv, Dec_deriv);
+      if(status!=0) {
+	cerr << "ERROR: statevec_to_celederiv failed with error status " << status << "\n";
+	return(status);
+      }
       fitRA.push_back(RA);
       fitDec.push_back(Dec);
       RA_deriv_mat.push_back(RA_deriv);
@@ -54871,10 +54888,10 @@ int evertrace01(int planetnum, const vector <double> &planetmasses, const vector
       matXvec(Aobs_transpose, resid_B, AtransposeB);
       Xcor = {};
       matXvec(Qinv, AtransposeB, Xcor);
-      cout << "Xcor";;
-      for(k=0;k<3;k++) cout << " " << Xcor[k];
-      for(k=3;k<6;k++) cout << " " << Xcor[k];
-      cout << "\n";
+      if(verbose>1) cout << "Xcor";;
+      if(verbose>1) for(k=0;k<3;k++) cout << " " << Xcor[k];
+      if(verbose>1) for(k=3;k<6;k++) cout << " " << Xcor[k];
+      if(verbose>1) cout << "\n";
 
       //Apply new correction
       for(k=0;k<6;k++) out_statevec[k] += Xcor[k];
@@ -54882,6 +54899,8 @@ int evertrace01(int planetnum, const vector <double> &planetmasses, const vector
   }
   cout << fixed << setprecision(4) << "evertrace01 returning on iteration " << iterct << " with astromrms = " << astromrms << " and chisq = " << chisq << "\n";
   itnum = iterct;
+  chisquare = chisq;
+  astrom_rms = astromrms;
   return(0);
 }
 
