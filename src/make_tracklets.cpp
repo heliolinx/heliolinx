@@ -25,6 +25,15 @@
 #define DEBUGA 0
 #define DEBUGB 0
 
+#define TESTOBSLON 203.74409
+#define TESTPLXCOS 0.936241
+#define TESTPLXSIN 0.351543
+#define TESTOBSCODE "F51"
+#define OBSCHECKTOL 1.0e-6
+
+#define MINEARTHDIST 1.44e8 // Well inside Earth's perihelion
+#define MAXEARTHDIST 1.55e8 // Well outside Earth's aphelion
+#define MAXEARTHZ 1.0e5 // Much greater than Earth's max. deviation from the J2000 ecliptic
       
 static void show_usage()
 {
@@ -602,6 +611,23 @@ int main(int argc, char *argv[])
     cerr << "ERROR reading observatory code file " << obscodefile << "\n";
     return(1);
   }
+  if(config.forcerun<=0) {
+    // Test data read from obscodefile for validity
+    char obscode[MINSTRINGLEN];
+    double obslon, plxcos, plxsin;
+    obslon = plxcos = plxsin;
+    stringncopy01(obscode,TESTOBSCODE,MINSTRINGLEN);
+    obscode_lookup(observatory_list, obscode, obslon, plxcos, plxsin);
+    if(fabs(obslon-TESTOBSLON)>OBSCHECKTOL || fabs(plxcos-TESTPLXCOS)>OBSCHECKTOL || fabs(plxsin-TESTPLXSIN)>OBSCHECKTOL) {
+      cerr << "ERROR: correct data from ObsCode F51 (Pan-STARRS 1) not read from file " << obscodefile << "\n";
+      cerr << "This means either the file is incorrectly formatted or one of the most productive\n";
+      cerr << "observatories in the world isn't included in it.\n";
+      cerr << "Obtain the latest ObsCodes.html file from https://www.minorplanetcenter.net/iau/lists/ObsCodes.html\n";
+      cerr << "If you are sure you want to run with the existing file,\n";
+      cerr << "relaunch make_tracklets with -forcerun 1 set.\n";
+      return(1);
+    }
+  }  
   cout << "Read " << observatory_list.size() << " lines from observatory code file " << obscodefile << "\n";
   if(DEBUG>=2) {
     for(i=0;i<long(observatory_list.size());i++) {
@@ -657,7 +683,17 @@ int main(int argc, char *argv[])
   Earthvel={};
   read_horizons_csv(earthfile,EarthMJD,Earthpos,Earthvel);
   cout << "Finished reading heliocentric ephemeris file " << earthfile << " for the Earth.\n";
-
+  //Sanity-check the Earth positions that have just been read.
+  for(i=0; i<long(Earthpos.size()); i++) {
+    double rho = sqrt(Earthpos[i].x*Earthpos[i].x + Earthpos[i].y*Earthpos[i].y);
+      if(rho<MINEARTHDIST || rho>MAXEARTHDIST || fabs(Earthpos[i].z)>MAXEARTHZ) {
+	cerr << "ERROR: Impossible earth coordinates " << Earthpos[i].x << ", " << Earthpos[i].y << ", " << Earthpos[i].z << " read from input file " << earthfile << "\n";
+	cerr << "Obtain a proper csv-formatted version of this file from JPL Horizons and try again\n";
+	return(2);
+      }
+  }
+  
+  
   if(DEBUGB==1) cout << "Preparing to load the image table\n";
   status = load_image_table(img_log, detvec, config.time_offset, observatory_list, EarthMJD, Earthpos, Earthvel);
   if(DEBUGB==1) cout << "Loaded the image table\n";

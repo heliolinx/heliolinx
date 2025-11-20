@@ -7588,6 +7588,11 @@ int helioproj02(point3d unitbary, point3d obsbary, double heliodist, vector <dou
       // Since scalar distance cannot be negative, this means the quadratic
       // has no physical solution: the vector unitbary has no intersection
       // with the heliocentric sphere of radius heliodist in the positive direction.
+      // Load dummy values, exit with an error code
+      cerr << "ERROR: helioproj02 finds no real solution. Inputs: " << unitbary.x << " " << unitbary.y << " " << unitbary.z << " " << obsbary.x << " " << obsbary.y << " " << obsbary.z << " " << heliodist << "\n";
+      barypos = point3d(0.0l,0.0l,-10000.0l);
+      projbary.push_back(barypos);
+      geodist.push_back(10000.0);
       return(-1);
     }
   } else {
@@ -7596,6 +7601,11 @@ int helioproj02(point3d unitbary, point3d obsbary, double heliodist, vector <dou
     // from Earth can never intersect this heliocentric
     // sphere. Most likely, the heliocentric sphere lies
     // entirely inside the vector from Earth.
+    // Load dummy values, exit with an error code
+    cerr << "ERROR: helioproj02 finds no real solution. Inputs: " << unitbary.x << " " << unitbary.y << " " << unitbary.z << " " << obsbary.x << " " << obsbary.y << " " << obsbary.z << " " << heliodist << "\n";
+    barypos = point3d(0.0l,0.0l,-10000.0l);
+    projbary.push_back(barypos);
+    geodist.push_back(10000.0);
     return(-1);
   }
   // Should never reach this point, but return anyway just in case.
@@ -42739,16 +42749,6 @@ int link_purify(const vector <hlimage> &image_log, const vector <hldet> &detvec,
   cout << "The total timespan will be raised to the power of " << config.timepow << ",\n";
   cout << "and the astrometric RMS will be raised to the power of (negative) " << config.rmspow << "\n";
   if(config.verbose>=1) cout << "verbose output has been selected\n";
-
-  cout << "Maximum astrometric RMS: " << config.max_astrom_rms << "\n";
-  cout << "Minimum number of observing nights: " << config.minobsnights << "\n";
-  cout << "Minimum number of unique detections: " << config.minpointnum << "\n";
-  cout << "Simplex type = " << config.simptype << "\n";
-  cout << "Maximum fraction of points that can be rejected = " << config.rejfrac << "\n";
-  cout << "Maximum number of points that can be rejected = " << config.maxrejnum << "\n";
-  cout << "Minimum number of distinct nights of observations for a discovery is " << config.minobsnights << "\n";
-  cout << "Minimum number of unique observations for a discovery is " << config.minpointnum << "\n";
-  if(config.ecc_penalty>1.0) cout << "Nominal chi-square values for high-eccentricty orbits will be penalized by " << config.ecc_penalty << "\n";
   
   // Cull out exact duplicates using link_dedup().
   status =  link_dedup(inclust1, inclust2det1, inclust, inclust2det);
@@ -45117,14 +45117,16 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
 	status = helioproj02(unitbary,observernow,heliodistvec[ptct], deltavec, targposvec);
 	if(status!=1 && status!=2) {
 	  cerr << "ERROR: in link_planarity, helioproj02 returns error code " << status << "\n";
-	  return(status);
+	  //return(status);
+	  // Push through this error rather than returning; hopefully the dummy
+	  // values set in helioproj will cause the point to be rejected.
 	}
 	heliopos1.push_back(targposvec[0]);
 	if(status==2) heliopos2.push_back(targposvec[1]);
       }
       if(long(heliopos1.size())!=ptnum) {
 	cerr << "ERROR: in link_planarity heliolinc branch, of " << ptnum << " input point, only " << heliopos1.size() << " were successfully projected\n";
-	return(3);
+	//return(3);
       }
       if(long(heliopos2.size())==ptnum) {
 	// There were valid solutions to both projection geometries,
