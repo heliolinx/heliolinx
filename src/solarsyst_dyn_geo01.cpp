@@ -11775,7 +11775,7 @@ int statevec_to_celestial(const vector <double> &baryvec, double &RA, double &De
 // to an observer in the barycentric system, the output will be the
 // asteroid's RA and Dec in the sky as seen by that observer.
 #define POLARXRAD 1.0e-4
-int statevec_to_celederiv(const vector <double> &baryvec, double &RA, double &Dec, vector <double> &RA_deriv, vector <double> &Dec_deriv)
+int statevec_to_celederiv(const vector <double> &baryvec, double &RA, double &Dec, vector <double> &RA_deriv, vector <double> &Dec_deriv, int verbose)
 {
   double poleDec,zc,yc;
   double dradx,drady,dradz,ddecdx,ddecdy,ddecdz;
@@ -11783,7 +11783,7 @@ int statevec_to_celederiv(const vector <double> &baryvec, double &RA, double &De
   double r = nvecabs(baryvec);
   RA_deriv = Dec_deriv = {};
   if(!isnormal(r) || r<0.0) {
-    cerr << "ERROR: statevec_to_celederiv() called with position vector of zero or undefined length\n";
+    if(verbose>1) cerr << "ERROR: statevec_to_celederiv() called with position vector of zero or undefined length\n";
     RA = Dec = 0.0;
     return(1);
   }
@@ -11835,7 +11835,7 @@ int statevec_to_celederiv(const vector <double> &baryvec, double &RA, double &De
     // case the derivatives really are singular. Attempt to
     // rescue the situation by fudging the x coordinate to
     // move us slightly off the pole.
-    cerr << "WARNING: statevec_to_celederiv finds dec_denom_inv to be non-normal\n";
+    if(verbose>1) cerr << "WARNING: statevec_to_celederiv finds dec_denom_inv to be non-normal\n";
     vector <double> fakevec;
     fakevec.push_back(baryvec[0]+POLARXRAD*r);
     fakevec.push_back(baryvec[1]);
@@ -11843,7 +11843,7 @@ int statevec_to_celederiv(const vector <double> &baryvec, double &RA, double &De
     double r = nvecabs(fakevec);
     dec_denom_inv = 1.0/(r*r*sqrt(r*r - yc*yc));
     if(!isnormal(dec_denom_inv)) {
-      cerr << "ERROR: statevec_to_celederiv finds dec_denom_inv singular even after rescue attempt\n";
+      if(verbose>1) cerr << "ERROR: statevec_to_celederiv finds dec_denom_inv singular even after rescue attempt\n";
       RA = Dec = 0.0;
       return(4);
     }
@@ -26536,11 +26536,18 @@ int calculate_overlap(const vector <hldet> &detvec, const vector <hlimage> &img_
   vector <kdpoint> kdvec ={};
   long medpt,bestpoint,imtarg,dettarg;
   medpt = bestpoint = imtarg = dettarg = 0;
-
+  int amedian=0;
+  
   // Loop over all images, identifying a representative subset of detections for each image.
   for(imct=0;imct<imnum;imct++) {
     if(verbose>0) cout << "Representative detection loop considering image " << imct << " of " << imnum << "\n";
-    if(img_log[imct].endind<=0 || img_log[imct].endind<=img_log[imct].startind) continue; // No detections on this image.
+    if(img_log[imct].endind<=0 || img_log[imct].endind<=img_log[imct].startind) {
+      if(verbose>0) cout << "No detections on this image\n";
+      imdetnum=0;
+      repdetvec={};
+      repdetmat.push_back(repdetvec);
+      continue;
+    }
     // Load all the detections on this image into the vector imdevec.
     imdetvec={};
     for(detct=img_log[imct].startind ; detct<img_log[imct].endind ; detct++) imdetvec.push_back(detvec[detct]);
@@ -26567,6 +26574,13 @@ int calculate_overlap(const vector <hldet> &detvec, const vector <hlimage> &img_
   // Loop over images for image A
   for(imct=0;imct<imnum;imct++) {
     if(verbose>0) cout << "Initial loop considering image " << imct << " of " << imnum << "\n";
+    if(img_log[imct].endind<=0 || img_log[imct].endind<=img_log[imct].startind) {
+      // No detections on this image.
+      if(verbose>0) cout << "No detections on this image\n";
+      amedian=0;
+      image_overlap.push_back(amedian);
+      continue;
+    }
     repdetvec = repdetmat[imct];
     imdetnum = repdetvec.size();
     if(verbose>0) cout << "Image " << imct << " has " << imdetnum << " representative detections\n";
@@ -26587,6 +26601,10 @@ int calculate_overlap(const vector <hldet> &detvec, const vector <hlimage> &img_
     make_ivec(imdetnum, detection_matches);
     // Loop over potential image B's
     for(imtarg=0;imtarg<imnum;imtarg++) {
+      if(img_log[imtarg].endind<=0 || img_log[imtarg].endind<=img_log[imtarg].startind) {
+	// No detections on this image.
+	continue;
+      }
       //cout << "probing match between images " << imct << " and " << imtarg << "\n";
       // Calculate the boresight center-to-center distance between images A (imct) and B (imtarg)
       double imcendist = distradec01(img_log[imct].RA, img_log[imct].Dec, img_log[imtarg].RA, img_log[imtarg].Dec);
@@ -26638,7 +26656,7 @@ int calculate_overlap(const vector <hldet> &detvec, const vector <hlimage> &img_
       if(verbose>1) cout << "representative x,y,depth: " << repxyvec[detct].x << " " << repxyvec[detct].y << " " << detection_matches[detct] << "\n";
     }
     // Find the median of the number of matches for detections on image A
-    int amedian=0;
+    amedian=0;
     sort(detection_matches.begin(),detection_matches.end());
     if(detection_matches.size()%2 == 1) {
       // Odd number, a perfect median exists
@@ -36299,12 +36317,14 @@ int form_clusters_kd4(const vector <point6ix2> &allstatevecs, const vector <hlde
       if(georadcen >= clustchangerad) {
 	// cluster radius scales linearly with geocentric distance.
 	clustrad = cluster_radius*(georadcen/REF_GEODIST);
+	if(verbose>=1) cout << "normal scaling clustrad = " << clustrad << "\n";
       }
       else {
 	// cluster radius remains fixed at the minimum value,
 	// in order to make sure it does not get excessively small
 	// for very small geocentric radii.
 	clustrad = cluster_radius*(clustchangerad/REF_GEODIST);
+	if(verbose>=1) cout << "fixed minimum clustrad = " << clustrad << "\n";
       }
       long clusternum = KDRclust_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, dbscan_npt, INTEGERIZING_SCALEFAC, kdclust, verbose);
       cout << "KDRclust_6i01 finished clustering geobin " << georadct << ", with " << clusternum << " = " << kdclust.size() << " clusters found\n";
@@ -36524,6 +36544,172 @@ int form_clusters_kd4(const vector <point6ix2> &allstatevecs, const vector <hlde
   cerr << "ERROR: form_clusters_kd4 has reached a case that should not be\nreachable under the design logic.\n";
   return(11);
 }
+
+// highgrade_kdpairs: November 24, 2025:
+// based on form_clusters_kd4, but rather than finding
+// distinct self-consistent clusters, aims simply to high-grade
+// the input data by identifying all the detections that could
+// form part of a physically plausible two-tracklet pair.
+// These will then be output in the form of an index vector
+// to pairdets.
+int highgrade_kdpairs(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <long> &linkdet_indices, double cluster_radius, double clustchangerad, double npt, long minobsnum, double mintimespan, double mingeodist, double geologstep, double maxgeodist, int verbose)
+{
+  double georadmin=0l;
+  double georadmax=0l;
+  point6dx2 statevec1 = point6dx2(0l,0l,0l,0l,0l,0l,0,0);
+  point6ix2 stateveci = point6ix2(0,0,0,0,0,0,0,0);
+  double geodist=0l;
+  long kdroot,splitpoint,i,j;
+  kdroot = splitpoint = i = j = 0;
+  KD_point6ix2 kdpoint = KD_point6ix2(stateveci,-1,-1,1,-1);
+  int pairct=0;
+  double dgnum;
+  int georadct,georadnum;
+  georadct=georadnum=0;
+  double georadcen = mingeodist*intpowD(geologstep,georadct);
+  double clustrad=0.0l;
+  point6ix2 querypoint = point6ix2(0, 0, 0, 0, 0, 0, 0, 0);
+  vector <long> queryout;
+  long kdnum,kdct,clustptct;
+  kdnum=kdct=clustptct=0;
+  vector <long> linkdet_temp;
+
+  // Loop over geocentric bins, selecting the subset of state-vectors
+  // in each bin, and running the k-d range query only on those, 
+  // with clustering radius adjusted accordingly.
+
+  // Sanity check the logarithmic geocentric distance framework to avoid a
+  // possible infinite loop.
+  dgnum = log(maxgeodist/mingeodist)/log(geologstep);
+  if(!isnormal(dgnum) || dgnum<0.0l) {
+    cerr << "ERROR: geocentric distance parameters led to nonsense:\n";
+    cerr << "mingeodist, maxgeodist, geologstep = " << maxgeodist << ", " << mingeodist << ", " << geologstep << "\n";
+    cerr << "dgnum = " << dgnum << "\n";
+    return(10);
+  } else georadnum = ceil(dgnum)+1;
+
+  georadct = 0;
+  while(georadcen<=maxgeodist && georadct<=georadnum) {
+    georadct++;
+    georadcen = mingeodist*intpowD(geologstep,georadct-1);
+    cout  << fixed << setprecision(2) << "Geocentric distance step " << georadct << ", bin-center distance is " << georadcen << " AU\n";
+    georadmin = georadcen/geologstep;
+    georadmax = georadcen*geologstep;
+    // Load new array of state vectors, limited to those in the current geocentric bin
+    vector <point6ix2> binstatevecs;
+    for(i=0; i<long(allstatevecs.size()); i++) {
+      // Reverse integerization of the state vector.
+      // This is only possible to a crude approximation, of course.
+      statevec1 = conv_6i_to_6d(allstatevecs[i],INTEGERIZING_SCALEFAC);
+      // Calculate geocentric distance in AU
+      geodist = sqrt(DSQUARE(statevec1.x-Earthrefpos.x) + DSQUARE(statevec1.y-Earthrefpos.y) + DSQUARE(statevec1.z-Earthrefpos.z))/AU_KM;
+      if(geodist >= georadmin && geodist <= georadmax) {
+	// This state vector is in the geocentric radius bin we are currently considering.
+	// Add it to binstatevecs.
+	binstatevecs.push_back(allstatevecs[i]);
+      }
+    }
+    if(verbose>=1) cout  << fixed << setprecision(2) << "Found " << binstatevecs.size() << " state vectors in geocentric bin from " << georadmin << " to " << georadmax << " AU\n";
+    if(binstatevecs.size() < npt) {
+      continue; // No clusters possible, skip to the next step.
+    } else {      
+      vector <KD_point6ix2> kdtree;
+      kdroot = splitpoint = 0;
+      splitpoint=medind_6ix2(binstatevecs,1);
+      kdpoint = KD_point6ix2(binstatevecs[splitpoint],-1,-1,1,-1);
+      kdtree.push_back(kdpoint);
+      kdtree_6i01(binstatevecs,1,splitpoint,kdroot,kdtree);
+      kdnum = kdtree.size();
+      if(verbose>=1) cout << "Created a KD tree with " << kdnum << " branches\n";
+
+      vector <KD6i_clust> kdclust;
+      if(georadcen >= clustchangerad) {
+	// cluster radius scales linearly with geocentric distance.
+	clustrad = cluster_radius*(georadcen/REF_GEODIST);
+	if(verbose>=1) cout << "normal scaling clustrad = " << clustrad << "\n";
+      }
+      else {
+	// cluster radius remains fixed at the minimum value,
+	// in order to make sure it does not get excessively small
+	// for very small geocentric radii.
+	clustrad = cluster_radius*(clustchangerad/REF_GEODIST);
+	if(verbose>=1) cout << "minimum fixed clustrad = " << clustrad << "\n";
+      }
+      // Loop over all points in the k-d tree.
+      for(kdct=0; kdct<kdnum; kdct++) {
+	// Range-query current point.
+	querypoint = kdtree[kdct].point;
+	queryout = {};
+	kdrange_6i01(kdtree, querypoint, clustrad/INTEGERIZING_SCALEFAC, queryout);
+	if(long(queryout.size()) > kdnum) {
+	  cerr << "ERROR: kdrange query appears to have returned more points (" << queryout.size() << ")\n";
+	  cerr << "than were in the entire input k-d tree (" << kdnum << ")\n";
+	  return(3);
+	}
+	if(long(queryout.size()) >= npt) {
+	  // This point is the core of a cluster. Output all the detection indices include in it.
+	  if(verbose>=1) cout << "Point " << kdct << ": cluster core with " << queryout.size() << " neighbors.\n";
+	  // Loop on points in cluster.
+	  vector <long> clustindvec;
+	  for(clustptct=0; clustptct<long(queryout.size()); clustptct++) {
+	    pairct=kdtree[queryout[clustptct]].point.i1;
+	    if(DEBUG >= 2) cout << "Looking up tracklet " << pairct << " out of " << tracklets.size() << "\n";
+	    vector <long> pointjunk;
+	    pointjunk = tracklet_lookup(trk2det, pairct);
+	    if(DEBUG >= 2) cout << "Found " << pointjunk.size() << " detections for tracklet " << pairct << "\n";
+	    if(pointjunk.size()<=0) {
+	      cerr << "ERROR: no detections found for tracklet " << pairct << "\n";
+	      return(4);
+	    }
+	    for(j=0; j<long(pointjunk.size()); j++) {
+	      clustindvec.push_back(pointjunk[j]);
+	    }
+	    // Close loop over tracklets in the cluster
+	  }
+	  if(clustindvec.size()>0) {
+	    // De-duplicate clustindvec
+	    sort(clustindvec.begin(),clustindvec.end());
+	    vector <long> clustindvec2;
+	    clustindvec2.push_back(clustindvec[0]);
+	    for(j=1;j<long(clustindvec.size());j++) {
+	      if(clustindvec[j] != clustindvec2[clustindvec2.size()-1]) clustindvec2.push_back(clustindvec[j]);
+	    }
+	    long obsnum = clustindvec2.size();
+	    if(obsnum>=minobsnum) {
+	      vector <double> mjdvec;
+	      for(j=0; j<long(clustindvec2.size()); j++) mjdvec.push_back(detvec[clustindvec2[j]].MJD);
+	      sort(mjdvec.begin(),mjdvec.end());
+	      double timespan = mjdvec[mjdvec.size()-1]-mjdvec[0];
+	      if(timespan>=mintimespan) {
+		if(DEBUG >= 2) cout << "Found " << clustindvec2.size() << " unique detections for this cluster\n";
+		for(j=0; j<long(clustindvec2.size()); j++) {
+		  linkdet_temp.push_back(clustindvec2[j]);
+		}
+	      }
+	    }
+	    // Close loop over tracklets in the cluster
+	  }
+	  // Close if-statement checking the cluster has at least the minimum number of tracklets.
+	}
+	// Close loop over all points in the k-d tree.
+      }
+      // Close else-statement checking there were enough input points for at least one cluster
+    }
+    // Close loop over bins in geocentric distance.
+  }
+  // Sort vector of detection indices
+  sort(linkdet_temp.begin(), linkdet_temp.end());
+  // Cull out duplicate entries in linkdet_temp
+  linkdet_indices = {};
+  if(linkdet_temp.size()<=0) return(0); // Nothing to output.
+  linkdet_indices.push_back(linkdet_temp[0]);
+  for(i=1; i<long(linkdet_temp.size()); i++) {
+    j = linkdet_indices.size()-1;
+    if(linkdet_temp[i] != linkdet_indices[j]) linkdet_indices.push_back(linkdet_temp[i]);
+  }
+  return(0);
+}
+
 
 // uintvec2long: July 8, 2024:
 // Given a vector of type unsigned int, convert it to a vector
@@ -41670,6 +41856,208 @@ int heliolinc_alg_lowmem(const vector <hlimage> &image_log, const vector <hldet>
   }
   return(0);    
 }
+
+// heliolinc_highgrade: November 24, 2025
+// Using conventions from heliolinc_alg_all, but 
+// a single code whose behavior is determined by config.use_univar.
+int heliolinc_highgrade(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, long minobsnum, vector <hldet> &outdet)
+{
+  outdet = {};
+   
+  point3d Earthrefpos = point3d(0l,0l,0l);
+  long imnum = image_log.size();
+  long pairnum = tracklets.size();
+  long trk2detnum = trk2det.size();
+  long accelnum = radhyp.size();
+  long accelct=0;
+
+  vector <double> heliodist;
+  vector <double> heliovel;
+  vector <double> helioacc;
+  long status = 0;
+  vector <point6ix2> allstatevecs;
+  int use_univar=0;
+  int NotKepler=0;
+  int automjd=0;
+  long i=0;
+  long j=0;
+  vector <long> linkdet_temp;
+  vector <long> linkdet_indices;
+    
+  if(config.use_univar>7 && config.use_univar<=15) {
+    use_univar = config.use_univar-8;
+    NotKepler=1;
+  } else {
+    use_univar = config.use_univar;
+    NotKepler=0;
+  }
+  
+  // Echo config struct
+  cout << "Configuration parameters:\n";
+  cout << "MJD of reference time: " << config.MJDref << "\n";
+  cout << "DBSCAN clustering radius: " << config.clustrad << " km\n";
+  cout << "DBSCAN npt: " << config.dbscan_npt << "\n";
+  cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
+  cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
+  cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
+  cout << "Max geocentric distance (will be exceeded by center only of the outermost bin): " << config.maxgeodist << " AU\n";
+  cout << "Logarthmic step size (and bin width) for geocentric distance bins: " << config.geologstep << "\n";
+  cout << "Minimum inferred geocentric distance for a valid tracklet: " << config.mingeoobs << " AU\n";
+  cout << "Minimum inferred impact parameter (w.r.t. Earth) for a valid tracklet: " << config.minimpactpar << " km\n";
+  if(config.verbose) cout << "Verbose output selected\n";
+  
+  if(imnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty image catalog\n";
+    return(1);
+  } else if(pairnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty tracklet array\n";
+    return(1);
+  } else if(trk2detnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty trk2det array\n";
+    return(1);
+  } else if(accelnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty heliocentric hypothesis array\n";
+    return(1);
+  }
+  
+  // Find MJD for first and last detections.
+  double minMJD = detvec[0].MJD;
+  double maxMJD = detvec[0].MJD;
+  for(i=0; i<long(detvec.size()); i++) {
+    if(minMJD > detvec[i].MJD) minMJD = detvec[i].MJD;
+    if(maxMJD < detvec[i].MJD) maxMJD = detvec[i].MJD;
+  }
+  if(!isnormal(config.MJDref) || config.MJDref < minMJD || config.MJDref > maxMJD) {
+    if(config.autorun<=0) {
+      cout << "\nERROR: input positive-valued reference MJD is required\n";
+      cout << "MJD range is " << minMJD << " to " << maxMJD << "\n";
+      cout << fixed << setprecision(2) << "Suggested reference value is " << minMJD*0.5L + maxMJD*0.5L << "\n";
+      return(1);
+    } else {
+      cout << "\nUser did not input a positive-valued reference MJD in the\n";
+      cout << "acceptable range, so heliolinc will generate one internally\n";
+      cout << "MJD range is " << minMJD << " to " << maxMJD << "\n";
+      cout << fixed << setprecision(2) << "Suggested reference value is " << minMJD*0.5L + maxMJD*0.5L << "\n";
+      config.MJDref = round(minMJD*50.0l + maxMJD*50.0l)/100.0l;
+      cout << fixed << setprecision(2) << "Adopting reference MJD = " << config.MJDref << "\n";
+      automjd=1;
+    } 
+  }
+
+  double chartimescale = (maxMJD - minMJD)*SOLARDAY/TIMECONVSCALE; // Note that the units are seconds.
+  Earthrefpos = earthpos01(earthpos, config.MJDref);
+
+  // Convert heliocentric radial motion hypothesis matrix
+  // from units of AU, AU/day, and GMSun/R^2
+  // to units of km, km/day, and km/day^2.
+  heliodist = heliovel = helioacc = {};
+  for(accelct=0;accelct<accelnum;accelct++) {
+    heliodist.push_back(radhyp[accelct].HelioRad * AU_KM);
+    heliovel.push_back(radhyp[accelct].R_dot * AU_KM);
+    helioacc.push_back(radhyp[accelct].R_dubdot * (-GMSUN_KM3_SEC2*SOLARDAY*SOLARDAY/heliodist[accelct]/heliodist[accelct]));
+  }
+
+  // Begin master loop over heliocentric hypotheses
+  for(accelct=0;accelct<accelnum;accelct++) {
+    cout << "Working on hypothesis " << accelct << ": " << radhyp[accelct].HelioRad << " AU, " << radhyp[accelct].R_dot*AU_KM/SOLARDAY << " km/sec " << radhyp[accelct].R_dubdot << " GMsun/r^2\n";
+
+    // Covert all tracklets into state vectors at the reference time, under
+    // the assumption that the heliocentric distance hypothesis is correct.
+    if(use_univar == 1 || use_univar == 5 || use_univar == 7) {
+      // Integrate to perform clustering in the standard heliolinc3d parameter space
+      // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
+      // Use the universal variable formulation of the Kepler problem for orbit propagation.
+      // This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
+      status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler, config.verbose);
+    } else if(use_univar == 2) {
+      // Integrate to perform clustering in the parameter space of Ben Engebreth's 
+      // heliolinc_RR algorithm, which uses position vectors at two different
+      // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
+      // Use the Kepler f and g functions for orbit propagation
+      // This is faster than the universal variable formulation, but cannot handle hyperbolic
+      status = trk2statevec_fgfuncRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler);
+    } else if(use_univar == 3) {
+      // Integrate to perform clustering in the parameter space of Ben Engebreth's 
+      // heliolinc_RR algorithm, which uses position vectors at two different
+      // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
+      // Use the universal variable formulation of the Kepler problem for orbit propagation.
+      // This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
+      status = trk2statevec_univarRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler, config.verbose);
+    } else {
+      // Integrate to perform clustering in the standard heliolinc3d parameter space
+      // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
+      // Use the Kepler f and g functions for orbit propagation
+      // This is faster than the universal variable formulation, but cannot handle hyperbolic
+      // (i.e., unbound, interstellar) orbits. Being fastest for normal orbits, it is the default,
+      // and also corresponds to use_univar == 0, 4, or 6
+      status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler);
+    }
+
+    if(status==1) {
+      cerr << "WARNING: hypothesis " << accelct << ": " << radhyp[accelct].HelioRad << " " << radhyp[accelct].R_dot << " " << radhyp[accelct].R_dubdot << " led to\nnegative heliocentric distance or other invalid result: SKIPPING\n";
+      continue;
+    } else if(status==2) {
+      // This is a weirder error case and is fatal.
+      cerr << "Fatal error case from trk2statevec.\n";
+      return(3);
+    }
+    // If we get here, trk2statevec probably ran OK.
+    if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
+    if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
+
+    // Use a KDtree range-query in six dimensions for clustering the standard heliolinc parameter space
+    status = highgrade_kdpairs(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, linkdet_temp, config.clustrad, config.clustchangerad, config.dbscan_npt, minobsnum, config.mintimespan, config.mingeodist, config.geologstep, config.maxgeodist, config.verbose);
+    if(status!=0) {
+      cerr << "ERROR: highgrade_kdpairs exited with error code " << status << "\n";
+    }
+    if(linkdet_indices.size()<=0) linkdet_indices = linkdet_temp;
+    else {
+      i=j=0;
+      while(i<long(linkdet_indices.size()) || j<long(linkdet_temp.size())) {
+	if(i<long(linkdet_indices.size()) && j<long(linkdet_temp.size()) && linkdet_indices[i]>linkdet_temp[j]) {
+	// Insert linkdet_temp[j] before the current point in linkdet_indices.
+	  linkdet_indices.insert(linkdet_indices.begin()+i, linkdet_temp[j]);
+	  // Increment both indices
+	  i++;
+	  j++;
+	} else if(i<long(linkdet_indices.size()) && j<long(linkdet_temp.size()) && linkdet_indices[i]==linkdet_temp[j]) {
+	  // Don't change the vectors: we want to avoid redundant points
+	  i++;
+	  j++;
+	} else if(i<long(linkdet_indices.size()) && j<long(linkdet_temp.size()) && linkdet_indices[i] < linkdet_temp[j]) {
+	  // We haven't yet reached the right point to insert linkdet_temp[j].
+	  // Increment i only.
+	  i++;
+	} else if(i>=long(linkdet_indices.size()) && j<long(linkdet_temp.size())) {
+	  // Just add on to the end of linkdet_indices
+	  linkdet_indices.push_back(linkdet_temp[j]);
+	  // Increment both indices
+	  i++;
+	  j++;
+	} else if(i<long(linkdet_indices.size()) && j>=long(linkdet_temp.size())) {	  
+	  // We've already done everything we need to: the last part of
+	  // linkdet_indices remains unaltered.
+	  break;
+	}
+      }
+    }
+  }
+
+  cout << "Found clusters with " << config.dbscan_npt << " or more tracklets for " << linkdet_indices.size() << " total detections,\n";
+  cout << "out of " << detvec.size() << " detections initially input. Reduction factor is " << double(detvec.size())/double(linkdet_indices.size()) << "\n";
+  
+  outdet = {};
+  for(i=0; i<long(linkdet_indices.size()); i++) {
+    outdet.push_back(detvec[linkdet_indices[i]]);
+  }
+
+  cout << "Final de-duplicated set contains " << outdet.size() << " distinct detections.\n";
+  if(automjd) {
+    cout << "Automatically calculated reference MJD was " << config.MJDref << "\n";
+  }
+  return(0);    
+}
+
 
 
 // heliovane_alg_ompdanby: October 23, 2023:
@@ -54476,9 +54864,9 @@ int obsint_vareq01(int planetnum, const vector <double> &planetmasses, const vec
     cerr << "ERROR: mjdstart " << mjdstart << " and/or mjdref " << mjdref << " and/or mjdend " << mjdend << " could not be matched\nto any timestep in the planet files\n";
     return(1);
   } else {
-    cout << "mjdstart " << mjdstart << " corresponds to timestep " << startpoint << " in the forward planet files\n";
-    cout << "mjdref " << mjdref << " corresponds to timestep " << refpoint << " in the forward planet files\n";
-    cout << "mjdend " << mjdend << " corresponds to timestep " << endpoint << " in the forward planet files\n";
+    if(verbose>0) cout << "mjdstart " << mjdstart << " corresponds to timestep " << startpoint << " in the forward planet files\n";
+    if(verbose>0) cout << "mjdref " << mjdref << " corresponds to timestep " << refpoint << " in the forward planet files\n";
+    if(verbose>0) cout << "mjdend " << mjdend << " corresponds to timestep " << endpoint << " in the forward planet files\n";
   }
   
   if(endpoint<startpoint) {
@@ -54506,14 +54894,18 @@ int obsint_vareq01(int planetnum, const vector <double> &planetmasses, const vec
     ref_subct=0;
     while(obsMJD[ref_subct] < mjdref) ref_subct++;
   }
+  if(verbose>0) {
+    cout << "mjdref, obsMJD range, ref_subct, obsnum: " << mjdref << " " << obsMJD[0] << " " << obsMJD[obsnum-1] << " " << ref_subct << " " << obsnum << "\n";
+  }
   // We prefer forward integration to backward integration, so the above
   // logic is designed such that if one of the observing times
   // falls directly on mjdref, we will set ref_subct to the index of
   // that time. Hence, obsMJD[ref_subct] == mjdref
   // is possible, and we set the forward integration to calculate that
-  // point, while the latest point calculated by the backward integration
-  // is always ref_subct-1 and must always fall before mjdref.
-  
+  // point. However, in the case that all the observing times are before
+  // the reference time, no forward integration will be performed,
+  // and hence the backward integration also calculates the point ref_subct.
+    
   if(ref_subct < obsnum-1) {
     // Perform forward integration
     vector <double> forwardMJD;
@@ -54522,9 +54914,9 @@ int obsint_vareq01(int planetnum, const vector <double> &planetmasses, const vec
     vector <vector <double>> forward_statevecs;
     vector <vector <double>> forward_vareq;
     
-    cout << "Launching obsint_everhart_vareq01 to perform forward integration\n";
+    if(verbose>0) cout << "Launching obsint_everhart_vareq01 to perform forward integration\n";
     status = obsint_everhart_vareq01(planetnum, planet_forward_mjd, planetmasses, planet_forward_statevecs, starting_statevec, refpoint, endpoint, forwardMJD,  forward_statevecs, forward_vareq, timestep, hnum, hspace, verbose);
-    cout << "Foward integration complete with output vector lengths " << forwardMJD.size() << " and " << forward_statevecs.size() << "\n";
+    if(verbose>0) cout << "Foward integration complete with output vector lengths " << forwardMJD.size() << " and " << forward_statevecs.size() << "\n";
     if(status!=0) {
       cerr << "ERROR: obsint_everhart_vareq01() returned error status " << status << "\n";
       return(status);
@@ -54548,42 +54940,42 @@ int obsint_vareq01(int planetnum, const vector <double> &planetmasses, const vec
       cerr << "ERROR: mjdref " << mjdref << " and/or mjdend " << mjdend << " could not be matched\nto any timestep in the backward planet files\n";
       return(1);
     } else {
-      cout << "mjdstart " << mjdstart << " corresponds to timestep " << backstartpoint << " in the backward planet files\n";
-      cout << "mjdref " << mjdref << " corresponds to timestep " << backrefpoint << " in the backward planet files\n";
+      if(verbose>0) cout << "mjdstart " << mjdstart << " corresponds to timestep " << backstartpoint << " in the backward planet files\n";
+      if(verbose>0) cout << "mjdref " << mjdref << " corresponds to timestep " << backrefpoint << " in the backward planet files\n";
       vector <vector <double>> backward_statevecs;
       vector <vector <double>> backward_vareq;
       vector <double> backward_startvec;
       vector <double> backwardMJD;
-      for(obsct=ref_subct-1; obsct>=0; obsct--) backwardMJD.push_back(-obsMJD[obsct]);
+      for(obsct=ref_subct; obsct>=0; obsct--) backwardMJD.push_back(-obsMJD[obsct]);
 
       // Copy the starting state vector into backward_startvec
       backward_startvec = starting_statevec;
       // Sign-flip the velocity
       for(k=3;k<6;k++) backward_startvec[k] *= -1.0l;
-      cout << "Launching obsint_everhart_vareq01() to perform backward integration\n";
+      if(verbose>0) cout << "Launching obsint_everhart_vareq01() to perform backward integration\n";
       status = obsint_everhart_vareq01(planetnum, planet_backward_mjd, planetmasses, planet_backward_statevecs, backward_startvec, backrefpoint, backstartpoint, backwardMJD,  backward_statevecs, backward_vareq, timestep, hnum, hspace, verbose);
 
-      cout << "Backward integration complete with output vector lengths " << backwardMJD.size() << " and " << backward_statevecs.size() << "\n";
+      if(verbose>0) cout << "Backward integration complete with output vector lengths " << backwardMJD.size() << " and " << backward_statevecs.size() << "\n";
       if(status!=0) {
 	cerr << "ERROR: obsint_everhart_vareq01() returned error status " << status << "\n";
 	return(status);
       }
-      for(i=0;i<ref_subct;i++) {
-	if(verbose>1) cout << "i, ref_subct-i, obsnum: " << i << " " << ref_subct-1-i << " " << obsnum << " " << "\n";
+      for(i=0;i<=ref_subct;i++) {
+	if(verbose>1) cout << "i, ref_subct-i, obsnum: " << i << " " << ref_subct-i << " " << obsnum << " " << "\n";
 	// Position is copied verbatim
-	for(k=0;k<3;k++) targ_statevecs[ref_subct-1-i][k] = backward_statevecs[i][k];
+	for(k=0;k<3;k++) targ_statevecs[ref_subct-i][k] = backward_statevecs[i][k];
 	// Velocity requires a sign-flip
-	for(k=3;k<6;k++) targ_statevecs[ref_subct-1-i][k] = -backward_statevecs[i][k];
-	vareq_mat[ref_subct-1-i] = backward_vareq[i];
+	for(k=3;k<6;k++) targ_statevecs[ref_subct-i][k] = -backward_statevecs[i][k];
+	vareq_mat[ref_subct-i] = backward_vareq[i];
 	// Terms with velocity in only the numerator or only the denominator require a sign-flip:
 	for(pi=0;pi<3;pi++) {
 	  for(pj=3;pj<6;pj++) {
-	    vareq_mat[ref_subct-1-i][pi*6+pj] *= -1.0; // Derivatives with velocity in the denominator
+	    vareq_mat[ref_subct-i][pi*6+pj] *= -1.0; // Derivatives with velocity in the denominator
 	  }
 	}
 	for(pi=3;pi<6;pi++) {
 	  for(pj=0;pj<3;pj++) {
-	    vareq_mat[ref_subct-1-i][pi*6+pj] *= -1.0; // Derivatives with velocity in the numerator
+	    vareq_mat[ref_subct-i][pi*6+pj] *= -1.0; // Derivatives with velocity in the numerator
 	  }
 	}
       }
@@ -54655,8 +55047,9 @@ int obsint_everuse01(int planetnum, const vector <double> &planetmasses, const v
   // falls directly on mjdref, we will set ref_subct to the index of
   // that time. Hence, obsMJD[ref_subct] == mjdref
   // is possible, and we set the forward integration to calculate that
-  // point, while the latest point calculated by the backward integration
-  // is always ref_subct-1 and must always fall before mjdref.
+  // point. However, in the case that all the observing times are before
+  // the reference time, no forward integration will be performed,
+  // and hence the backward integration also calculates the point ref_subct.
   
   if(ref_subct < obsnum-1) {
     // Perform forward integration
@@ -54696,7 +55089,7 @@ int obsint_everuse01(int planetnum, const vector <double> &planetmasses, const v
       vector <vector <double>> backward_statevecs;
       vector <double> backward_startvec;
       vector <double> backwardMJD;
-      for(obsct=ref_subct-1; obsct>=0; obsct--) backwardMJD.push_back(-obsMJD[obsct]);
+      for(obsct=ref_subct; obsct>=0; obsct--) backwardMJD.push_back(-obsMJD[obsct]);
 
       // Copy the starting state vector into backward_startvec
       backward_startvec = starting_statevec;
@@ -54710,12 +55103,12 @@ int obsint_everuse01(int planetnum, const vector <double> &planetmasses, const v
 	cerr << "ERROR: obsint_everhart_vareq01() returned error status " << status << "\n";
 	return(status);
       }
-      for(i=0;i<ref_subct;i++) {
-	if(verbose>1) cout << "i, ref_subct-i, obsnum: " << i << " " << ref_subct-1-i << " " << obsnum << " " << "\n";
+      for(i=0;i<=ref_subct;i++) {
+	if(verbose>1) cout << "i, ref_subct-i, obsnum: " << i << " " << ref_subct-i << " " << obsnum << " " << "\n";
 	// Position is copied verbatim
-	for(k=0;k<3;k++) targ_statevecs[ref_subct-1-i][k] = backward_statevecs[i][k];
+	for(k=0;k<3;k++) targ_statevecs[ref_subct-i][k] = backward_statevecs[i][k];
 	// Velocity requires a sign-flip
-	for(k=3;k<6;k++) targ_statevecs[ref_subct-1-i][k] = -backward_statevecs[i][k];
+	for(k=3;k<6;k++) targ_statevecs[ref_subct-i][k] = -backward_statevecs[i][k];
       }
     }
   }
@@ -54818,9 +55211,9 @@ int evertrace01(int planetnum, const vector <double> &planetmasses, const vector
       // Light-travel-time corrected version of coordinates relative to the observer
       for(k=0;k<3;k++) relpos[k] = targ_statevecs[i][k] - light_travel_time*targ_statevecs[i][3+k] - observer_statevecs[i][k];
       // Project onto the celestial sphere.
-      status = statevec_to_celederiv(relpos, RA, Dec, RA_deriv, Dec_deriv);
+      status = statevec_to_celederiv(relpos, RA, Dec, RA_deriv, Dec_deriv, verbose);
       if(status!=0) {
-	cerr << "ERROR: statevec_to_celederiv failed with error status " << status << "\n";
+	if(verbose>0) cerr << "ERROR: statevec_to_celederiv failed with error status " << status << "\n";
 	return(status);
       }
       fitRA.push_back(RA);
@@ -54855,10 +55248,10 @@ int evertrace01(int planetnum, const vector <double> &planetmasses, const vector
       return(4);
     }
     iterct++; // INCREMENT ITERATION COUNT
-    cout << fixed << setprecision(4) << "Iteration " << iterct << " astrometric RMS = " << astromrms << " arcsec\n";
+    if(verbose>0) cout << fixed << setprecision(4) << "Iteration " << iterct << " astrometric RMS = " << astromrms << " arcsec\n";
     chichange = old_chisq - chisq;
     if(chichange<0.0) {
-      cerr << "WARNING: evertrace01 finds chi-square value increasing from " << old_chisq << " to " << chisq << " on iteration " << iterct << "\n";
+      if(verbose>0) cerr << "WARNING: evertrace01 finds chi-square value increasing from " << old_chisq << " to " << chisq << " on iteration " << iterct << "\n";
       chichange = fabs(chichange);
     }
     chichange/=chisq;

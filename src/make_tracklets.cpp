@@ -635,7 +635,6 @@ int main(int argc, char *argv[])
     }
   }
 
-
   // Read input detection file.
   status = read_detection_filemt2(indetfile, mjdcol, racol, deccol, magcol, idcol, bandcol, obscodecol, trail_len_col, trail_PA_col, sigmag_col, sig_across_col, sig_along_col, known_obj_col, det_qual_col, detvec, config.verbose, config.forcerun);
   
