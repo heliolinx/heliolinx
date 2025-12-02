@@ -42059,6 +42059,197 @@ int heliolinc_highgrade(const vector <hlimage> &image_log, const vector <hldet> 
 }
 
 
+// heliolinc_highgrade2: December 02, 2025:
+// Like heliolinc_highgrade, but avoids the vector insert operations.
+// Instead of using vector insert to merge the new detection indices
+// after each hypothesis is complete, the current function will simply
+// append the new vector of detection indices onto the current
+// master set, and then sort and de-duplicate the master set.
+int heliolinc_highgrade2(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, long minobsnum, vector <hldet> &outdet)
+{
+  outdet = {};
+   
+  point3d Earthrefpos = point3d(0l,0l,0l);
+  long imnum = image_log.size();
+  long pairnum = tracklets.size();
+  long trk2detnum = trk2det.size();
+  long accelnum = radhyp.size();
+  long accelct=0;
+
+  vector <double> heliodist;
+  vector <double> heliovel;
+  vector <double> helioacc;
+  long status = 0;
+  vector <point6ix2> allstatevecs;
+  int use_univar=0;
+  int NotKepler=0;
+  int automjd=0;
+  long i=0;
+  long j=0;
+  vector <long> linkdet_temp;
+  vector <long> linkdet_indices;
+    
+  if(config.use_univar>7 && config.use_univar<=15) {
+    use_univar = config.use_univar-8;
+    NotKepler=1;
+  } else {
+    use_univar = config.use_univar;
+    NotKepler=0;
+  }
+  
+  // Echo config struct
+  cout << "Configuration parameters:\n";
+  cout << "MJD of reference time: " << config.MJDref << "\n";
+  cout << "DBSCAN clustering radius: " << config.clustrad << " km\n";
+  cout << "DBSCAN npt: " << config.dbscan_npt << "\n";
+  cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
+  cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
+  cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
+  cout << "Max geocentric distance (will be exceeded by center only of the outermost bin): " << config.maxgeodist << " AU\n";
+  cout << "Logarthmic step size (and bin width) for geocentric distance bins: " << config.geologstep << "\n";
+  cout << "Minimum inferred geocentric distance for a valid tracklet: " << config.mingeoobs << " AU\n";
+  cout << "Minimum inferred impact parameter (w.r.t. Earth) for a valid tracklet: " << config.minimpactpar << " km\n";
+  if(config.verbose) cout << "Verbose output selected\n";
+  
+  if(imnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty image catalog\n";
+    return(1);
+  } else if(pairnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty tracklet array\n";
+    return(1);
+  } else if(trk2detnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty trk2det array\n";
+    return(1);
+  } else if(accelnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty heliocentric hypothesis array\n";
+    return(1);
+  }
+  
+  // Find MJD for first and last detections.
+  double minMJD = detvec[0].MJD;
+  double maxMJD = detvec[0].MJD;
+  for(i=0; i<long(detvec.size()); i++) {
+    if(minMJD > detvec[i].MJD) minMJD = detvec[i].MJD;
+    if(maxMJD < detvec[i].MJD) maxMJD = detvec[i].MJD;
+  }
+  if(!isnormal(config.MJDref) || config.MJDref < minMJD || config.MJDref > maxMJD) {
+    if(config.autorun<=0) {
+      cout << "\nERROR: input positive-valued reference MJD is required\n";
+      cout << "MJD range is " << minMJD << " to " << maxMJD << "\n";
+      cout << fixed << setprecision(2) << "Suggested reference value is " << minMJD*0.5L + maxMJD*0.5L << "\n";
+      return(1);
+    } else {
+      cout << "\nUser did not input a positive-valued reference MJD in the\n";
+      cout << "acceptable range, so heliolinc will generate one internally\n";
+      cout << "MJD range is " << minMJD << " to " << maxMJD << "\n";
+      cout << fixed << setprecision(2) << "Suggested reference value is " << minMJD*0.5L + maxMJD*0.5L << "\n";
+      config.MJDref = round(minMJD*50.0l + maxMJD*50.0l)/100.0l;
+      cout << fixed << setprecision(2) << "Adopting reference MJD = " << config.MJDref << "\n";
+      automjd=1;
+    } 
+  }
+
+  double chartimescale = (maxMJD - minMJD)*SOLARDAY/TIMECONVSCALE; // Note that the units are seconds.
+  Earthrefpos = earthpos01(earthpos, config.MJDref);
+
+  // Convert heliocentric radial motion hypothesis matrix
+  // from units of AU, AU/day, and GMSun/R^2
+  // to units of km, km/day, and km/day^2.
+  heliodist = heliovel = helioacc = {};
+  for(accelct=0;accelct<accelnum;accelct++) {
+    heliodist.push_back(radhyp[accelct].HelioRad * AU_KM);
+    heliovel.push_back(radhyp[accelct].R_dot * AU_KM);
+    helioacc.push_back(radhyp[accelct].R_dubdot * (-GMSUN_KM3_SEC2*SOLARDAY*SOLARDAY/heliodist[accelct]/heliodist[accelct]));
+  }
+
+  // Begin master loop over heliocentric hypotheses
+  for(accelct=0;accelct<accelnum;accelct++) {
+    cout << "Working on hypothesis " << accelct << ": " << radhyp[accelct].HelioRad << " AU, " << radhyp[accelct].R_dot*AU_KM/SOLARDAY << " km/sec " << radhyp[accelct].R_dubdot << " GMsun/r^2\n";
+
+    // Covert all tracklets into state vectors at the reference time, under
+    // the assumption that the heliocentric distance hypothesis is correct.
+    if(use_univar == 1 || use_univar == 5 || use_univar == 7) {
+      // Integrate to perform clustering in the standard heliolinc3d parameter space
+      // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
+      // Use the universal variable formulation of the Kepler problem for orbit propagation.
+      // This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
+      status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler, config.verbose);
+    } else if(use_univar == 2) {
+      // Integrate to perform clustering in the parameter space of Ben Engebreth's 
+      // heliolinc_RR algorithm, which uses position vectors at two different
+      // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
+      // Use the Kepler f and g functions for orbit propagation
+      // This is faster than the universal variable formulation, but cannot handle hyperbolic
+      status = trk2statevec_fgfuncRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler);
+    } else if(use_univar == 3) {
+      // Integrate to perform clustering in the parameter space of Ben Engebreth's 
+      // heliolinc_RR algorithm, which uses position vectors at two different
+      // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
+      // Use the universal variable formulation of the Kepler problem for orbit propagation.
+      // This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
+      status = trk2statevec_univarRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler, config.verbose);
+    } else {
+      // Integrate to perform clustering in the standard heliolinc3d parameter space
+      // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
+      // Use the Kepler f and g functions for orbit propagation
+      // This is faster than the universal variable formulation, but cannot handle hyperbolic
+      // (i.e., unbound, interstellar) orbits. Being fastest for normal orbits, it is the default,
+      // and also corresponds to use_univar == 0, 4, or 6
+      status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler);
+    }
+
+    if(status==1) {
+      cerr << "WARNING: hypothesis " << accelct << ": " << radhyp[accelct].HelioRad << " " << radhyp[accelct].R_dot << " " << radhyp[accelct].R_dubdot << " led to\nnegative heliocentric distance or other invalid result: SKIPPING\n";
+      continue;
+    } else if(status==2) {
+      // This is a weirder error case and is fatal.
+      cerr << "Fatal error case from trk2statevec.\n";
+      return(3);
+    }
+    // If we get here, trk2statevec probably ran OK.
+    if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
+    if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
+
+    // Use a KDtree range-query in six dimensions for clustering the standard heliolinc parameter space
+    status = highgrade_kdpairs(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, linkdet_temp, config.clustrad, config.clustchangerad, config.dbscan_npt, minobsnum, config.mintimespan, config.mingeodist, config.geologstep, config.maxgeodist, config.verbose);
+    if(status!=0) {
+      cerr << "ERROR: highgrade_kdpairs exited with error code " << status << "\n";
+    }
+    cout << "Hypothesis " << accelct << ": " << linkdet_temp.size() << " detections found; prev. total " << linkdet_indices.size() << "; ";
+    if(linkdet_indices.size()<=0) linkdet_indices = linkdet_temp;
+    else {
+      // Append all the elements of the old vector onto the new
+      for(i=0;i<=long(linkdet_indices.size());i++) linkdet_temp.push_back(linkdet_indices[i]);
+      // Sort the newly extended linkdet_temp vector
+      sort(linkdet_temp.begin(), linkdet_temp.end());
+      // Wipe the master vector
+      linkdet_indices={};
+      // Load only unique indices from linkdet_temp into the master vector linkdet_indices.
+      linkdet_indices.push_back(linkdet_temp[0]);
+      for(i=1;i<long(linkdet_temp.size());i++) {
+	j = linkdet_indices.size() - 1;
+	if(linkdet_temp[i] != linkdet_indices[j]) linkdet_indices.push_back(linkdet_temp[i]);
+      }
+    }
+    cout << "new total w/o dups " << linkdet_indices.size() << "\n";
+  }
+  
+  cout << "Found clusters with " << config.dbscan_npt << " or more tracklets for " << linkdet_indices.size() << " total detections,\n";
+  cout << "out of " << detvec.size() << " detections initially input. Reduction factor is " << double(detvec.size())/double(linkdet_indices.size()) << "\n";
+  
+  outdet = {};
+  for(i=0; i<long(linkdet_indices.size()); i++) {
+    outdet.push_back(detvec[linkdet_indices[i]]);
+  }
+
+  cout << "Final de-duplicated set contains " << outdet.size() << " distinct detections.\n";
+  if(automjd) {
+    cout << "Automatically calculated reference MJD was " << config.MJDref << "\n";
+  }
+  return(0);    
+}
+
+
 
 // heliovane_alg_ompdanby: October 23, 2023:
 // Attempt to parallelize over heliocentric hypotheses.
