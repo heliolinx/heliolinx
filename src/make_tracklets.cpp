@@ -502,16 +502,28 @@ int main(int argc, char *argv[])
   if(imagerad_default == 0) cout << "Image radius = " << config.imagerad << " degrees.\n";
   else cout << "Defaulting to image radius = " <<  config.imagerad << " degrees.\n";
 
-  if(config.use_lowmem==1) {
-    cout << "Using memory-efficient algorithm: matchrad and trkfrac parameters are operative\n";
+  if(config.use_lowmem<=0 || config.use_lowmem>3) {
+    cout << "Defaulting to use adaptive min. tracklet length depending on image overlap depth,\n";
+    cout << "without strenuous attempt to minimize memory use. matchrad and trkfrac parameters are operative\n";
     if(matchrad_default == 0) cout << "Matching radius for image overlap calculation = " << config.matchrad << " degrees.\n";
     else cout << "Defaulting to matching radius = " <<  config.matchrad << " degrees.\n";
-  
     if(trkfrac_default == 0) cout << "Minimum tracklet length = " << config.trkfrac << " times the number of overlapping images.\n";
     else cout << "Defaulting to minimum tracklet length = " <<  config.trkfrac << " times the number of overlapping images.\n";
-  } else {
+  } else if(config.use_lowmem==1) {
+    cout << "Using the latest memory-efficient algorithm. matchrad and trkfrac parameters are operative\n";
+    if(matchrad_default == 0) cout << "Matching radius for image overlap calculation = " << config.matchrad << " degrees.\n";
+    else cout << "Defaulting to matching radius = " <<  config.matchrad << " degrees.\n";
+    if(trkfrac_default == 0) cout << "Minimum tracklet length = " << config.trkfrac << " times the number of overlapping images.\n";
+    else cout << "Defaulting to minimum tracklet length = " <<  config.trkfrac << " times the number of overlapping images.\n";
+  } else if(config.use_lowmem==2) {
     cout << "Using simpler, less memory-efficient algorithm: matchrad and trkfrac parameters have no effect\n";
-  }
+  } else if(config.use_lowmem==3) {
+    cout << "Using older memory-efficient algorithm. matchrad and trkfrac parameters are operative\n";
+    if(matchrad_default == 0) cout << "Matching radius for image overlap calculation = " << config.matchrad << " degrees.\n";
+    else cout << "Defaulting to matching radius = " <<  config.matchrad << " degrees.\n";
+    if(trkfrac_default == 0) cout << "Minimum tracklet length = " << config.trkfrac << " times the number of overlapping images.\n";
+    else cout << "Defaulting to minimum tracklet length = " <<  config.trkfrac << " times the number of overlapping images.\n";
+  } 
   
   if(maxtime_default == 0) cout << "Max time interval = " << config.maxtime*24.0 << " hours.\n";
   else cout << "Defaulting to max time interval = " << config.maxtime*24.0 << " hours.\n";

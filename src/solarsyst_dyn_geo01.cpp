@@ -29071,7 +29071,7 @@ int merge_pairs3(const vector <hldet> &pairdets, vector <vector <long>> &indvecs
   // if any, containing each detection.
   for(i=0; i<detnum; i++) {
     istracklet=0; // Assume there is no tracklet unless one is confirmed to exist.
-    local_mintrkpts = double(image_overlap[pairdets[i].image])*trkfrac + 0.5;
+    local_mintrkpts = double(image_overlap[pairdets[i].image] + 1)*trkfrac + 0.5;
     if(local_mintrkpts < mintrkpts) local_mintrkpts = mintrkpts;
     if(long(indvecs[i].size()) >= local_mintrkpts-1 && long(indvecs[i].size())>=2) {
       // The above condition uses local_mintrkpts-1 because the root detection i
@@ -29453,7 +29453,7 @@ int merge_pairs3(const vector <hldet> &pairdets, vector <vector <long>> &indvecs
   // LOOP BACK FOR FINAL WRITING OF TRACKLETS WITH MORE THAN TWO POINTS
   for(i=long(ldivec.size()-1); i>=0; i--) {
     pdct = ldivec[i].index;
-    local_mintrkpts = double(image_overlap[pairdets[pdct].image])*trkfrac + 0.5;
+    local_mintrkpts = double(image_overlap[pairdets[pdct].image] + 1)*trkfrac + 0.5;
     if(local_mintrkpts < mintrkpts) local_mintrkpts = mintrkpts;
     // Load vectors for linear fitting
     if(long(indvecs2[pdct].size()) >= local_mintrkpts && indvecs2[pdct].size()>=3) {
@@ -29561,7 +29561,7 @@ int merge_pairs3(const vector <hldet> &pairdets, vector <vector <long>> &indvecs
   if(mintrkpts==2) {
     // Also write out pairs.
     for(i=0;i<detnum;i++) {
-      local_mintrkpts = double(image_overlap[pairdets[i].image])*trkfrac + 0.5;
+      local_mintrkpts = double(image_overlap[pairdets[i].image] + 1)*trkfrac + 0.5;
       if(local_mintrkpts < mintrkpts) local_mintrkpts = mintrkpts;
       if(indvecs[i].size()>0 && local_mintrkpts==2) {
 	for(j=0; j<long(indvecs[i].size()); j++) {
@@ -31986,7 +31986,7 @@ int make_tracklets6c(vector <hldet> &detvec, vector <hlimage> &image_log, MakeTr
 // config.use_lowmem=3  --- equivalent to config.use_lowmem=1 in make_tracklets6b
 int make_tracklets7(vector <hldet> &detvec, vector <hlimage> &image_log, MakeTrackletsConfig config, vector <hldet> &pairdets,vector <tracklet> &tracklets, vector <longpair> &trk2det)
 {
-  cout << "Inside make_tracklets8\n";
+  cout << "Inside make_tracklets7\n";
   long i=0;
   std::vector <longpair> pairvec;
   std::vector <vector <long>> indvecs;

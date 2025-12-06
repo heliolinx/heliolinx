@@ -1,16 +1,17 @@
-// November 26, 2026: helio_highgrade:
+// December 02, 2026: helio_highgrade:
 // Use some of the machinery of heliolinc to attempt to high-grade
 // an input data set, for later more efficient processing with the
-// full-scale version of heliolinc.
+// full-scale version of heliolinc. This new version avoids the
+// inefficient vector_insert operations.
 
 #include "solarsyst_dyn_geo01.h"
 #include "cmath"
 
 static void show_usage()
 {
-  cerr << "Usage: helio_highgrade -imgs imfile -pairdets paired detection file -tracklets tracklet file -trk2det tracklet-to-detection file -mjd mjdref -autorun 1=yes_auto-generate_MJDref -obspos observer_position_file -heliodist heliocentric_dist_vel_acc_file -clustrad clustrad -clustchangerad min_distance_for_cluster_scaling -npt dbscan_npt -mintimespan mintimespan -minobs min_unique_obs -mingeodist minimum_geocentric_distance -maxgeodist maximum_geocentric_distance -geologstep logarithmic_step_size_for_geocentric_distance_bins -mingeoobs min_geocentric_dist_at_observation(AU) -minimpactpar min_impact_parameter(km) -useunivar 1_for_univar_0_for_fgfunc -vinf max_v_inf  -outdets output detection file -verbose verbosity\n";
+  cerr << "Usage: helio_highgrade2 -imgs imfile -pairdets paired detection file -tracklets tracklet file -trk2det tracklet-to-detection file -mjd mjdref -autorun 1=yes_auto-generate_MJDref -obspos observer_position_file -heliodist heliocentric_dist_vel_acc_file -clustrad clustrad -clustchangerad min_distance_for_cluster_scaling -npt dbscan_npt -mintimespan mintimespan -minobs min_unique_obs -mingeodist minimum_geocentric_distance -maxgeodist maximum_geocentric_distance -geologstep logarithmic_step_size_for_geocentric_distance_bins -mingeoobs min_geocentric_dist_at_observation(AU) -minimpactpar min_impact_parameter(km) -useunivar 1_for_univar_0_for_fgfunc -vinf max_v_inf  -outdets output detection file -verbose verbosity\n";
   cerr << "\nor, at minimum:\n\n";
-  cerr << "helio_highgrade -imgs imfile -pairdets paired detection file -tracklets tracklet file -trk2det tracklet-to-detection file -heliodist heliocentric_dist_vel_acc_file\n\n";
+  cerr << "helio_highgrade2 -imgs imfile -pairdets paired detection file -tracklets tracklet file -trk2det tracklet-to-detection file -heliodist heliocentric_dist_vel_acc_file\n\n";
   cerr << "\nNote that the minimum invocation leaves some things set to defaults\n";
   cerr << "that you may well wish to specify: in particular, the output file names\n";
   
@@ -478,7 +479,7 @@ int main(int argc, char *argv[])
    return(1);
   }
   cout << "Read " << trk2det.size() << " data lines from trk2det file " << trk2detfile << "\n";
-  status=heliolinc_highgrade(image_log, detvec, tracklets, trk2det, radhyp, earthpos, config, minobsnum, outdets);
+  status=heliolinc_highgrade2(image_log, detvec, tracklets, trk2det, radhyp, earthpos, config, minobsnum, outdets);
   if(status!=0) {
     cerr << "ERROR: heliolinc_highgrade failed with status " << status << "\n";
     return(status);
