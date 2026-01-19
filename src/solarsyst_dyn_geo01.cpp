@@ -6551,6 +6551,14 @@ int planetpos02(double nowmjd, int polyorder, const vector <double> &planetmjd, 
     cerr << "ERROR: planetpos02 called with mjd " << nowmjd << " not within the " << planetmjd[0] << " to " << planetmjd[planetmjd.size()-1] << " of its input state vector ephemerides\n";
     return(2);
   }
+  // Handle trivial endpoint cases.
+  if(nowmjd==planetmjd[0]) {
+    outstatevecs=planet_statevecs[0];
+    return(0);
+  } else if(nowmjd==planetmjd[planetmjd.size()-1]) {
+    outstatevecs=planet_statevecs[planetmjd.size()-1];
+    return(0);
+  }
   
   // Identify the point pbf that is a bit before the specified
   // time nowmjd, and is the appropriate point to start the interpolation.
@@ -14975,10 +14983,16 @@ int vaneproj01d(point3d unitbary, point3d obsbary, double ecliplon, double min_p
   // 3a. Calculate dot-product of the sun-observer vector and the plane normal.
   //     This is the distance from the observer to the nearest point on the plane
   normaldist = dotprod3d(obsbary,plane_normvec);
-  if(!isnormal(normaldist)) return(-1); // Mainly this is to catch the case that the observer
-                                        // is already in the plane, in which case the
-                                        // dot product is exactly zero and fails the
-                                        // isnormal test.
+  if(!isnormal(normaldist)) {
+    cerr << "ERROR: vaneproj01d finds no real solution. Inputs: " << obsbary.x << " " << obsbary.y << " " << obsbary.z << " " << plane_normvec.x << " " << plane_normvec.y << " " << plane_normvec.z << " " << normaldist << "\n";
+    projbary = point3d(0.0l,0.0l,-10000.0l);
+    geodist = 10000.0;
+    return(-1); // Mainly this is to catch the case that the observer
+                // is already in the plane, in which case the
+                // dot product is exactly zero and fails the
+                // isnormal test.
+  }
+    
   // We define the vane such that it extends only one direction
   // in ecliptic longitude ecliplon, not additionally on the
   // other side of the sun at ecliplon + 180 deg.
@@ -15001,6 +15015,9 @@ int vaneproj01d(point3d unitbary, point3d obsbary, double ecliplon, double min_p
   rightside = dotprod3d(unitbary,vaneearth);
   if(!isnormal(rightside) || rightside<=0.0l) {
     // The observational unit vector can never intersect the vane.
+    cerr << "ERROR: vaneproj01d finds no real solution. Inputs: " << unitbary.x << " " << unitbary.y << " " << unitbary.z << " " << vaneearth.x << " " << vaneearth.y << " " << vaneearth.z << " " << rightside << "\n";
+    projbary = point3d(0.0l,0.0l,-10000.0l);
+    geodist = 10000.0;
     return(-1);
   }
     
@@ -15019,6 +15036,8 @@ int vaneproj01d(point3d unitbary, point3d obsbary, double ecliplon, double min_p
   // A reason NOT to use the above z-excluding formulation is that it allows 
   // very large heliocentric distances near the ecliptic pole.
   if(!isnormal(normdot1) || normdot1<min_proj_sine) {
+    projbary = point3d(0.0l,0.0l,-10000.0l);
+    geodist = 10000.0;
     // Observer was looking away from the vane (if normdot1 < 0),
     // or the observational line of sight intersected the vane
     // at too shallow an angle (if normdot1 < min_proj_sine).
@@ -45472,6 +45491,7 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
   double wresid = 0.0l;
   int badcluster=0;
   double min_proj_sine = 0.0l; // This could be a bit dangerous, might want to set it to 0.1 or something.
+  int kepfail=0;
   
   make_ivec(detnum, detusedvec); // All the entries are guaranteed to be 0.
 
@@ -45611,7 +45631,8 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
 	// CHECK FOR UNPHYSICAL AND UNBOUND CASES
 	if(tanvel<0.0l) {
 	  cerr << fixed << setprecision(6) << "ERROR: hypothesis point " << heliodist << ", " << heliovel*SOLARDAY/AU_KM << ", " << -helioacc/1000.0l/localg << " is not possible for any trajectory\n";
-	  return(1);
+	  // return(1);
+	  continue;
 	}
 	if(vesc < tanvel + LDSQUARE(heliovel/SOLARDAY)) {
 	  cout << fixed << setprecision(6) << "NOTE: hypothesis point " << heliodist << ", " << heliovel*SOLARDAY/AU_KM << ", " << -helioacc/1000.0l/localg << " implies an unbound orbit.\n";
@@ -45626,14 +45647,20 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
 	startvel = point3d(heliovel,tanvel,0l);
 	endpos = point3d(0l,0l,0l);
 	endvel = point3d(0l,0l,0l);
+	kepfail=0;
 	for(ptct=0; ptct<ptnum; ptct++) {
 	  // Integrate the orbit to find the heliocentric distance as a function of time.
 	  status1 = Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, clusterdets[ptct].MJD, endpos, endvel, config.verbose);
 	  if(status1!=0) {
-	    cerr << "ERROR: Keplerian integration failed for r(t) hypothesis point " <<  heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << ", at MJD = " << clusterdets[ptct].MJD << "\n";
-	    return(status1);
+	    cerr << "ERROR: Keplerian integration failed for cluster " << inclustct << " at r(t) hypothesis point " <<  heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << ", at MJD = " << clusterdets[ptct].MJD << "\n";
+	    kepfail=1;
+	    // return(status1);
 	  }
 	  heliodistvec.push_back(vecabs3d(endpos));
+	}
+	if(kepfail!=0) {
+	  // Skip to the next cluster
+	  continue;
 	}
       } else {
 	// Default case: use the old reference MJD, and Matt Holman's new Keplerian r(t)
@@ -45647,7 +45674,8 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
 	// CHECK FOR UNPHYSICAL AND UNBOUND CASES
 	if(tanvel<0.0l) {
 	  cerr << fixed << setprecision(6) << "ERROR: hypothesis point " << heliodist << ", " << heliovel*SOLARDAY/AU_KM << ", " << -helioacc/1000.0l/localg << " is not possible for any trajectory\n";
-	  return(1);
+	  //return(1);
+	  continue;
 	}
 	if(vesc < tanvel + LDSQUARE(heliovel/SOLARDAY)) {
 	  cout << fixed << setprecision(6) << "NOTE: hypothesis point " << heliodist << ", " << heliovel*SOLARDAY/AU_KM << ", " << -helioacc/1000.0l/localg << " implies an unbound orbit.\n";
@@ -45662,16 +45690,19 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
 	startvel = point3d(heliovel,tanvel,0l);
 	endpos = point3d(0l,0l,0l);
 	endvel = point3d(0l,0l,0l);
+	kepfail=0;
 	for(ptct=0; ptct<ptnum; ptct++) {
 	  // Integrate the orbit to find the heliocentric distance as a function of time.
 	  status1 = Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, clusterdets[ptct].MJD, endpos, endvel, config.verbose);
-	  if(status1!=0) {
+	  if(status1==0) heliodistvec.push_back(vecabs3d(endpos));
+	  else {
 	    cerr << "ERROR: Keplerian integration failed for r(t) hypothesis point " <<  heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << ", at MJD = " << clusterdets[ptct].MJD << "\n";
-	    return(status1);
+	    //return(status1);
+	    kepfail=1;
 	  }
-	  //delta1 = (clusterdets[ptct].MJD - onecluster.reference_MJD)*SOLARDAY;
-	  //cout << "Dist Comp, MJD = " << clusterdets[ptct].MJD << " and dists: " << heliodist*AU_KM + heliovel*delta1 + 0.5*helioacc*delta1*delta1/1000.0l << " vs. " << vecabs3d(endpos) << "\n";
-	  heliodistvec.push_back(vecabs3d(endpos));
+	}
+	if(kepfail!=0) {
+	  continue;
 	}
       }
 	
@@ -45694,14 +45725,15 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
 	targposvec={};
 	deltavec={};
 	status = helioproj02(unitbary,observernow,heliodistvec[ptct], deltavec, targposvec);
-	if(status!=1 && status!=2) {
+	if(status==1 || status==2) {
+	  heliopos1.push_back(targposvec[0]);
+	  if(status==2) heliopos2.push_back(targposvec[1]);
+	} else {
 	  cerr << "ERROR: in link_planarity, helioproj02 returns error code " << status << "\n";
 	  //return(status);
 	  // Push through this error rather than returning; hopefully the dummy
 	  // values set in helioproj will cause the point to be rejected.
 	}
-	heliopos1.push_back(targposvec[0]);
-	if(status==2) heliopos2.push_back(targposvec[1]);
       }
       if(long(heliopos1.size())!=ptnum) {
 	cerr << "ERROR: in link_planarity heliolinc branch, of " << ptnum << " input point, only " << heliopos1.size() << " were successfully projected\n";
@@ -45755,22 +45787,23 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
 	targposvec={};
 	deltavec={};
 	status = vaneproj01d(unitbary,observernow,lambdavec[ptct],min_proj_sine,deltavec[0],targposvec[0]);
-	if(status!=1 && status!=2) {
+	if(status==0) heliopos1.push_back(targposvec[0]);
+	else {
 	  cerr << "ERROR: in link_planarity, vaneproj01d returns error code " << status << "\n";
-	  return(status);
+	  //return(status);
 	}
-	heliopos1.push_back(targposvec[0]);
       }
       if(long(heliopos1.size())!=ptnum) {
 	cerr << "ERROR: in link_planarity heliovane branch, of " << ptnum << " input point, only " << heliopos1.size() << " were successfully projected\n";
-	return(3);
+	//return(3);
       }
     }
     // Further processing does not care if we started with heliolinc or heliovane.
     status = planepolefind(heliopos1,polepos);
     if(status!=0) {
       cerr << "ERROR: in link_planarity, planepolefind returns error code " << status << "\n";
-      return(status);
+      //return(status);
+      continue;
     }
     normout1 = 0.0l;
     planeout1 = {};
@@ -45787,20 +45820,22 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
       // This is possible with heliolinc (though not heliovane), for objects
       // inside Earth's orbit. Handle the other case too.
       status = planepolefind(heliopos2,polepos);
-      if(status!=0) {
-	cerr << "ERROR: in link_planarity, planepolefind returns error code " << status << "\n";
-	return(status);
-      }
-      normout2 = 0.0l;
-      planeout2 = {};
-      for(ptct=0; ptct<ptnum; ptct++) {
+      if(status==0) {
+	normout2 = 0.0l;
+	planeout2 = {};
+	for(ptct=0; ptct<ptnum; ptct++) {
 	// Calculate and store the absolute deviation of this point from the plane, in km.
-	planeout2.push_back(fabs(dotprod3d(heliopos2[ptct],polepos)));
-	// Squared deviation, scaled by heliocentric distance, normalized to 1 AU.
-	normout2 += DSQUARE(planeout2[ptct]*AU_KM/vecabs3d(heliopos2[ptct]));
+	  planeout2.push_back(fabs(dotprod3d(heliopos2[ptct],polepos)));
+	  // Squared deviation, scaled by heliocentric distance, normalized to 1 AU.
+	  normout2 += DSQUARE(planeout2[ptct]*AU_KM/vecabs3d(heliopos2[ptct]));
+	}
+	// Calculate RMS deviation from planarity, scaled to a heliocentric distance
+	normout2 = sqrt(normout2/double(ptnum));
+      } else {
+	// No valid pole for the second solution. Set normout2 very large so it gets ignored.
+	normout2 = LARGERR2;
+	cerr << "ERROR: in link_planarity case2, planepolefind returns error code " << status << "\n";
       }
-      // Calculate RMS deviation from planarity, scaled to a heliocentric distance
-      normout2 = sqrt(normout2/double(ptnum));
     }
     // Now normout2<normout1 means the second case is better.
     // planeout vectors contain out-of-plane estimates
@@ -45904,7 +45939,9 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
 	status = planepolefind(heliopos1,polepos);
 	if(status!=0) {
 	  cerr << "ERROR: in link_planarity, planepolefind returns error code " << status << "\n";
-	  return(status);
+	  badcluster=1;
+	  break; // Cluster has been marked as bad since it cannot be processed: break out of the while loop.
+	  //return(status);
 	}
 	normout1 = 0.0l;
 	planeout1 = {};
@@ -45921,20 +45958,22 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
 	  // This is possible with heliolinc (though not heliovane), for objects
 	  // inside Earth's orbit. Handle the other case too.
 	  status = planepolefind(heliopos2,polepos);
-	  if(status!=0) {
-	    cerr << "ERROR: in link_planarity, planepolefind returns error code " << status << "\n";
-	    return(status);
+	  if(status==0) {
+	    normout2 = 0.0l;
+	    planeout2 = {};
+	    for(ptct=0; ptct<ptnum; ptct++) {
+	      // Calculate and store the absolute deviation of this point from the plane, in km.
+	      planeout2.push_back(fabs(dotprod3d(heliopos2[ptct],polepos)));
+	      // Squared deviation, scaled by heliocentric distance, normalized to 1 AU.
+	      normout2 += DSQUARE(planeout2[ptct]*AU_KM/vecabs3d(heliopos2[ptct]));
+	    }
+	    // Calculate RMS deviation from planarity, scaled to a heliocentric distance
+	    normout2 = sqrt(normout1/double(ptnum));
+	  } else {
+	    // No valid pole for the second solution. Set normout2 very large so it gets ignored.
+	    normout2 = LARGERR2;
+	    cerr << "ERROR: in link_planarity case2, planepolefind returns error code " << status << "\n";
 	  }
-	  normout2 = 0.0l;
-	  planeout2 = {};
-	  for(ptct=0; ptct<ptnum; ptct++) {
-	    // Calculate and store the absolute deviation of this point from the plane, in km.
-	    planeout2.push_back(fabs(dotprod3d(heliopos2[ptct],polepos)));
-	    // Squared deviation, scaled by heliocentric distance, normalized to 1 AU.
-	    normout2 += DSQUARE(planeout2[ptct]*AU_KM/vecabs3d(heliopos2[ptct]));
-	  }
-	  // Calculate RMS deviation from planarity, scaled to a heliocentric distance
-	  normout2 = sqrt(normout1/double(ptnum));
 	}
 	if(normout1<=config.max_oop || (bothcases==1 && normout2<=config.max_oop)) {
 	  // This cluster passes the planarity check
@@ -53577,6 +53616,7 @@ int integrate_everhart02(int planetnum, const vector <double> &planetmjd, const 
   long i,j,k;
   i=j=k=0;
   int outnum = round(planetmjd[endpoint] - planetmjd[startpoint])+1;
+  cout << "integrate_everhart02, outnum = " << outnum << "\n";
   double dt0=0L;
   double mjd0;
   double mjdnow;
@@ -53612,6 +53652,7 @@ int integrate_everhart02(int planetnum, const vector <double> &planetmjd, const 
   }
   // Allocate the output vectors
   make_dvec(outnum, outMJD);
+  cout << "Allocating vector outMJD with size " << outnum << "\n";
   make_dmat(outnum, 6, targ_statevecs);
   // Load outMJD with the actual output times
   for(i=0;i<outnum;i++) outMJD[i] = planetmjd[startpoint] + static_cast<double>(i);
@@ -53892,7 +53933,11 @@ int integrate_everhart02(int planetnum, const vector <double> &planetmjd, const 
     }
     
     // Load output position and velocity spanning the latest timestep
+    //cout << "Launching problem loop: outct, outnum, mjd0, timestep = " << outct << " " << outnum << " " << mjd0 << " " << timestep << "\n";
+    //cout << "outMJD[outct] = " << outMJD[outct] << "\n";
     while(outMJD[outct] <= mjd0+timestep && outct<outnum) {
+      //cout << "Iterating problem loop: outct, outnum, mjd0, timestep = " << outct << " " << outnum << " " << mjd0 << " " << timestep << "\n";
+      //cout << "outMJD[outct] = " << outMJD[outct] << "\n";
       dt0 = (outMJD[outct] - mjd0)/timeunit;
       for(k=0;k<3;k++) targ_statevecs[outct][k] = targpos[1][k] + targvel[1][k]*dt0 + F[1][k]*dt0*dt0/2.0l;
       for(k=0;k<3;k++) targ_statevecs[outct][3+k] = targvel[1][k] + F[1][k]*dt0;
@@ -55580,3 +55625,262 @@ double everchi01(int planetnum, const vector <double> &planetmasses, const vecto
 
 #undef DEBUG
 #undef TIMEDOWNSCALE
+
+// packepoch2MJD: January 07, 2026:
+// Convert a packed epoch designation from MPCORB.DAT into
+// an MJD value.
+int packepoch2MJD(string epochstring, double &mjd)
+{
+  string stest;
+  int i, year, month, iday, iy;
+  i = year = month = iday = iy = 0;
+  double day = 0.0;
+  int extradaydig=0;
+  double extraday = 0.0;
+
+  if(epochstring.size()<5) {
+    cerr << "Error: epoch string " << epochstring << " is too short to convert to a valid MJD\n";
+    return(1);
+  }
+
+  if(epochstring[0]=='I') year=1800;
+  else if(epochstring[0]=='J') year=1900;
+  else if(epochstring[0]=='K') year=2000;
+  else {
+    cerr << "Error: first character of epoch string " << epochstring << " is incorrect (must be I, J, or K)\n";
+    return(2);
+  }
+  stest = epochstring.substr(1,2);
+  iy = stoi(stest);
+  if(iy<0 || iy>99) {
+    cerr << "Error: could not convert second and third digits of epoch string " << epochstring << " into a valid calendar year\n";
+    cerr << "Failing substring was " << stest << "\n";
+    return(3);
+  }
+  year += iy;
+  if(epochstring[3]=='1') month=1;
+  else if(epochstring[3]=='2') month=2;
+  else if(epochstring[3]=='3') month=3;
+  else if(epochstring[3]=='4') month=4;
+  else if(epochstring[3]=='5') month=5;
+  else if(epochstring[3]=='6') month=6;
+  else if(epochstring[3]=='7') month=7;
+  else if(epochstring[3]=='8') month=8;
+  else if(epochstring[3]=='9') month=9;
+  else if(epochstring[3]=='A') month=10;
+  else if(epochstring[3]=='B') month=11;
+  else if(epochstring[3]=='C') month=12;
+  else {
+    cerr << "Error: fourth character of epoch string " << epochstring << " is invalid (must be 1-9 or A, B, or C)\n";
+    return(4);
+  }
+  
+  if(epochstring[4]=='1') day=1;
+  else if(epochstring[4]=='2') day=2;
+  else if(epochstring[4]=='3') day=3;
+  else if(epochstring[4]=='4') day=4;
+  else if(epochstring[4]=='5') day=5;
+  else if(epochstring[4]=='6') day=6;
+  else if(epochstring[4]=='7') day=7;
+  else if(epochstring[4]=='8') day=8;
+  else if(epochstring[4]=='9') day=9;
+  else if(epochstring[4]=='A') day=10;
+  else if(epochstring[4]=='B') day=11;
+  else if(epochstring[4]=='C') day=12;
+  else if(epochstring[4]=='D') day=13;
+  else if(epochstring[4]=='E') day=14;
+  else if(epochstring[4]=='F') day=15;
+  else if(epochstring[4]=='G') day=16;
+  else if(epochstring[4]=='H') day=17;
+  else if(epochstring[4]=='I') day=18;
+  else if(epochstring[4]=='J') day=19;
+  else if(epochstring[4]=='K') day=20;
+  else if(epochstring[4]=='L') day=21;
+  else if(epochstring[4]=='M') day=22;
+  else if(epochstring[4]=='N') day=23;
+  else if(epochstring[4]=='O') day=24;
+  else if(epochstring[4]=='P') day=25;
+  else if(epochstring[4]=='Q') day=26;
+  else if(epochstring[4]=='R') day=27;
+  else if(epochstring[4]=='S') day=28;
+  else if(epochstring[4]=='T') day=29;
+  else if(epochstring[4]=='U') day=30;
+  else if(epochstring[4]=='V') day=31;
+  else {
+    cerr << "Error: fifth character of epoch string " << epochstring << " is invalid\n";
+    cerr << "It should be a digit from 1-9, or a capital letter from A-V\n";
+    return(5);
+  }
+
+  if(epochstring.size()>5) {
+    extradaydig = epochstring.size()-5;
+    stest = epochstring.substr(5,extradaydig);
+    extraday = stod(stest);
+    for(i=0;i<extradaydig;i++) extraday/=10.0;
+    day += extraday;
+  }
+  
+  mjd = MPCcal2MJD(year, month, day);
+  return(0);
+}
+
+// heliojul01: January 12, 2026: Adapted from the April 25, 2016
+// function heliojul02 (in oholiab.c). Given the MJD, and the RA and Dec
+// of a celestial object in degrees, calculate and return the
+// correction from Julian day to heliocentric Julian day, in units
+// of days, using approximate formulae from the Astronomical Almanac
+// to calculate the position of the Sun. These formulae are supposed
+// to be accurate to 1 arcminute and 0.0003 AU from 1950 through 2050.
+
+// NOTE WELL: The Astronomical Almanac formulae for the approximate
+// celestial coordinates of the Sun give their result in epoch-of-date
+// coordinates. It then needs to be de-precessed to J2000.0 in order
+// to compare with J2000.0 object coords. The current program does this.
+
+// Usage: to convert MJD to HMJD, use
+// HMJD = MJD + heliojul02(MJD,RA,Dec);
+double heliojul01(double MJD,double RA, double Dec)
+{
+  double ndays;
+  double L,g,lambda,epsilon,R;
+  double sunra,sundec,holdra,holddec;
+  double almanac_t;
+  double suncomp,heliocor;
+  int precesscon;
+  vector <double> sunvec;
+  vector <double> obsvec;
+  make_dvec(3,sunvec);
+  make_dvec(3,obsvec);
+
+  ndays = MJD - 51544.5; /*as defined by the astronomical almanac*/
+  
+  L = 280.460 + 0.9856474*ndays; /*Mean longitude for the Sun*/
+  g = 357.528 + 0.9856003*ndays; /*Mean anomaly for the Sun*/
+
+  /*Unwrap solar angles*/
+  while(g >= 360.0)
+    {
+      g-=360.0;
+    }
+  while(L >= 360.0)
+    {
+      L-=360.0;
+    }
+
+  /*Calculate the Sun's ecliptic longitude*/
+  lambda = L + 1.915*sin(g*M_PI/180.0) + 0.020*sin(g*M_PI/90.0);
+  /*Obliquity of the ecliptic*/
+  epsilon = 23.439 - 0.0000004*ndays;
+
+  /*Convert to celestial coordinates*/
+  almanac_t = DSQUARE(tan(epsilon/DEGPRAD/2.0));
+
+  sunra = lambda - DEGPRAD*almanac_t*sin(2.0*lambda/DEGPRAD) + (DEGPRAD/2.0)*DSQUARE(almanac_t)*sin(4.0*lambda/DEGPRAD);
+  sundec = DEGPRAD*asin(sin(epsilon/DEGPRAD)*sin(lambda/DEGPRAD));
+
+  /*DE-PRECESS THESE FROM EPOCH-OF-DATE TO EQUINOX 2000.0*/
+  /*precess01: Given J2000.0 RA and DEC in radians, and the 
+    integer number of days it has been since 00:00 UT on 
+    Jan 1, 2000.  If precesscon is 1, precesses RA and DEC 
+    to the epoch of date using formulae from the 2007 
+    Astronomical Almanac, and outputs these values in radians.
+    If precesscon is -1, deprecesses the input ra and dec
+    from the epoch of data to J2000.0.*/
+  /*printf("Epoch of date Sun coords:\n");
+    printf("%f\t%f\n",sunra,sundec);*/
+  holdra = sunra/DEGPRAD;
+  holddec = sundec/DEGPRAD;
+  precesscon=-1;
+  precess01a(holdra,holddec,MJD,&sunra,&sundec,precesscon);
+  sunra*=DEGPRAD;
+  sundec*=DEGPRAD;
+
+  /*printf("J2000.0 coordinates of the Sun:\n%f\t%f\n",sunra,sundec);*/
+
+  /*Calculate instantaneous distance from Earth to the Sun*/
+  R = 1.00014 - 0.01671*cos(g*M_PI/180.0) - 0.00014*cos(g*M_PI/90.0);
+  /*printf("R = %f\n",R);*/
+
+  /*printf("Sun vs object coords:\n");
+    printf("%f\t%f\n%f\t%f\n",sunra,sundec,RA,Dec);*/
+
+  /*Calculate unit vector for observation*/
+  obsvec[0] = cos(Dec/DEGPRAD)*cos(RA/DEGPRAD);
+  obsvec[1] = cos(Dec/DEGPRAD)*sin(RA/DEGPRAD);
+  obsvec[2] = sin(Dec/DEGPRAD);
+
+  /*Calculate physical vector for the Sun*/
+  sunvec[0] = R*cos(sundec/DEGPRAD)*cos(sunra/DEGPRAD);
+  sunvec[1] = R*cos(sundec/DEGPRAD)*sin(sunra/DEGPRAD);
+  sunvec[2] = R*sin(sundec/DEGPRAD);
+
+  /*Find component of Sun position that lies along observed vector*/
+  suncomp = nvecdotprod(obsvec,sunvec);
+
+  /*Now, if the target is in the direction of the Sun, its light will
+    reach the Sun before it reaches Earth, so we want to subtract
+    from the observed MJD to get heliocentric MJD. Thus, if suncomp
+    is positive, the correction should be negative.*/
+
+  heliocor = -suncomp/CLIGHT_AUDAY; /*Heliocentric time correction in days*/
+
+  return(heliocor);
+}
+
+
+// sunradec_approx01: January 12, 2026: Adapted from the April 25, 2016
+// function heliojul02 (in oholiab.c). Given the MJD, calculate the
+// approximate J2000.0 RA and Dec of the sun. Uses formulae from the
+// Astronomical Almanac, supposed to be good to about one arcminute.
+int sunradec_approx01(double MJD,double &sunra, double &sundec)
+{
+  double ndays;
+  double L,g,lambda,epsilon;
+  double holdra,holddec,newra,newdec;
+  double almanac_t;
+  int precesscon;
+
+  ndays = MJD - 51544.5; /*as defined by the astronomical almanac*/
+  
+  L = 280.460 + 0.9856474*ndays; /*Mean longitude for the Sun*/
+  g = 357.528 + 0.9856003*ndays; /*Mean anomaly for the Sun*/
+
+  /*Unwrap solar angles*/
+  while(g >= 360.0)
+    {
+      g-=360.0;
+    }
+  while(L >= 360.0)
+    {
+      L-=360.0;
+    }
+
+  /*Calculate the Sun's ecliptic longitude*/
+  lambda = L + 1.915*sin(g*M_PI/180.0) + 0.020*sin(g*M_PI/90.0);
+  /*Obliquity of the ecliptic*/
+  epsilon = 23.439 - 0.0000004*ndays;
+
+  /*Convert to celestial coordinates*/
+  almanac_t = DSQUARE(tan(epsilon/DEGPRAD/2.0));
+
+  sunra = lambda - DEGPRAD*almanac_t*sin(2.0*lambda/DEGPRAD) + (DEGPRAD/2.0)*DSQUARE(almanac_t)*sin(4.0*lambda/DEGPRAD);
+  sundec = DEGPRAD*asin(sin(epsilon/DEGPRAD)*sin(lambda/DEGPRAD));
+
+  /*DE-PRECESS THESE FROM EPOCH-OF-DATE TO EQUINOX 2000.0*/
+  /*precess01: Given J2000.0 RA and DEC in radians, and the 
+    integer number of days it has been since 00:00 UT on 
+    Jan 1, 2000.  If precesscon is 1, precesses RA and DEC 
+    to the epoch of date using formulae from the 2007 
+    Astronomical Almanac, and outputs these values in radians.
+    If precesscon is -1, deprecesses the input ra and dec
+    from the epoch of data to J2000.0.*/
+  /*printf("Epoch of date Sun coords:\n");
+    printf("%f\t%f\n",sunra,sundec);*/
+  holdra = sunra/DEGPRAD;
+  holddec = sundec/DEGPRAD;
+  precesscon=-1;
+  precess01a(holdra,holddec,MJD,&newra,&newdec,precesscon);
+  sunra = newra*DEGPRAD;
+  sundec = newdec*DEGPRAD;
+  return(0);
+}
