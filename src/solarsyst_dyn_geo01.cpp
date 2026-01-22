@@ -2963,7 +2963,7 @@ int kdrange_6i01(const vector <KD_point6ix2> &kdvec, const point6ix2 &querypoint
   long checknum=0;
 
   indexvec={}; // Wipe output vector, just to be safe.
-  
+
   while(notdone>0) {
     // Climb to the top of the k-d tree, keeping track
     // of potentially interesting unexplored branches
@@ -7597,7 +7597,7 @@ int helioproj02(point3d unitbary, point3d obsbary, double heliodist, vector <dou
       // has no physical solution: the vector unitbary has no intersection
       // with the heliocentric sphere of radius heliodist in the positive direction.
       // Load dummy values, exit with an error code
-      cerr << "ERROR: helioproj02 finds no real solution. Inputs: " << unitbary.x << " " << unitbary.y << " " << unitbary.z << " " << obsbary.x << " " << obsbary.y << " " << obsbary.z << " " << heliodist << "\n";
+      // cerr << "ERROR: helioproj02 finds no real solution. Inputs: " << unitbary.x << " " << unitbary.y << " " << unitbary.z << " " << obsbary.x << " " << obsbary.y << " " << obsbary.z << " " << heliodist << "\n";
       barypos = point3d(0.0l,0.0l,-10000.0l);
       projbary.push_back(barypos);
       geodist.push_back(10000.0);
@@ -7610,7 +7610,7 @@ int helioproj02(point3d unitbary, point3d obsbary, double heliodist, vector <dou
     // sphere. Most likely, the heliocentric sphere lies
     // entirely inside the vector from Earth.
     // Load dummy values, exit with an error code
-    cerr << "ERROR: helioproj02 finds no real solution. Inputs: " << unitbary.x << " " << unitbary.y << " " << unitbary.z << " " << obsbary.x << " " << obsbary.y << " " << obsbary.z << " " << heliodist << "\n";
+    // cerr << "ERROR: helioproj02 finds no real solution. Inputs: " << unitbary.x << " " << unitbary.y << " " << unitbary.z << " " << obsbary.x << " " << obsbary.y << " " << obsbary.z << " " << heliodist << "\n";
     barypos = point3d(0.0l,0.0l,-10000.0l);
     projbary.push_back(barypos);
     geodist.push_back(10000.0);
