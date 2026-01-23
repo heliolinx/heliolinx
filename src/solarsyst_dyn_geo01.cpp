@@ -18773,7 +18773,7 @@ double Hergetfit_vstarSV(double geodist1, double geodist2, double simplex_scale,
   // Note that the output vectors fitRA, fitDec, and resid are null-wiped
   // internally, so it isn't necessary to wipe them here.
   for(i=0;i<3;i++) {
-    cout << "Calling Hergetchi_vstar with distances " << simplex[i][0] << " " << simplex[i][1] << " : ";
+    if(verbose>=2) cout << "Calling Hergetchi_vstar with distances " << simplex[i][0] << " " << simplex[i][1] << " : ";
     simpchi[i] = Hergetchi_vstarSV(simplex[i][0], simplex[i][1], Hergetpoint1, Hergetpoint2, observerpos, obsMJD, obsRA, obsDec, sigastrom, fitRA, fitDec, resid, out_statevec, stateMJD, verbose);
     if(simpchi[i]>=LARGERR3) {
       cerr << "WARNING: Hergetchi_vstarSV() returned error code on simplex point " << i << ": " << simplex[i][0] << ", " << simplex[i][1] << "\n";
@@ -55426,7 +55426,7 @@ int evertrace01(int planetnum, const vector <double> &planetmasses, const vector
 
   if(verbose>0) cout << "Launching obsint_vareq01()\n";
   iterct=0;
-  while(astromrms>astromRMSthresh && chichange>minchichange && iterct<maxiter) {
+  while(iterct<2 || (astromrms>astromRMSthresh && chichange>minchichange && iterct<maxiter)) { // Force it to iterate at least once
     if(verbose>0) cout << "Iteration " << iterct <<"\n";
     status = obsint_vareq01(planetnum, planetmasses, planet_backward_mjd, planet_backward_statevecs, planet_forward_mjd, planet_forward_statevecs, out_statevec, mjdstart, mjdref, mjdend, obsTDB, targ_statevecs, vareq_mat, timestep, hnum, hspace, verbose);
     if(status!=0) {
@@ -55471,10 +55471,10 @@ int evertrace01(int planetnum, const vector <double> &planetmasses, const vector
       resid_B[2*obsct+1] = obsDec[obsct] - fitDec[obsct];
       dist = 3600.0*distradec01(obsRA[obsct],obsDec[obsct],fitRA[obsct],fitDec[obsct]);
       astromrms += dist*dist;
-      chisq += intpowD((dist/sigastrom[obsct]),2);
+      chisq += DSQUARE(dist/sigastrom[obsct]);
       if(verbose>0) cout << fixed << setprecision(4) << "Residvec " << obsct << " " << resid_B[2*obsct]*3600.0 << " " << resid_B[2*obsct+1]*3600.0 << "\n";
     }
-    astromrms = sqrt(astromrms/(double)obsnum);
+    astromrms = sqrt(astromrms/double(obsnum));
     if(!isnormal(astromrms)) {
       cerr << "ERROR: evertrace01 finds non-normal astromrms " << astromrms << " on iteration " << iterct << "\n";
       return(3);
@@ -55491,7 +55491,7 @@ int evertrace01(int planetnum, const vector <double> &planetmasses, const vector
       chichange = fabs(chichange);
     }
     chichange/=chisq;
-    if(astromrms>astromRMSthresh && chichange>minchichange && iterct<maxiter) {
+    if(iterct<2 || (astromrms>astromRMSthresh && chichange>minchichange && iterct<maxiter)) {
       // Convergence criteria not met: calculate correction for the next iteration.
       // Calculate the matrix A. First index is rows (2*obsnum), second is columns (6)
       make_dmat(2*obsnum,6,Aobs_mat);

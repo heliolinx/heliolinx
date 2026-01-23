@@ -164,7 +164,7 @@ using namespace std;
 #define REF_GEODIST 1.0 // Value of geocentric distance to which the user-defined
                              // clustering radius is normalized (AU). In general, the
                              // clustering radius is scaled linearly with geocentric distance.
-#define NIGHTSTEP 0.3 // Minimum interval in days between successive points
+#define NIGHTSTEP 0.6 // Minimum interval in days between successive points
                            // in a tracklet, to enable them to be counted as being
                            // on separate nights.
 #define EPH_INTERP_POLYORDER 5 // Order of polynomial for interpolating JPL ephemerides.
