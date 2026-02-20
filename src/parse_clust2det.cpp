@@ -37,7 +37,7 @@ int main(int argc, char *argv[])
   vector <double> magvec;
   double min_nightstep,max_nightstep;
   long tracknum=0;
-  double nightstep = 3.0l/24.0l;
+  double nightstep = NIGHTSTEP;
   string pairdetfile,stest;
   ifstream instream1;
   ofstream outstream1;

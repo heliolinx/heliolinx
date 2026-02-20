@@ -3902,7 +3902,10 @@ int get_csv_string01(const string &lnfromfile, string &outstring, int startpoint
     i++;
   }
   if(outstring.size() > 0) return(i-1); // Worked fine.
-  else return(-1); // Error code
+  else {
+    cerr << "WARNING: get_csv_string01 had read a string of zero length\n";
+    return(i-1);
+  }
 }
 
 // get_sv_string01: Given a line read from a file with values
@@ -18766,9 +18769,9 @@ double Hergetfit_vstarSV(double geodist1, double geodist2, double simplex_scale,
     }
   }
 
-  cout << "Initializing simpchi\n";
+  if(verbose>0) cout << "Initializing simpchi\n";
   for(i=0;i<3;i++) simpchi[i]=LARGERR3;
-  cout << "simpchi initialized\n";
+  if(verbose>0) cout << "simpchi initialized\n";
   // Calculate chi-square values for each point in the initial simplex
   // Note that the output vectors fitRA, fitDec, and resid are null-wiped
   // internally, so it isn't necessary to wipe them here.
@@ -36592,6 +36595,7 @@ int highgrade_kdpairs(const vector <point6ix2> &allstatevecs, const vector <hlde
   long kdnum,kdct,clustptct;
   kdnum=kdct=clustptct=0;
   vector <long> linkdet_temp;
+  long detnum = detvec.size();
 
   // Loop over geocentric bins, selecting the subset of state-vectors
   // in each bin, and running the k-d range query only on those, 
@@ -36608,6 +36612,7 @@ int highgrade_kdpairs(const vector <point6ix2> &allstatevecs, const vector <hlde
   } else georadnum = ceil(dgnum)+1;
 
   georadct = 0;
+  linkdet_temp = {};
   while(georadcen<=maxgeodist && georadct<=georadnum) {
     georadct++;
     georadcen = mingeodist*intpowD(geologstep,georadct-1);
@@ -36716,6 +36721,7 @@ int highgrade_kdpairs(const vector <point6ix2> &allstatevecs, const vector <hlde
     }
     // Close loop over bins in geocentric distance.
   }
+  
   // Sort vector of detection indices
   sort(linkdet_temp.begin(), linkdet_temp.end());
   // Cull out duplicate entries in linkdet_temp
@@ -36724,7 +36730,13 @@ int highgrade_kdpairs(const vector <point6ix2> &allstatevecs, const vector <hlde
   linkdet_indices.push_back(linkdet_temp[0]);
   for(i=1; i<long(linkdet_temp.size()); i++) {
     j = linkdet_indices.size()-1;
-    if(linkdet_temp[i] != linkdet_indices[j]) linkdet_indices.push_back(linkdet_temp[i]);
+    //if(linkdet_temp[i] != linkdet_indices[j]) linkdet_indices.push_back(linkdet_temp[i]);
+    if(linkdet_temp[i] != linkdet_indices[j]) {
+      linkdet_indices.push_back(linkdet_temp[i]);
+      if(linkdet_temp[i]<0 || linkdet_temp[i]>=detnum) {
+	cout << "ERROR: loading out-of-range index linkdet_temp[" << i<< "] = " << linkdet_temp[i] << ", detnum, linkdet_indices.size = " << detnum << " " << linkdet_indices.size() << "\n";
+      }
+    }
   }
   return(0);
 }
@@ -42094,7 +42106,8 @@ int heliolinc_highgrade2(const vector <hlimage> &image_log, const vector <hldet>
   long trk2detnum = trk2det.size();
   long accelnum = radhyp.size();
   long accelct=0;
-
+  long detnum = detvec.size();
+  
   vector <double> heliodist;
   vector <double> heliovel;
   vector <double> helioacc;
@@ -42238,7 +42251,7 @@ int heliolinc_highgrade2(const vector <hlimage> &image_log, const vector <hldet>
     if(linkdet_indices.size()<=0) linkdet_indices = linkdet_temp;
     else {
       // Append all the elements of the old vector onto the new
-      for(i=0;i<=long(linkdet_indices.size());i++) linkdet_temp.push_back(linkdet_indices[i]);
+      for(i=0;i<long(linkdet_indices.size());i++) linkdet_temp.push_back(linkdet_indices[i]); // Fixed a bug on this line 2026 Feb 19: <= should have been <
       // Sort the newly extended linkdet_temp vector
       sort(linkdet_temp.begin(), linkdet_temp.end());
       // Wipe the master vector
@@ -42247,17 +42260,26 @@ int heliolinc_highgrade2(const vector <hlimage> &image_log, const vector <hldet>
       linkdet_indices.push_back(linkdet_temp[0]);
       for(i=1;i<long(linkdet_temp.size());i++) {
 	j = linkdet_indices.size() - 1;
-	if(linkdet_temp[i] != linkdet_indices[j]) linkdet_indices.push_back(linkdet_temp[i]);
+	//if(linkdet_temp[i] != linkdet_indices[j]) linkdet_indices.push_back(linkdet_temp[i]);
+	if(linkdet_temp[i] != linkdet_indices[j]) {
+	  linkdet_indices.push_back(linkdet_temp[i]);
+	  if(linkdet_temp[i]<0 || linkdet_temp[i]>=detnum) {
+	    cout << "\nERROR in heliolinc_highgrade2: loading out-of-range index linkdet_temp[" << i<< "] = " << linkdet_temp[i] << ", detnum, linkdet_indices.size = " << detnum << " " << linkdet_indices.size() << "\n";
+	  }
+	}
       }
     }
-    cout << "new total w/o dups " << linkdet_indices.size() << "\n";
+    cout << "New total w/o dups " << linkdet_indices.size() << "\n";
   }
-  
+ 
   cout << "Found clusters with " << config.dbscan_npt << " or more tracklets for " << linkdet_indices.size() << " total detections,\n";
   cout << "out of " << detvec.size() << " detections initially input. Reduction factor is " << double(detvec.size())/double(linkdet_indices.size()) << "\n";
   
   outdet = {};
   for(i=0; i<long(linkdet_indices.size()); i++) {
+    if(linkdet_indices[i]<0 || linkdet_indices[i]>=detnum) {
+      cout << "ERROR: loading out-of-range index linkdet_indices[" << i<< "] = " << linkdet_indices[i] << ", detnum, linkdet_indices.size = " << detnum << " " << linkdet_indices.size() << "\n";
+    }
     outdet.push_back(detvec[linkdet_indices[i]]);
   }
 
