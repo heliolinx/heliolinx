@@ -852,7 +852,6 @@ int main(int argc, char *argv[])
 	PAvec.push_back(-999.0l);
 	arcvec.push_back(0.0l);
 	timespanvec.push_back(0.0l);
-	arcvec.push_back(0.0);
 	// Wipe trackvec, and load the next point of the next tracklet.
 	trackvec = {};
 	trackvec.push_back(detvec[i]);
