@@ -153,6 +153,8 @@ using namespace std;
 #define ITMAX_1D 500
 #define CHIFAILMAX 5
 #define SHORTSTEPMAX 5
+#define SQRT2 1.4142135623731
+#define SQRT2INV 0.707106781186547
 
 // Parameters related to heliolinc clustering
 #define INTEGERIZING_SCALEFAC 100.0L // We divide state vectors by this value to integerize
@@ -1863,6 +1865,7 @@ int Twopoint_Kepler_vel(const double MGsun, const point3d startpoint, const poin
 double Twopoint_KepQstar(double x);
 int Twopoint_Kepler_vstar(const double MGsun, const point3d startpoint, const point3d endpoint, const double timediff, point3d &startvel, int itmax);
 int Twopoint_Kepler_vstarSV(const double MGsun, const vector <double> &startpoint, const vector <double> &endpoint, const double timediff, vector <double> &startvel, int itmax, int verbose);
+double Hergetchi_vstar2(double geodist1, double geodist2, int Hergetpoint1, int Hergetpoint2, const vector <point3d> &observerpos, const vector <point3d> &observervel, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &crosstrack, const vector <double> &alongtrack, vector <double> &fitRA, vector <double> &fitDec, vector <double> &crossresid, vector <double> &alongresid, vector <double> &orbit, int verbose);
 int Keplerint_multipoint01(const long double MGsun, const long double mjdstart, const vector <long double> &obsMJD, const point3LD &startpos, const point3LD &startvel, vector <point3LD> &obspos, vector <point3LD> &obsvel);
 int Keplerint_multipoint02(const long double MGsun, const long double mjdstart, const vector <long double> &obsMJD, const point3LD &startpos, const point3LD &startvel, vector <point3LD> &obspos, vector <point3LD> &obsvel, long double *semimajor_axis, long double *eccen, long double *angperi);
 int Keplerint_multipoint02(const double MGsun, const double mjdstart, const vector <double> &obsMJD, const point3d &startpos, const point3d &startvel, vector <point3d> &obspos, vector <point3d> &obsvel, double *semimajor_axis, double *eccen, double *angperi);
@@ -1874,6 +1877,7 @@ double orbitchi02(const point3d &objectpos, const point3d &objectvel, const doub
 double orbitchi_fgfunc(const point3d &objectpos, const point3d &objectvel, const double mjdstart, const vector <point3d> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid, double *semimajor_axis, double *eccen);
 double orbitchi_univar(const point3d &objectpos, const point3d &objectvel, const double mjdstart, const vector <point3d> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid, double *semimajor_axis, double *eccen, int verbose);
 double orbitchi_univarSV(const vector <double> &starting_statevec, const double mjdstart, const vector <vector <double>> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid, int verbose);
+double orbitchi_univar2(const point3d &objectpos, const point3d &objectvel, const double mjdstart, const vector <point3d> &observerpos, const vector <point3d> &observervel, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &crosstrack, const vector <double> &alongtrack, vector <double> &fitRA, vector <double> &fitDec, vector <double> &crossresid, vector <double> &alongresid, double *semimajor_axis, double *eccen, int verbose);
 long double TwopointF(long double a, long double k, long double lambda1, long double lambda2, long double deltat, long double Xsign, long double Ysign);
 double TwopointF(double a, double k, double lambda1, double lambda2, double deltat, double Xsign, double Ysign);
 long double TwopointFprime(long double a, long double k, long double lambda1, long double lambda2, long double deltat, long double Xsign, long double Ysign);
@@ -1889,6 +1893,7 @@ long double Hergetchi01(long double geodist1, long double geodist2, int Hergetpo
 double Hergetchi01(double geodist1, double geodist2, int Hergetpoint1, int Hergetpoint2, const vector <point3d> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid, vector <double> &orbit, int verbose);
 double Hergetchi_vstar(double geodist1, double geodist2, int Hergetpoint1, int Hergetpoint2, const vector <point3d> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid, vector <double> &orbit, int verbose);
 double Hergetchi_vstarSV(double geodist1, double geodist2, int Hergetpoint1, int Hergetpoint2, const vector <vector <double>> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid, vector <double> &out_statevec, double &stateMJD, int verbose);
+double Hergetfit_vstar_chisq(double geodist1, double geodist2, double simplex_scale, int simptype, double ftol, int point1, int point2, const vector <point3d> &observerpos, const vector <point3d> &observervel, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &crosstrack, const vector <double> &alongtrack, double ecc_penalty, vector <double> &fitRA, vector <double> &fitDec, vector <double> &crossresid, vector <double> &alongresid, vector <double> &orbit, int verbose);
 int statevec2kep_easy(const double MGsun, vector <double> &statevec, double &a, double &e, double &incl);
 double statevec2kep_incl(const vector <double> &statevec);
 int posvel2kep_easy(const double MGsun, point3d objpos, point3d objvel, double &a, double &e, double &incl);
@@ -2020,6 +2025,7 @@ int link_purify(const vector <hlimage> &image_log, const vector <hldet> &detvec,
 int link_purify2(const vector <hlimage> &image_log, const vector <hldet> &detvec, vector <hlclust> &inclust1, vector  <longpair> &inclust2det1, LinkPurifyConfig config, vector <hlclust> &outclust, vector <longpair> &outclust2det);
 int link_purify_graddec(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <hlclust> &inclust1, const vector  <longpair> &inclust2det1, LinkPurifyConfig config, vector <hlclust> &outclust, vector <longpair> &outclust2det);
 int link_purify_quad1(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <hlclust> &inclust1, const vector  <longpair> &inclust2det1, LinkPurifyConfig config, vector <hlclust> &outclust, vector <longpair> &outclust2det);
+int link_purify_chisq(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <hlclust> &inclust1, const vector  <longpair> &inclust2det1, LinkPurifyConfig config, vector <hlclust> &outclust, vector <longpair> &outclust2det);
 int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <hlclust> &inclust1, const vector  <longpair> &inclust2det1, LinkPurifyConfig config, vector <hlclust> &outclust, vector <longpair> &outclust2det);
 int link_refine_Herget_omp(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <hlclust> &inclust, const vector  <longpair> &inclust2det, LinkRefineConfig config, vector <hlclust> &outclust, vector <longpair> &outclust2det);
 int link_refine_Herget_omp2(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <hlclust> &inclust, const vector  <longpair> &inclust2det, LinkRefineConfig config, vector <hlclust> &outclust, vector <longpair> &outclust2det);
