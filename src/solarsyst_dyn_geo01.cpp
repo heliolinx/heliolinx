@@ -9177,7 +9177,7 @@ int Kepler2dyn(const long double mjdnow, const keplerian_orbit &keporb, point3LD
 // input the asteroid_orbit class rather than the keplerian_orbit
 // class. Besides using doubles rather than long doubles, asteroid_orbit
 // differs from keplerian_orbit in that it includes a string designation,
-// the absolute magnitude H, and the phase paramter G.
+// the absolute magnitude H, and the phase parameter G.
 // Convert the Keplerian orbital parameters to barycentric
 // Cartesian state vectors at the instant of the MJD.
 int Kepler2dyn(const double mjdnow, const asteroid_orbit &keporb, point3d &outpos,  point3d &outvel)
@@ -9326,7 +9326,7 @@ int Kepler2dyn(const double mjdnow, const asteroid_orbit &keporb, point3d &outpo
 // goes back to long double precision, but accepts as
 // input the asteroid_orbitLD class rather than the keplerian_orbit
 // class, which includes a string designation,
-// the absolute magnitude H, and the phase paramter G.
+// the absolute magnitude H, and the phase parameter G.
 // Convert the Keplerian orbital parameters to barycentric
 // Cartesian state vectors at the instant of the MJD.
 int Kepler2dyn(const long double mjdnow, const asteroid_orbitLD &keporb, point3LD &outpos,  point3LD &outvel)
@@ -38326,7 +38326,7 @@ int form_clusters_RR_lowmem(const vector <point6ix2> &allstatevecs, const vector
 
 // form_clusters_kdR: May 20, 2024
 // Like form_clusters_kd4, but performs clustering
-// in the 3-D paramter space of X, Y, Z, rather than the
+// in the 3-D parameter space of X, Y, Z, rather than the
 // 6-D space of X, Y, Z, VX, VY, VZ.
 int form_clusters_kdR(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, int verbose)
 {
@@ -38658,7 +38658,7 @@ int form_clusters_kdR(const vector <point6ix2> &allstatevecs, const vector <hlde
 
 // form_clusters_kdR_lowmem: July 14, 2025
 // Like form_clusters_kd4, but performs clustering
-// in the 3-D paramter space of X, Y, Z, rather than the
+// in the 3-D parameter space of X, Y, Z, rather than the
 // 6-D space of X, Y, Z, VX, VY, VZ.
 int form_clusters_kdR_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, int verbose)
 {
@@ -56714,6 +56714,184 @@ int evertrace01(int planetnum, const vector <double> &planetmasses, const vector
   return(0);
 }
 
+// evertrace02: April 13, 2026:
+// Exactly like evertrace01, but outputs the final state vectors for every
+// observational point, in a new vector called targobs_statevecs.
+int evertrace02(int planetnum, const vector <double> &planetmasses, const vector <double> &planet_backward_mjd, const vector <vector <double>> &planet_backward_statevecs, const vector <double> &planet_forward_mjd, const vector <vector <double>> &planet_forward_statevecs, const vector <double> &starting_statevec, double mjdref, const vector <double> &obsMJD, const vector <vector <double>> &observer_statevecs, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, vector <double> &out_statevec, vector<vector <double>> &targobs_statevecs, double timestep, int hnum, const vector <double> &hspace, double minchichange, double astromRMSthresh, long maxiter, long &itnum, double &chisquare, double &astrom_rms, int verbose)
+{
+  vector <double> obsTDB;
+  long i,j,k,obsct,iterct;
+  i=j=k=obsct=iterct=0;
+  long obsnum = obsMJD.size();
+  if(obsnum != long(observer_statevecs.size())) {
+    cerr << "ERROR: evertrace01 has size mismatch " << obsnum << " vs " << observer_statevecs.size() << " for obsMJD vs observer_statevecs input vectors.\n";
+    return(1);
+  } else if(obsnum != long(obsRA.size())) {
+    cerr << "ERROR: evertrace01 has size mismatch " << obsnum << " vs " << obsRA.size() << " for obsMJD vs obsRA input vectors.\n";
+    return(1);
+  } else if(obsnum != long(obsDec.size())) {
+    cerr << "ERROR: evertrace01 has size mismatch " << obsnum << " vs " << obsDec.size() << " for obsMJD vs obsDec input vectors.\n";
+    return(1);
+  }
+  double mjdstart,mjdend,chisq,old_chisq,chichange,astromrms;
+  mjdstart = mjdend = 0.0;
+  chisq = old_chisq = chichange = astromrms = LARGERR2;
+  for(obsct=0;obsct<obsnum;obsct++) obsTDB.push_back(obsMJD[obsct]+TTDELTAT/SOLARDAY);
+  vector <double> RA_deriv;
+  vector <double> Dec_deriv;
+  vector <vector <double>> RA_deriv_mat;
+  vector <vector <double>> Dec_deriv_mat;
+  vector <vector <double>> Aobs_mat;
+  vector <vector <double>> Aobs_transpose;
+  vector <vector <double>> Qmat;
+  vector <vector <double>> Qinv;
+  vector <double> resid_B;
+  vector <double> AtransposeB;
+  vector <double> Xcor;
+  vector <vector <double>> targ_statevecs;
+  double ldval=0.0;
+  double light_travel_time,RA,Dec,dist;
+  int status=0;
+  out_statevec = starting_statevec;
+  long refpoint;
+  vector <vector <double>> vareq_mat;
+  
+  refpoint = -99;
+  for(j=0;j<long(planet_forward_mjd.size());j++) {
+    if(fabs(planet_forward_mjd[j]-mjdref) < STATEMJD_TIMETOL) refpoint = j;
+  }
+  if(refpoint<0) {
+    cerr << "ERROR: Input reference mjd " << mjdref << " did not match any point in the input Everhart-sampled ephemeris vectors\n";
+  }
+  if(verbose>0) cout << "Input reference MJD " << mjdref << " corresponds to point " << refpoint << " in the Everhart-sampled ephemeris vectors\n";
+
+  // Find an appropriate value for mjdstart, to make sure the integration
+  // will begin before any of the observation times.
+  i=1;
+  while(refpoint-i*hnum >= 0 && planet_forward_mjd[refpoint-i*hnum] >= obsTDB[0]) i++;
+  if(refpoint-i*hnum >= 0) mjdstart = planet_forward_mjd[refpoint-i*hnum];
+  else mjdstart = planet_forward_mjd[0];
+  // Find an appropriate value for mjdend, to make sure the integration
+  // will end after all of the observation times.
+  i=1;
+  while(refpoint+i*hnum < long(planet_forward_mjd.size()) && planet_forward_mjd[refpoint+i*hnum] <= obsTDB[obsTDB.size()-1]) i++;
+  if(refpoint+i*hnum < long(planet_forward_mjd.size())) mjdend = planet_forward_mjd[refpoint+i*hnum];
+  else mjdend = planet_forward_mjd[planet_forward_mjd.size()-1];
+
+  if(verbose>0) cout << "Integration will be performed from MJD_TDB " << mjdstart << " to " << mjdend << "\n";
+
+  if(verbose>0) cout << "Launching obsint_vareq01()\n";
+  iterct=0;
+  while(iterct<2 || (astromrms>astromRMSthresh && chichange>minchichange && iterct<maxiter)) { // Force it to iterate at least once
+    if(verbose>0) cout << "Iteration " << iterct <<"\n";
+    status = obsint_vareq01(planetnum, planetmasses, planet_backward_mjd, planet_backward_statevecs, planet_forward_mjd, planet_forward_statevecs, out_statevec, mjdstart, mjdref, mjdend, obsTDB, targ_statevecs, vareq_mat, timestep, hnum, hspace, verbose);
+    if(status!=0) {
+      cerr << "ERROR: obsint_vareq01 returned error status " << status << "\n";
+      return(status);
+    }
+    fitRA = fitDec = {};
+    RA_deriv_mat = Dec_deriv_mat = {};
+    for(i=0; i<obsnum; i++) {
+      // Initial approximation of the coordinates relative to the observer
+      vector <double> relpos;
+      make_dvec(3,relpos);
+      for(k=0;k<3;k++) relpos[k] = targ_statevecs[i][k] - observer_statevecs[i][k];
+      // Initial approximation of the observer-target distance
+      ldval = nvecabs(relpos);
+      // Convert to meters and divide by the speed of light to get the light travel time.
+      light_travel_time = ldval*1000.0/CLIGHT;
+      // Light-travel-time corrected version of coordinates relative to the observer
+      for(k=0;k<3;k++) relpos[k] = targ_statevecs[i][k] - light_travel_time*targ_statevecs[i][3+k] - observer_statevecs[i][k];
+      // Project onto the celestial sphere.
+      status = statevec_to_celederiv(relpos, RA, Dec, RA_deriv, Dec_deriv, verbose);
+      if(status!=0) {
+	if(verbose>0) cerr << "ERROR: statevec_to_celederiv failed with error status " << status << "\n";
+	return(status);
+      }
+      fitRA.push_back(RA);
+      fitDec.push_back(Dec);
+      RA_deriv_mat.push_back(RA_deriv);
+      Dec_deriv_mat.push_back(Dec_deriv);
+    }
+    // Construct vector of residuals, O-C, and calculate astrometric RMS
+    make_dvec(2*obsnum,resid_B);
+    old_chisq = chisq;
+    astromrms = chisq = 0.0;
+    for(obsct=0;obsct<obsnum;obsct++) {
+      // Account for possible wrapping in the case of the RA residual
+      ldval = obsRA[obsct] - fitRA[obsct];
+      if(ldval>180.0) resid_B[2*obsct] = ldval-360.0;
+      else if(ldval<-180.0) resid_B[2*obsct] = ldval+360.0;
+      else resid_B[2*obsct] = ldval;
+      // Dec residual is more simple.
+      resid_B[2*obsct+1] = obsDec[obsct] - fitDec[obsct];
+      dist = 3600.0*distradec01(obsRA[obsct],obsDec[obsct],fitRA[obsct],fitDec[obsct]);
+      astromrms += dist*dist;
+      chisq += DSQUARE(dist/sigastrom[obsct]);
+      if(verbose>0) cout << fixed << setprecision(4) << "Residvec " << obsct << " " << resid_B[2*obsct]*3600.0 << " " << resid_B[2*obsct+1]*3600.0 << "\n";
+    }
+    astromrms = sqrt(astromrms/double(obsnum));
+    if(!isnormal(astromrms)) {
+      cerr << "ERROR: evertrace01 finds non-normal astromrms " << astromrms << " on iteration " << iterct << "\n";
+      return(3);
+    }
+    if(!isnormal(chisq)) {
+      cerr << "ERROR: evertrace01 finds non-normal chi square value " << chisq << " on iteration " << iterct << "\n";
+      return(4);
+    }
+    iterct++; // INCREMENT ITERATION COUNT
+    if(verbose>0) cout << fixed << setprecision(4) << "Iteration " << iterct << " astrometric RMS = " << astromrms << " arcsec\n";
+    chichange = old_chisq - chisq;
+    if(chichange<0.0) {
+      if(verbose>0) cerr << "WARNING: evertrace01 finds chi-square value increasing from " << old_chisq << " to " << chisq << " on iteration " << iterct << "\n";
+      chichange = fabs(chichange);
+    }
+    chichange/=chisq;
+    if(iterct<2 || (astromrms>astromRMSthresh && chichange>minchichange && iterct<maxiter)) {
+      // Convergence criteria not met: calculate correction for the next iteration.
+      // Calculate the matrix A. First index is rows (2*obsnum), second is columns (6)
+      make_dmat(2*obsnum,6,Aobs_mat);
+      for(obsct=0;obsct<obsnum;obsct++) {
+	for(i=0;i<6;i++) {
+	  // Derivative of RA[obsct] w.r.t. each of the initial state vectors
+	  Aobs_mat[2*obsct][i] = 0.0l;
+	  for(k=0;k<3;k++) Aobs_mat[2*obsct][i] += RA_deriv_mat[obsct][k] * vareq_mat[obsct][k*6+i];
+	  // Derivative of Dec[obsct] w.r.t. each of the initial state vectors
+	  Aobs_mat[2*obsct+1][i] = 0.0l;
+	  for(k=0;k<3;k++) Aobs_mat[2*obsct+1][i] += Dec_deriv_mat[obsct][k] * vareq_mat[obsct][k*6+i];
+	}
+      }
+      Aobs_transpose = {};
+      matrix_transpose(Aobs_mat, Aobs_transpose);
+      Qmat = {};
+      matXmat(Aobs_transpose, Aobs_mat, Qmat);
+      Qinv = {};
+      status = invertmatrix01(Qmat, 6, Qinv, verbose);
+      if(status!=0) {
+	cerr << "ERROR: invertmatrix01 returned error status " << status << "\n";
+	return(status);
+      }
+      AtransposeB = {};
+      matXvec(Aobs_transpose, resid_B, AtransposeB);
+      Xcor = {};
+      matXvec(Qinv, AtransposeB, Xcor);
+      if(verbose>1) cout << "Xcor";;
+      if(verbose>1) for(k=0;k<3;k++) cout << " " << Xcor[k];
+      if(verbose>1) for(k=3;k<6;k++) cout << " " << Xcor[k];
+      if(verbose>1) cout << "\n";
+
+      //Apply new correction
+      for(k=0;k<6;k++) out_statevec[k] += Xcor[k];
+    }
+  }
+  cout << fixed << setprecision(4) << "evertrace01 returning on iteration " << iterct << " with astromrms = " << astromrms << " and chisq = " << chisq << "\n";
+  itnum = iterct;
+  chisquare = chisq;
+  astrom_rms = astromrms;
+  targobs_statevecs = targ_statevecs;
+  return(0);
+}
+
 // everchi01: October 21, 2025:
 // Using obsint_everuse, integrate the orbit correspondingint to starting_statevec,
 // and compare the results to a series of observations specified by obsMJD obsRA, obsDec,
@@ -57061,5 +57239,42 @@ int sunradec_approx01(double MJD,double &sunra, double &sundec)
   precess01a(holdra,holddec,MJD,&newra,&newdec,precesscon);
   sunra = newra*DEGPRAD;
   sundec = newdec*DEGPRAD;
+  return(0);
+}
+
+// unpack_objstring: April 07, 2026:
+// Unpack a packed designation from MPC.
+int unpack_objstring(string packstring, string &unpackstring) {
+  
+  if(packstring.size()<7) {
+    cerr << "ERROR: cannot unpack designation " << packstring << "\n";
+    return(1);
+  }
+  
+  int year,inum;
+  string yrstring,yearstring,letterstring;
+  
+  year=inum=0;
+  if(packstring[0]=='I') year=1800;
+  else if(packstring[0]=='J') year=1900;
+  else if(packstring[0]=='K') year=2000;
+  yrstring = packstring.substr(1,2);
+  year += stoi(yrstring);
+  if(packstring[4]=='0' || packstring[4]=='1' || packstring[4]=='2' || packstring[4]=='3' || packstring[4]=='4' || packstring[4]=='5' || packstring[4]=='6' || packstring[4]=='7' || packstring[4]=='8' || packstring[4]=='9') {
+    inum = 10*(packstring[4]-'0');
+  } else if((packstring[4]-'A')>=0 && (packstring[4]-'A')<=25) {
+    inum = 10*(10+packstring[4]-'A');
+  } else if((packstring[4]-'a')>=0 && (packstring[4]-'a')<=25) {
+    inum = 10*(36+packstring[4]-'a');
+  } else {
+    cerr << "ERROR: unable to unpack string " << packstring << "\n";
+    return(2);
+  }
+  inum += packstring[5]-'0';
+
+  letterstring = packstring.substr(3,1) + packstring.substr(6,1);
+  // cout << packstring << " " << letterstring << " " << year << " " << inum << " " << to_string(year) << " " << to_string(inum) << "\n";
+  if(inum>0) unpackstring = to_string(year) + " " + letterstring + to_string(inum);
+  else unpackstring = to_string(year) + " " + letterstring;
   return(0);
 }

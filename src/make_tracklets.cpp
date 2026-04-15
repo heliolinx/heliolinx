@@ -668,12 +668,12 @@ int main(int argc, char *argv[])
   //  cout << "index check: " << i << " " << detvec[i].index << " " << detvec[i].MJD << " " << detvec[i].RA << " " << detvec[i].Dec << "\n";
   //}
   
-  if(DEBUGB==1) cout << "Preparing to time-sort the detection vector\n";
+  if(config.verbose>=1) cout << "Preparing to time-sort the detection vector\n";
   
-  // time-sort the detection vector
+  //time-sort the detection vector
   sort(detvec.begin(), detvec.end(), early_hldet());
   
-  if(DEBUGB==1) cout << "Time-sorted the detection vector\n";
+  if(config.verbose>=1) cout << "Time-sorted the detection vector\n";
 
   // Get image information, if there is an image file
   if(inimfile.size()>0) {
@@ -752,7 +752,7 @@ int main(int argc, char *argv[])
     outstream1 << fixed << setprecision(4) << pairdets[i].mag << ",";
     outstream1 << fixed << setprecision(2) << pairdets[i].trail_len << "," << pairdets[i].trail_PA << ",";
     outstream1 << fixed << setprecision(4) << pairdets[i].sigmag << ",";
-    outstream1 << fixed << setprecision(3) << pairdets[i].sig_across << "," << pairdets[i].sig_along << ",";
+    outstream1 << fixed << setprecision(4) << pairdets[i].sig_across << "," << pairdets[i].sig_along << ",";
     outstream1 << pairdets[i].image << "," << pairdets[i].idstring << "," << pairdets[i].band << ",";
     outstream1 << pairdets[i].obscode << "," << pairdets[i].known_obj << ","; 
     outstream1 << pairdets[i].det_qual << "," << pairdets[i].index << "\n"; 

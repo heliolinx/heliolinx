@@ -118,6 +118,7 @@ using namespace std;
 #define PHASECONST_A2 1.87L // for calculating asteroid apparent magnitudes.
 #define PHASECONST_B1 0.63L
 #define PHASECONST_B2 1.22L
+#define PHASE_G 0.15
 #define WARN_INVERSE_TRIG 0 // If 0, don't print warning messages about taking arcsin or arccos of values
                             // or arccos of values infinitesimally outside the range [-1,1]. Just collapse
                             // them to exactly 1.0 or -1.0 like a good robot.
@@ -785,10 +786,17 @@ public:
   }
 };
 
-class early_hldet{
+class early_hldet_old{
 public:
   inline bool operator() (const hldet& o1, const hldet& o2) {
     return(o1.MJD < o2.MJD || (fabs(o1.MJD-o2.MJD)<=IMAGETIMETOL/SOLARDAY && stringnmatch01(o1.obscode,o2.obscode,3)==-1) || (fabs(o1.MJD-o2.MJD)<=IMAGETIMETOL/SOLARDAY && stringnmatch01(o1.obscode,o2.obscode,3)==0 && o1.RA<o2.RA));
+  }
+}; 
+
+class early_hldet{
+public:
+  inline bool operator() (const hldet& o1, const hldet& o2) {
+    return(o1.MJD < (o2.MJD-IMAGETIMETOL/SOLARDAY) || (fabs(o1.MJD-o2.MJD)<=IMAGETIMETOL/SOLARDAY && stringnmatch01(o1.obscode,o2.obscode,3)==-1) || (fabs(o1.MJD-o2.MJD)<=IMAGETIMETOL/SOLARDAY && stringnmatch01(o1.obscode,o2.obscode,3)==0 && o1.RA<o2.RA));
   }
 };
 
@@ -2086,7 +2094,9 @@ int obsint_everhart01(int planetnum, const vector <double> &planetmjd, const vec
 int obsint_vareq01(int planetnum, const vector <double> &planetmasses, const vector <double> &planet_backward_mjd, const vector <vector <double>> &planet_backward_statevecs, const vector <double> &planet_forward_mjd, const vector <vector <double>> &planet_forward_statevecs, const vector <double> &starting_statevec, double mjdstart, double mjdref, double mjdend, const vector <double> &obsMJD,  vector <vector <double>> &targ_statevecs, vector <vector <double>> &vareq_mat, double timestep, int hnum, const vector <double> &hspace, int verbose);
 int obsint_everuse01(int planetnum, const vector <double> &planetmasses, const vector <double> &planet_backward_mjd, const vector <vector <double>> &planet_backward_statevecs, const vector <double> &planet_forward_mjd, const vector <vector <double>> &planet_forward_statevecs, const vector <double> &starting_statevec, double mjdstart, double mjdref, double mjdend, const vector <double> &obsMJD,  vector <vector <double>> &targ_statevecs, double timestep, int hnum, const vector <double> &hspace, int verbose);
 int evertrace01(int planetnum, const vector <double> &planetmasses, const vector <double> &planet_backward_mjd, const vector <vector <double>> &planet_backward_statevecs, const vector <double> &planet_forward_mjd, const vector <vector <double>> &planet_forward_statevecs, const vector <double> &starting_statevec, double mjdref, const vector <double> &obsMJD, const vector <vector <double>> &observer_statevecs, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, vector <double> &out_statevec, double timestep, int hnum, const vector <double> &hspace, double minchichange, double astromRMSthresh, long maxiter, long &itnum, double &chisquare, double &astromrms, int verbose);
+int evertrace02(int planetnum, const vector <double> &planetmasses, const vector <double> &planet_backward_mjd, const vector <vector <double>> &planet_backward_statevecs, const vector <double> &planet_forward_mjd, const vector <vector <double>> &planet_forward_statevecs, const vector <double> &starting_statevec, double mjdref, const vector <double> &obsMJD, const vector <vector <double>> &observer_statevecs, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, vector <double> &out_statevec, vector<vector <double>> &targobs_statevecs, double timestep, int hnum, const vector <double> &hspace, double minchichange, double astromRMSthresh, long maxiter, long &itnum, double &chisquare, double &astrom_rms, int verbose);
 double everchi01(int planetnum, const vector <double> &planetmasses, const vector <double> &planet_backward_mjd, const vector <vector <double>> &planet_backward_statevecs, const vector <double> &planet_forward_mjd, const vector <vector <double>> &planet_forward_statevecs, const vector <double> &starting_statevec, double mjdref, const vector <double> &obsMJD, const vector <vector <double>> &observer_statevecs, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, double timestep, int hnum, const vector <double> &hspace, double &astromrms, int verbose);
 int packepoch2MJD(string epochstring, double &mjd);
 double heliojul01(double MJD,double RA, double Dec);
 int sunradec_approx01(double MJD,double &sunra, double &sundec);
+int unpack_objstring(string packstring, string &unpackstring);
