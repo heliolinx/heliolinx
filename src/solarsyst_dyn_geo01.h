@@ -46,6 +46,9 @@ using namespace std;
 #define EARTHEQUATRAD 6378.140L // Earth's equatorial radius in km.
 #define AU_KM 1.495978700e8L /*One AU in km*/
 #define AU 1.49597870700e11L /*One AU in meters*/
+#define MAXORBDIST_AU 10000.0 // Ten thousand AU: max valid distance in an orbit-fit.
+#define MAXORBDIST_KM 1.495978700e12L // Ten thousand AU in km: max valid distance in an orbit-fit.
+#define LARGE_HERGET_DIST 40.0 // Value in AU to which too-large distances in Herget fit will be reset.
 #define EFOLDS_PER_MAG 0.921034037197618 // E-foldings per astronomical magnitude
 #define ZET0 2.5976176L /*precession formula constants in units of arcsec*/
 #define ZET1 2306.0809506L
@@ -1808,6 +1811,7 @@ int Stumpff_func_cf(const double xc, double *c0, double *c1, double *c2, double 
 int Keplerint(const long double MGsun, const long double mjdstart, const point3LD &startpos, const point3LD &startvel, const long double mjdend, point3LD &endpos, point3LD &endvel);
 int Keplerint(const double MGsun, const double mjdstart, const point3d &startpos, const point3d &startvel, const double mjdend, point3d &endpos, point3d &endvel);
 int Kepler_fg_func_int(const double MGsun, const double mjdstart, const point3d &startpos, const point3d &startvel, const double mjdend, point3d &endpos, point3d &endvel);
+int Kepler_fg_func_int_Ryder_Halley(const double MGsun, const double mjdstart, const point3d &startpos, const point3d &startvel, const double mjdend, point3d &endpos, point3d &endvel);
 int Kepler_fg_func_vec(const double MGsun, const double mjdstart, const point3d &startpos, const point3d &startvel, const vector <double> &mjdvec, vector <point3d> &outpos, vector <point3d> &outvel);
 int Kepler_univ_int(const double MGsun, const double mjdstart, const point3d &startpos, const point3d &startvel, const double mjdend, point3d &endpos, point3d &endvel, int verbose);
 int Kepler_univ_int_SV(const double MGsun, const double mjdstart, const vector <double> &starting_statevec, const double mjdend, vector <double> &out_statevec, int verbose);
@@ -1907,6 +1911,7 @@ double statevec2kep_incl(const vector <double> &statevec);
 int posvel2kep_easy(const double MGsun, point3d objpos, point3d objvel, double &a, double &e, double &incl);
 int Herget_simplex_int(long double geodist1, long double geodist2, long double simpscale, long double simplex[3][2], int simptype);
 int Herget_simplex_int(double geodist1, double geodist2, double simpscale, double simplex[3][2], int simptype);
+int Herget_simplex_check(double simplex[3][2]);
 long double Hergetfit01(long double geodist1, long double geodist2, long double simplex_scale, int simptype, long double ftol, int point1, int point2, const vector <point3LD> &observerpos, const vector <long double> &obsMJD, const vector <long double> &obsRA, const vector <long double> &obsDec, const vector <long double> &sigastrom, vector <long double> &fitRA, vector <long double> &fitDec, vector <long double> &resid, vector <long double> &orbit, int verbose);
 double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, int simptype, double ftol, int point1, int point2, const vector <point3d> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, double ecc_penalty, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid, vector <double> &orbit, int verbose);
 double Hergetfit_vstarSV(double geodist1, double geodist2, double simplex_scale, int simptype, double ftol, int point1, int point2, const vector <vector <double>> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid, vector <double> &out_statevec, double &stateMJD, long &itnum, int verbose);

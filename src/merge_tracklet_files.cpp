@@ -229,6 +229,7 @@ int main(int argc, char *argv[])
       while(masterimage[j].MJD >= masterimage[i].MJD-IMAGETIMETOL/SOLARDAY && j>=0) {
 	if(fabs(masterimage[i].MJD - masterimage[j].MJD)<IMAGETIMETOL/SOLARDAY && stringnmatch01(masterimage[i].obscode,masterimage[j].obscode,3)==0) {
 	  // Image i is a duplicate of image j. Erase image i from the vector
+	  cout << "Image " << i << " with MJD and obscode " << masterimage[i].MJD << " " << masterimage[i].obscode << " is a duplicate of image " << j << ": " << masterimage[j].MJD << " " << masterimage[j].obscode << "\n";
 	  masterimage.erase(masterimage.begin()+i);
 	  deleted_one=1;
 	  break;

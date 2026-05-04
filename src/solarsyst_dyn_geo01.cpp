@@ -8368,6 +8368,84 @@ int Kepler_fg_func_int(const double MGsun, const double mjdstart, const point3d 
   return(0);
 }
 
+// Kepler_fg_func_int_Ryder_Halley: April 16, 2026:
+// Like Kepler_fg_func_int, but uses a Halley solver, identified
+// by Ryder Strauss as a faster method, in place of the earlier
+// function's Newton's Method solution.
+int Kepler_fg_func_int_Ryder_Halley(const double MGsun, const double mjdstart, const point3d &startpos, const point3d &startvel, const double mjdend, point3d &endpos, point3d &endvel)
+{
+  if(mjdend==mjdstart) {
+    // Catch the trivial case
+    endpos=startpos;
+    endvel=startvel;
+    return(0);
+  }
+  double r0 = vecabs3d(startpos);
+  double v0 = vecabs3d(startvel);
+  double u = dotprod3d(startvel,startpos);
+  double a = r0*MGsun/(2.0l*MGsun-v0*v0*r0);
+  if(a<=0.0l) {
+    // The orbit is unbound, and a solution will prove impossible
+    // with the formulae implemented in this particular function.
+    return(1);
+  }
+  double n = sqrt(MGsun/a/a/a);
+  double EC = 1.0l - r0/a;
+  double ES = u/n/a/a;
+  double e = sqrt(EC*EC + ES*ES);
+  double deltat = SOLARDAY*(mjdend-mjdstart);
+
+  double sinM, x, q, dqdx, dx;
+  sinM = x = q = dqdx = dx = 0;
+  int itct=0;
+
+  // Select initial guess for x = deltaE = (E-E0)
+  if(e<0.1l) x = n*deltat;
+  else {
+    sinM = (ES*cos(n*deltat - ES) + EC*sin(n*deltat - ES))/e;
+    x = n*deltat + (sinM/fabs(sinM))*DANBYK_689*e - ES;
+  }
+
+  // Halley's method: cubic convergence; typically ~3 iterations vs ~7 for Newton,
+  // saving ~2x sin/cos evaluations for the common case of low-eccentricity orbits.
+  // See halleysolver.md for derivation and benchmark notes.
+  double sin_x = sin(x);
+  double cos_x = cos(x);
+  q = x - EC*sin_x + ES*(1.0l - cos_x) - n*deltat;
+  while(fabs(q)>KEPTRANSTOL && itct<KEPTRANSITMAX) {
+    dqdx = 1.0l - EC*cos_x + ES*sin_x;               // f'(x)
+    double d2qdx2 = EC*sin_x + ES*cos_x;              // f''(x)
+    double halley_denom = dqdx*dqdx - 0.5l*q*d2qdx2;
+    dx = (fabs(halley_denom) > 1.0e-30l) ? -q*dqdx/halley_denom : -q/dqdx;
+    x += dx;
+    sin_x = sin(x);
+    cos_x = cos(x);
+    q = x - EC*sin_x + ES*(1.0l - cos_x) - n*deltat;
+    itct++;
+  }
+
+  // Evaluate f and g functions (reuse sin_x/cos_x from final iteration)
+  double f,g,fdot,gdot,r,v;
+  f = g = fdot = gdot = r = v = 0.0l;
+
+  f = (a/r0)*(cos_x - 1.0l) + 1.0l;
+  g = deltat + (sin_x - x)/n;
+
+  endpos.x = f*startpos.x + g*startvel.x;
+  endpos.y = f*startpos.y + g*startvel.y;
+  endpos.z = f*startpos.z + g*startvel.z;
+  r = vecabs3d(endpos);
+
+  fdot = -a*a*n*sin_x/r/r0;
+  gdot = a*(cos_x-1.0l)/r + 1.0l;
+  
+  endvel.x = fdot*startpos.x + gdot*startvel.x;
+  endvel.y = fdot*startpos.y + gdot*startvel.y;
+  endvel.z = fdot*startpos.z + gdot*startvel.z;
+  
+  return(0);
+}
+
 
 // Kepler_fg_func_vec: April 26, 2024: Like Kepler_fg_func_int, but
 // evaluates the Keplerian orbit at multiple times, supplied in
@@ -17687,6 +17765,9 @@ int Herget_simplex_int(long double geodist1, long double geodist2, long double s
   if(geodist1<=0.0 || geodist2<=0.0) {
     cerr << "ERROR: Herget_simplex_int received invalid input geodists " << geodist1 << " and " << geodist2 << "\n";
     return(1);
+  } else if(geodist1>MAXORBDIST_AU || geodist2>MAXORBDIST_AU) {
+    cerr << "ERROR: Herget_simplex_int received invalid input geodists " << geodist1 << " and " << geodist2 << "\n";
+    return(2);
   }
   if(simptype==0) {
     // Define initial simplex
@@ -17759,6 +17840,9 @@ int Herget_simplex_int(double geodist1, double geodist2, double simpscale, doubl
   if(geodist1<=0.0 || geodist2<=0.0) {
     cerr << "ERROR: Herget_simplex_int received invalid input geodists " << geodist1 << " and " << geodist2 << "\n";
     return(1);
+  } else if(geodist1>MAXORBDIST_AU || geodist2>MAXORBDIST_AU) {
+    cerr << "ERROR: Herget_simplex_int received invalid input geodists " << geodist1 << " and " << geodist2 << "\n";
+    return(2);
   }
   if(simptype==0) {
     // Define initial simplex
@@ -17825,6 +17909,31 @@ int Herget_simplex_int(double geodist1, double geodist2, double simpscale, doubl
   }
   return(0);
 }
+
+// Herget_simplex_check: May 04, 2026:
+// Check if all the vertices of a simplex are valid.
+// Return 1 if they are all valid and 0 if they are all
+// invalid. If only one point is invalid, return that
+// number plus 10. If only one point is valid, return
+// that number plus 20.
+int Herget_simplex_check(double simplex[3][2])
+{
+  int numbad=0;
+  int i=0;
+  vector <int> isbad={};
+  vector <int> isgood={};
+  for(i=0;i<3;i++) {
+    if(!isnormal(simplex[i][0]) || simplex[i][0]<=0.0 || simplex[i][0]>MAXORBDIST_AU || !isnormal(simplex[i][1]) || simplex[i][1]<=0.0 || simplex[i][1]>MAXORBDIST_AU) {
+      numbad++;
+      isbad.push_back(i);
+    } else isgood.push_back(i);
+  }
+  if(numbad<=0) return(1);
+  else if(numbad>=3) return(0);
+  else if(numbad==1) return(10+isbad[0]);
+  else if(numbad==2) return(20+isgood[0]);
+  else return(-1); // Should be impossible.
+}
   
 
 #define SIMP_EXPAND_NUM 200
@@ -17885,6 +17994,17 @@ long double Hergetfit01(long double geodist1, long double geodist2, long double 
     if(status!=0) {
       cerr << "ERROR: Herget_simplex_int() failed to create a good simplex\n";
       return(LARGERR);
+    }
+  } else if(status==2) {
+    // This is the error code for a too-large input distance
+    if(geodist1>MAXORBDIST_AU) geodist1=LARGE_HERGET_DIST;
+    if(geodist2>MAXORBDIST_AU) geodist2=LARGE_HERGET_DIST;
+    status=Herget_simplex_int(geodist1, geodist2, simplex_scale, simplex, simptype);
+    cerr << "WARNING: Herget_simplex_int() called with invalid distance.\n";
+    cerr << "retrying with newly assigned distances " << geodist1 << " and " << geodist2 << "\n";
+    if(status!=0) {
+      cerr << "ERROR: Herget_simplex_int() failed to create a good simplex\n";
+      return(LARGERR3);
     }
   }
   
@@ -18237,6 +18357,17 @@ double Hergetfit01(double geodist1, double geodist2, double simplex_scale, int s
     if(status!=0) {
       cerr << "ERROR: Herget_simplex_int() failed to create a good simplex\n";
       return(LARGERR2);
+    }
+  } else if(status==2) {
+    // This is the error code for a too-large input distance
+    if(geodist1>MAXORBDIST_AU) geodist1=LARGE_HERGET_DIST;
+    if(geodist2>MAXORBDIST_AU) geodist2=LARGE_HERGET_DIST;
+    status=Herget_simplex_int(geodist1, geodist2, simplex_scale, simplex, simptype);
+    cerr << "WARNING: Herget_simplex_int() called with invalid distance.\n";
+    cerr << "retrying with newly assigned distances " << geodist1 << " and " << geodist2 << "\n";
+    if(status!=0) {
+      cerr << "ERROR: Herget_simplex_int() failed to create a good simplex\n";
+      return(LARGERR3);
     }
   }
  
@@ -18593,6 +18724,17 @@ double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, i
       cerr << "ERROR: Herget_simplex_int() failed to create a good simplex\n";
       return(LARGERR3);
     }
+  } else if(status==2) {
+    // This is the error code for a too-large input distance
+    if(geodist1>MAXORBDIST_AU) geodist1=LARGE_HERGET_DIST;
+    if(geodist2>MAXORBDIST_AU) geodist2=LARGE_HERGET_DIST;
+    status=Herget_simplex_int(geodist1, geodist2, simplex_scale, simplex, simptype);
+    cerr << "WARNING: Herget_simplex_int() called with invalid distance.\n";
+    cerr << "retrying with newly assigned distances " << geodist1 << " and " << geodist2 << "\n";
+    if(status!=0) {
+      cerr << "ERROR: Herget_simplex_int() failed to create a good simplex\n";
+      return(LARGERR3);
+    }
   }
 
   for(i=0;i<3;i++) simpchi[i]=LARGERR3;
@@ -18833,6 +18975,17 @@ double Hergetfit_vstar(double geodist1, double geodist2, double simplex_scale, i
 	  cerr << "ERROR: Herget_simplex_int() failed to create a good simplex\n";
 	  return(LARGERR3);
 	}
+      } else if(status==2) {
+	// This is the error code for a too-large input distance
+	if(geodist1>MAXORBDIST_AU) geodist1=LARGE_HERGET_DIST;
+	if(geodist2>MAXORBDIST_AU) geodist2=LARGE_HERGET_DIST;
+	status=Herget_simplex_int(geodist1, geodist2, simplex_scale, simplex, simptype);
+	cerr << "WARNING: Herget_simplex_int() called with invalid distance.\n";
+	cerr << "retrying with newly assigned distances " << geodist1 << " and " << geodist2 << "\n";
+	if(status!=0) {
+	  cerr << "ERROR: Herget_simplex_int() failed to create a good simplex\n";
+	  return(LARGERR3);
+	}
       }
       for(i=0;i<3;i++) {
 	if(verbose>=2) cout << "Calling Hergetchi_vstar with distances " << simplex[i][0] << " " << simplex[i][1] << "\n";
@@ -18946,6 +19099,17 @@ double Hergetfit_vstarSV(double geodist1, double geodist2, double simplex_scale,
     // This is the error code for a zero or negative input distance.
     if(geodist1<MINHERGETDIST) geodist1=MINHERGETDIST;
     if(geodist2<MINHERGETDIST) geodist2=MINHERGETDIST;
+    status=Herget_simplex_int(geodist1, geodist2, simplex_scale, simplex, simptype);
+    cerr << "WARNING: Herget_simplex_int() called with invalid distance.\n";
+    cerr << "retrying with newly assigned distances " << geodist1 << " and " << geodist2 << "\n";
+    if(status!=0) {
+      cerr << "ERROR: Herget_simplex_int() failed to create a good simplex\n";
+      return(LARGERR3);
+    }
+  } else if(status==2) {
+    // This is the error code for a too-large input distance
+    if(geodist1>MAXORBDIST_AU) geodist1=LARGE_HERGET_DIST;
+    if(geodist2>MAXORBDIST_AU) geodist2=LARGE_HERGET_DIST;
     status=Herget_simplex_int(geodist1, geodist2, simplex_scale, simplex, simptype);
     cerr << "WARNING: Herget_simplex_int() called with invalid distance.\n";
     cerr << "retrying with newly assigned distances " << geodist1 << " and " << geodist2 << "\n";
@@ -19183,6 +19347,17 @@ double Hergetfit_vstarSV(double geodist1, double geodist2, double simplex_scale,
 	  cerr << "ERROR: Herget_simplex_int() failed to create a good simplex\n";
 	  return(LARGERR3);
 	}
+      } else if(status==2) {
+	// This is the error code for a too-large input distance
+	if(geodist1>MAXORBDIST_AU) geodist1=LARGE_HERGET_DIST;
+	if(geodist2>MAXORBDIST_AU) geodist2=LARGE_HERGET_DIST;
+	status=Herget_simplex_int(geodist1, geodist2, simplex_scale, simplex, simptype);
+	cerr << "WARNING: Herget_simplex_int() called with invalid distance.\n";
+	cerr << "retrying with newly assigned distances " << geodist1 << " and " << geodist2 << "\n";
+	if(status!=0) {
+	  cerr << "ERROR: Herget_simplex_int() failed to create a good simplex\n";
+	  return(LARGERR3);
+	}
       }
       for(i=0;i<3;i++) {
 	if(verbose>=2) cout << "Calling Hergetchi_vstar with distances " << simplex[i][0] << " " << simplex[i][1] << "\n";
@@ -19290,6 +19465,17 @@ double Hergetfit_vstar_chisq(double geodist1, double geodist2, double simplex_sc
       cerr << "ERROR: Herget_simplex_int() failed to create a good simplex\n";
       return(LARGERR3);
     }
+  } else if(status==2) {
+    // This is the error code for a too-large input distance
+    if(geodist1>MAXORBDIST_AU) geodist1=LARGE_HERGET_DIST;
+    if(geodist2>MAXORBDIST_AU) geodist2=LARGE_HERGET_DIST;
+    status=Herget_simplex_int(geodist1, geodist2, simplex_scale, simplex, simptype);
+    cerr << "WARNING: Herget_simplex_int() called with invalid distance.\n";
+    cerr << "retrying with newly assigned distances " << geodist1 << " and " << geodist2 << "\n";
+    if(status!=0) {
+      cerr << "ERROR: Herget_simplex_int() failed to create a good simplex\n";
+      return(LARGERR3);
+    }
   }
 
   for(i=0;i<3;i++) simpchi[i]=LARGERR3;
@@ -19361,6 +19547,9 @@ double Hergetfit_vstar_chisq(double geodist1, double geodist2, double simplex_sc
     else if(trialdist[0]==0.0) trialdist[0] += MINHERGETDIST*10.0;
     if(trialdist[1]<0.0) trialdist[1] = -trialdist[1];
     else if(trialdist[1]==0.0) trialdist[1] += MINHERGETDIST*10.0;
+    if(trialdist[0]>MAXORBDIST_AU) trialdist[0] = LARGE_HERGET_DIST;
+    if(trialdist[1]>MAXORBDIST_AU) trialdist[1] = trialdist[0] - 0.01*M_PI;
+    
     // Calculate chi-square value at this new point
     chisq = Hergetchi_vstar2(trialdist[0], trialdist[1], Hergetpoint1, Hergetpoint2, observerpos, observervel, obsMJD, obsRA, obsDec, crosstrack, alongtrack, fitRA, fitDec, crossresid, alongresid, orbit, verbose);
     if(chisq>=LARGERR3) {
@@ -19382,6 +19571,8 @@ double Hergetfit_vstar_chisq(double geodist1, double geodist2, double simplex_sc
       else if(trialdist[0]==0.0) trialdist[0] += MINHERGETDIST*10.0;
       if(trialdist[1]<0.0) trialdist[1] = -trialdist[1];
       else if(trialdist[1]==0.0) trialdist[1] += MINHERGETDIST*10.0;
+      if(trialdist[0]>MAXORBDIST_AU) trialdist[0] = LARGE_HERGET_DIST;
+      if(trialdist[1]>MAXORBDIST_AU) trialdist[1] = trialdist[0] - 0.01*M_PI;
       newchi = Hergetchi_vstar2(trialdist[0], trialdist[1], Hergetpoint1, Hergetpoint2, observerpos, observervel, obsMJD, obsRA, obsDec, crosstrack, alongtrack, fitRA, fitDec, crossresid, alongresid, orbit, verbose);
       if(newchi>=LARGERR3) {
 	cerr << "WARNING: Hergetchi_vstar2() returned error code with input " << trialdist[0] << ", " << trialdist[1] << "\n";
@@ -19420,6 +19611,8 @@ double Hergetfit_vstar_chisq(double geodist1, double geodist2, double simplex_sc
 	else if(trialdist[0]==0.0) trialdist[0] += MINHERGETDIST*10.0;
 	if(trialdist[1]<0.0) trialdist[1] = -trialdist[1];
 	else if(trialdist[1]==0.0) trialdist[1] += MINHERGETDIST*10.0;
+	if(trialdist[0]>MAXORBDIST_AU) trialdist[0] = LARGE_HERGET_DIST;
+	if(trialdist[1]>MAXORBDIST_AU) trialdist[1] = trialdist[1] - 0.01*M_PI;
 	// Calculate chi-square value at this new point
 	chisq = Hergetchi_vstar2(trialdist[0], trialdist[1], Hergetpoint1, Hergetpoint2, observerpos, observervel, obsMJD, obsRA, obsDec, crosstrack, alongtrack, fitRA, fitDec, crossresid, alongresid, orbit, verbose);
 	if(chisq>=LARGERR3) {
@@ -19446,8 +19639,10 @@ double Hergetfit_vstar_chisq(double geodist1, double geodist2, double simplex_sc
 	      // Make sure we don't have negative distances
 	      if(simplex[i][0]<0.0) simplex[i][0] = -simplex[i][0];
 	      else if(simplex[i][0]==0.0) simplex[i][0] += MINHERGETDIST*10.0;
+	      else if(!isnormal(simplex[i][0]) || simplex[i][0]>MAXORBDIST_AU) simplex[i][0] = 1.0 + 0.01*M_PI*double(i)*intpowD(-1.1, i);
 	      if(simplex[i][1]<0.0) simplex[i][1] = -simplex[i][1];
 	      else if(simplex[i][1]==0.0) simplex[i][1] += MINHERGETDIST*10.0;
+	      else if(!isnormal(simplex[i][1]) || simplex[i][1]>MAXORBDIST_AU) simplex[i][1] = 1.0 - 0.02*M_PI*double(i)*intpowD(-1.1, i);
 	      simpchi[i] = Hergetchi_vstar2(simplex[i][0], simplex[i][1], Hergetpoint1, Hergetpoint2, observerpos, observervel, obsMJD, obsRA, obsDec, crosstrack, alongtrack, fitRA, fitDec, crossresid, alongresid, orbit, verbose);
 	      if(simpchi[i]>=LARGERR3) {
 		cerr << "WARNING: Hergetchi_vstar2() returned error code on simplex point " << i << ": " << simplex[i][0] << ", " << simplex[i][1] << "\n";
@@ -19478,8 +19673,15 @@ double Hergetfit_vstar_chisq(double geodist1, double geodist2, double simplex_sc
 	// Make sure we don't have negative distances
 	if(simplex[i][0]<0.0) simplex[i][0] = -simplex[i][0];
 	else if(simplex[i][0]==0.0) simplex[i][0] += MINHERGETDIST*10.0;
+	else if(!isnormal(simplex[i][0]) || simplex[i][0]>MAXORBDIST_AU) simplex[i][0] = 1.0 + 0.01*M_PI*double(i)*intpowD(-1.1, i);
 	if(simplex[i][1]<0.0) simplex[i][1] = -simplex[i][1];
 	else if(simplex[i][1]==0.0) simplex[i][1] += MINHERGETDIST*10.0;
+	else if(!isnormal(simplex[i][1]) || simplex[i][1]>MAXORBDIST_AU) simplex[i][1] = 1.0 - 0.02*M_PI*double(i)*intpowD(-1.1, i);
+      }
+      if(Herget_simplex_check(simplex) != 1) {
+	cerr << "ERROR: expanded simplex fails check\n";
+	cerr << simplex[0][0] << " " << simplex[0][1] << " " << simplex[1][0] << " " << simplex[1][1] << " " << simplex[2][0] << " " << simplex[2][1] << "\n";
+	return(LARGERR3);
       }
       // Re-evaluate the chi-square values
       for(i=0;i<3;i++) {
@@ -19529,6 +19731,11 @@ double Hergetfit_vstar_chisq(double geodist1, double geodist2, double simplex_sc
 	status=Herget_simplex_int(global_bestd1, global_bestd2, simplex_scale, simplex, simptype);
 	if(status!=0) {
 	  cerr << "ERROR: Herget_simplex_int() failed to create a good simplex\n";
+	  return(LARGERR3);
+	}
+	if(Herget_simplex_check(simplex) != 1) {
+	  cerr << "ERROR: Herget_simplex_int() reported success, but simplex fails check\n";
+	  cerr << simplex[0][0] << " " << simplex[0][1] << " " << simplex[1][0] << " " << simplex[1][1] << " " << simplex[2][0] << " " << simplex[2][1] << "\n";
 	  return(LARGERR3);
 	}
       }
