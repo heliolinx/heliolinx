@@ -19544,9 +19544,9 @@ double Hergetfit_vstar_chisq(double geodist1, double geodist2, double simplex_sc
     trialdist[1] = refdist[1] - (simplex[worstpoint][1] - refdist[1]);
     // Make sure we don't have negative distances
     if(trialdist[0]<0.0) trialdist[0] = -trialdist[0];
-    else if(trialdist[0]==0.0) trialdist[0] += MINHERGETDIST*10.0;
+    if(trialdist[0]>=0.0 && trialdist[0]<MINHERGETDIST) trialdist[0] += MINHERGETDIST*10.0;
     if(trialdist[1]<0.0) trialdist[1] = -trialdist[1];
-    else if(trialdist[1]==0.0) trialdist[1] += MINHERGETDIST*10.0;
+    if(trialdist[1]>=0.0 && trialdist[1]<MINHERGETDIST) trialdist[1] += MINHERGETDIST*10.0;
     if(trialdist[0]>MAXORBDIST_AU) trialdist[0] = LARGE_HERGET_DIST;
     if(trialdist[1]>MAXORBDIST_AU) trialdist[1] = trialdist[0] - 0.01*M_PI;
     
@@ -19568,9 +19568,9 @@ double Hergetfit_vstar_chisq(double geodist1, double geodist2, double simplex_sc
       trialdist[1] = refdist[1] - 2.0L*(simplex[worstpoint][1] - refdist[1]);
       // Make sure we don't have negative distances
       if(trialdist[0]<0.0) trialdist[0] = -trialdist[0];
-      else if(trialdist[0]==0.0) trialdist[0] += MINHERGETDIST*10.0;
+      if(trialdist[0]>=0.0 && trialdist[0]<MINHERGETDIST) trialdist[0] += MINHERGETDIST*10.0;
       if(trialdist[1]<0.0) trialdist[1] = -trialdist[1];
-      else if(trialdist[1]==0.0) trialdist[1] += MINHERGETDIST*10.0;
+      if(trialdist[1]>=0.0 && trialdist[1]<MINHERGETDIST) trialdist[1] += MINHERGETDIST*10.0;
       if(trialdist[0]>MAXORBDIST_AU) trialdist[0] = LARGE_HERGET_DIST;
       if(trialdist[1]>MAXORBDIST_AU) trialdist[1] = trialdist[0] - 0.01*M_PI;
       newchi = Hergetchi_vstar2(trialdist[0], trialdist[1], Hergetpoint1, Hergetpoint2, observerpos, observervel, obsMJD, obsRA, obsDec, crosstrack, alongtrack, fitRA, fitDec, crossresid, alongresid, orbit, verbose);
@@ -19608,9 +19608,9 @@ double Hergetfit_vstar_chisq(double geodist1, double geodist2, double simplex_sc
 	trialdist[1] = 0.5L*(simplex[worstpoint][1] + refdist[1]);
 	// Make sure we don't have negative distances
 	if(trialdist[0]<0.0) trialdist[0] = -trialdist[0];
-	else if(trialdist[0]==0.0) trialdist[0] += MINHERGETDIST*10.0;
+	if(trialdist[0]>=0.0 && trialdist[0]<MINHERGETDIST) trialdist[0] += MINHERGETDIST*10.0;
 	if(trialdist[1]<0.0) trialdist[1] = -trialdist[1];
-	else if(trialdist[1]==0.0) trialdist[1] += MINHERGETDIST*10.0;
+	else if(trialdist[1]>=0.0 && trialdist[0]<MINHERGETDIST) trialdist[1] += MINHERGETDIST*10.0;
 	if(trialdist[0]>MAXORBDIST_AU) trialdist[0] = LARGE_HERGET_DIST;
 	if(trialdist[1]>MAXORBDIST_AU) trialdist[1] = trialdist[1] - 0.01*M_PI;
 	// Calculate chi-square value at this new point
