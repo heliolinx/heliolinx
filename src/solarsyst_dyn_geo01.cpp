@@ -19500,7 +19500,7 @@ double Hergetfit_vstar_chisq(double geodist1, double geodist2, double simplex_sc
   int status=0;
   
   if(!isnormal(geodist1) || !isnormal(geodist2) || geodist1<MINHERGETDIST || geodist2<MINHERGETDIST || geodist1>MAXORBDIST_AU || geodist2>MAXORBDIST_AU) {
-    cerr << "ERROR: Hergetfit_vstar_chisq called with out-of-range or invalid distances " << geodist1 << " and " << geodist2 << "\n";
+    if(verbose>0) cerr << "ERROR: Hergetfit_vstar_chisq called with out-of-range or invalid distances " << geodist1 << " and " << geodist2 << "\n";
     return(LARGERR3);
   }
   
@@ -19856,7 +19856,7 @@ double Hergetfit_vstar_chisq(double geodist1, double geodist2, double simplex_sc
     // Close main optimization loop.
   }
   if(num_notnormal > SIMP_MAXCT_FIX) cerr << "Warning: more than " << num_notnormal << " instances of non-normal distances had to be fixed in Hergetfit_vstar_chisq\n";
-  if(num_smalldist > SIMP_MAXCT_FIX) cerr << "Warning: more than " << num_smalldist << " instances of unreasonably small distances had to be fixed in Hergetfit_vstar_chisq\n";
+  if(num_smalldist > SIMP_MAXCT_FIX && verbose>0) cerr << "Warning: more than " << num_smalldist << " instances of unreasonably small distances had to be fixed in Hergetfit_vstar_chisq\n";
   if(num_largedist > SIMP_MAXCT_FIX) cerr << "Warning: more than " << num_largedist << " instances of unreasonably large distances had to be fixed in Hergetfit_vstar_chisq\n";
   if(num_velcor > SIMP_MAXCT_FIX && verbose>0) cerr << "Warning: more than " << num_velcor << " instances of out-of-range velocities had to be fixed in Hergetfit_vstar_chisq\n";
   // Perform fit with final best parameters
