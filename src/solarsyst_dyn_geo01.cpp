@@ -17940,6 +17940,7 @@ int Herget_simplex_check(double simplex[3][2])
 #define SIMP_EXPAND_FAC 20.0L
 #define SIMP_MAXCT_EXPAND 2000
 #define SIMP_MAXCT_TOTAL 10000
+#define SIMP_MAXCT_FIX 10
 
 // Hergetfit01: November 03, 2022:
 // Use Hergetchi01 to perform orbit fitting using the Method of Herget,
@@ -19413,6 +19414,63 @@ double Hergetfit_vstarSV(double geodist1, double geodist2, double simplex_scale,
   return(chisq);
 }
 
+// Herget_guess_fix: May 05, 2026:
+// Given a two-element vector containing guesses for the geocentric
+// distances for use in a Herget orbit fit, check that the guesses
+// make sense and correct them if not. Return 1 if a correction has
+// been made, and zero if it has not. Also, increment integer values
+// to indicate what type of correction has been made: non-normal
+// distance, too-small distance, too-large distance, or implausibly
+// high implied radial velocity.
+int Herget_guess_fix(double distance_guesses[2], double timediff, long &num_notnormal, long &num_smalldist, long &num_largedist, long &num_velcor, long whichpoint)
+{
+  int made_correction=0;
+  double maxvel = HERGET_MAXVEL*SOLARDAY/AU_KM; // maxvel has units of AU/day
+  // Check for non-normal distances
+  if(!isnormal(distance_guesses[0])) {
+    distance_guesses[0] = DEFAULT_HERGET_DIST + 0.005*M_PI*double(whichpoint)*intpowD(-1.1, whichpoint);
+    num_notnormal++;
+    made_correction=1;
+  }
+  if(!isnormal(distance_guesses[1])) {
+    distance_guesses[1] = DEFAULT_HERGET_DIST - 0.003*M_PI*double(whichpoint+1)*intpowD(-1.1, whichpoint);
+    num_notnormal++;
+    made_correction=1;
+  }
+  // Check for too-small distances
+  if(distance_guesses[0]<0.0) distance_guesses[0] = -distance_guesses[0];
+  if(distance_guesses[0]>=0.0 && distance_guesses[0]<MINHERGETDIST) {
+    distance_guesses[0] = SMALL_HERGET_DIST + 0.0017*M_PI*double(whichpoint)*intpowD(-1.1, whichpoint);
+    num_smalldist++;
+    made_correction=1;
+  }
+  if(distance_guesses[1]<0.0) distance_guesses[1] = -distance_guesses[1];
+  if(distance_guesses[1]>=0.0 && distance_guesses[1]<MINHERGETDIST) {
+    distance_guesses[1] += SMALL_HERGET_DIST + 0.0013*M_PI*double(whichpoint+1)*intpowD(-1.1, whichpoint);
+    num_smalldist++;
+    made_correction=1;
+  }
+  // Check for too-large distances
+  if(distance_guesses[0]>MAXORBDIST_AU) {
+    distance_guesses[0] = LARGE_HERGET_DIST + 0.0011*M_PI*double(whichpoint)*intpowD(-1.1, whichpoint);
+    num_largedist++;
+    made_correction=1;
+  }
+  if(distance_guesses[1]>MAXORBDIST_AU) {
+    distance_guesses[1] = LARGE_HERGET_DIST - 0.0007*M_PI*double(whichpoint+1)*intpowD(-1.1, whichpoint);
+    num_largedist++;
+    made_correction=1;
+  }
+  // Check that the distances do not imply an implausibly high velocity
+  if(fabs(distance_guesses[1] - distance_guesses[0])/timediff > maxvel) {
+    num_velcor++;
+    while(fabs(distance_guesses[1] - distance_guesses[0])/timediff > maxvel) distance_guesses[1] = (distance_guesses[1]+distance_guesses[0])/2.0;
+    made_correction=1;
+  }
+  return(made_correction);
+}
+
+
 // Hergetfit_vstar_chisq: March 25, 2026:
 // Like Hergetfit_vstar, but calculates a properly resolved chi-square
 // value using across-track and along-track astrometric uncertainties.
@@ -19434,6 +19492,18 @@ double Hergetfit_vstar_chisq(double geodist1, double geodist2, double simplex_sc
   int i,j,worstpoint, bestpoint;
   int simp_eval_ct=0;
   int simp_total_ct=0;
+  long num_largedist, num_smalldist, num_velcor, num_notnormal;
+  num_largedist = num_smalldist = num_velcor = num_notnormal = 0; // Track the number of out-of-range, unphysical cases that have been corrected
+  double maxvel = HERGET_MAXVEL*SOLARDAY/AU_KM; // maxvel has units of AU/day
+  double timediff = 1.0;
+  int made_correction = 0;
+  int status=0;
+  
+  if(!isnormal(geodist1) || !isnormal(geodist2) || geodist1<MINHERGETDIST || geodist2<MINHERGETDIST || geodist1>MAXORBDIST_AU || geodist2>MAXORBDIST_AU) {
+    cerr << "ERROR: Hergetfit_vstar_chisq called with out-of-range or invalid distances " << geodist1 << " and " << geodist2 << "\n";
+    return(LARGERR3);
+  }
+  
   if(simplex_scale<=0.0L || simplex_scale>=SIMPLEX_SCALE_LIMIT) {
     cerr << "WARNING: simplex scale must be between 0 and " << SIMPLEX_SCALE_LIMIT << "\n";
     cerr << "Input out-of-range value " << simplex_scale << " will be reseset to ";
@@ -19444,7 +19514,15 @@ double Hergetfit_vstar_chisq(double geodist1, double geodist2, double simplex_sc
   // Input points are indexed from 1; apply offset
   Hergetpoint1 = point1-1;
   Hergetpoint2 = point2-1;
-
+  timediff = obsMJD[Hergetpoint2] - obsMJD[Hergetpoint1];
+  // Modify input guess at geocentric distance to avoid unreasonably large velocities.
+  if(fabs(geodist1-geodist2)/timediff > maxvel) {
+    if(verbose>0) cerr << "WARNING: Hergetfit_vstar_chisq called with input distances that\n";
+    if(verbose>0) cerr << "imply implausibly high velocity.\n";
+    if(verbose>0) cerr << "Distances " << geodist1 << " and " << geodist2 << "; timediff " << timediff << " days, implied velocity " << fabs(geodist1-geodist2)/timediff*AU_KM/SOLARDAY << " km/sec\n";
+    while(fabs(geodist1-geodist2)/timediff > maxvel) geodist2 = (geodist1+geodist2)/2.0;
+    if(verbose>0) cerr << "Distances have been revised to " << geodist1 << " and " << geodist2 << "\n";
+  }
   if(verbose>=2) {
     cout << "Herget points: " << Hergetpoint1 << " " << Hergetpoint2 << "\n";
     for(i=0;i<long(obsMJD.size());i++) {
@@ -19453,11 +19531,11 @@ double Hergetfit_vstar_chisq(double geodist1, double geodist2, double simplex_sc
   }
 
   // SETUP FOR DOWNHILL SIMPLEX SEARCH
-  int status = Herget_simplex_int(geodist1, geodist2, simplex_scale, simplex, simptype);  
+  status = Herget_simplex_int(geodist1, geodist2, simplex_scale, simplex, simptype);  
   if(status==1) {
     // This is the error code for a zero or negative input distance.
-    if(geodist1<MINHERGETDIST) geodist1=MINHERGETDIST;
-    if(geodist2<MINHERGETDIST) geodist2=MINHERGETDIST;
+    if(geodist1<MINHERGETDIST) geodist1=SMALL_HERGET_DIST;
+    if(geodist2<MINHERGETDIST) geodist2=SMALL_HERGET_DIST;
     status=Herget_simplex_int(geodist1, geodist2, simplex_scale, simplex, simptype);
     cerr << "WARNING: Herget_simplex_int() called with invalid distance.\n";
     cerr << "retrying with newly assigned distances " << geodist1 << " and " << geodist2 << "\n";
@@ -19477,7 +19555,14 @@ double Hergetfit_vstar_chisq(double geodist1, double geodist2, double simplex_sc
       return(LARGERR3);
     }
   }
-
+  // Check that simplex does not result in any unphysical velocities.
+  for(i=0;i<3;i++) {
+    while(fabs(simplex[i][0]-simplex[i][1])/timediff > maxvel) {
+      if(verbose>0) cerr << "Correcting bad input simplex; implied velocity was " << fabs(simplex[i][0]-simplex[i][1])/timediff*AU_KM/SOLARDAY << " km/sec\n";
+      simplex[i][1] = (simplex[i][0]+simplex[i][1])/2.0;
+    }
+  }
+  
   for(i=0;i<3;i++) simpchi[i]=LARGERR3;
   // Calculate chi-square values for each point in the initial simplex
   // Note that the output vectors fitRA, fitDec, and resid are null-wiped
@@ -19527,7 +19612,7 @@ double Hergetfit_vstar_chisq(double geodist1, double geodist2, double simplex_sc
     global_bestd2 = simplex[bestpoint][1];
   }
   // LAUNCH DOWNHILL SIMPLEX SEARCH
-  while(simprange>ftol && simp_total_ct <= SIMP_MAXCT_TOTAL) {
+  while(simprange>ftol && simp_total_ct <= SIMP_MAXCT_TOTAL && num_notnormal <= SIMP_MAXCT_FIX && num_smalldist <= SIMP_MAXCT_FIX && num_largedist <= SIMP_MAXCT_FIX && num_velcor <= SIMP_MAXCT_FIX) {
     if(verbose>=2) cout << fixed << setprecision(6) << "Eval " << simp_total_ct << ": Best reduced chi-square value is " << bestchi/obsMJD.size() << ", range is " << simprange << ", vector is " << simplex[bestpoint][0] << " "  << simplex[bestpoint][1] << "\n";
     
     // Try to reflect away from worst point
@@ -19542,14 +19627,9 @@ double Hergetfit_vstar_chisq(double geodist1, double geodist2, double simplex_sc
     // Calculate new trial point
     trialdist[0] = refdist[0] - (simplex[worstpoint][0] - refdist[0]);
     trialdist[1] = refdist[1] - (simplex[worstpoint][1] - refdist[1]);
-    // Make sure we don't have negative distances
-    if(trialdist[0]<0.0) trialdist[0] = -trialdist[0];
-    if(trialdist[0]>=0.0 && trialdist[0]<MINHERGETDIST) trialdist[0] += MINHERGETDIST*10.0;
-    if(trialdist[1]<0.0) trialdist[1] = -trialdist[1];
-    if(trialdist[1]>=0.0 && trialdist[1]<MINHERGETDIST) trialdist[1] += MINHERGETDIST*10.0;
-    if(trialdist[0]>MAXORBDIST_AU) trialdist[0] = LARGE_HERGET_DIST;
-    if(trialdist[1]>MAXORBDIST_AU) trialdist[1] = trialdist[0] - 0.01*M_PI;
-    
+    // Check for bad distance values (non-normal, too small or too large, implausible implied velocity)
+    made_correction = 0;
+    made_correction = Herget_guess_fix(trialdist, timediff, num_notnormal, num_smalldist, num_largedist, num_velcor, 0);
     // Calculate chi-square value at this new point
     chisq = Hergetchi_vstar2(trialdist[0], trialdist[1], Hergetpoint1, Hergetpoint2, observerpos, observervel, obsMJD, obsRA, obsDec, crosstrack, alongtrack, fitRA, fitDec, crossresid, alongresid, orbit, verbose);
     if(chisq>=LARGERR3) {
@@ -19566,13 +19646,10 @@ double Hergetfit_vstar_chisq(double geodist1, double geodist2, double simplex_sc
      // Extrapolate further in this direction: maybe we can do even better
       trialdist[0] = refdist[0] - 2.0L*(simplex[worstpoint][0] - refdist[0]);
       trialdist[1] = refdist[1] - 2.0L*(simplex[worstpoint][1] - refdist[1]);
-      // Make sure we don't have negative distances
-      if(trialdist[0]<0.0) trialdist[0] = -trialdist[0];
-      if(trialdist[0]>=0.0 && trialdist[0]<MINHERGETDIST) trialdist[0] += MINHERGETDIST*10.0;
-      if(trialdist[1]<0.0) trialdist[1] = -trialdist[1];
-      if(trialdist[1]>=0.0 && trialdist[1]<MINHERGETDIST) trialdist[1] += MINHERGETDIST*10.0;
-      if(trialdist[0]>MAXORBDIST_AU) trialdist[0] = LARGE_HERGET_DIST;
-      if(trialdist[1]>MAXORBDIST_AU) trialdist[1] = trialdist[0] - 0.01*M_PI;
+      // Check for bad distance values (non-normal, too small or too large, implausible implied velocity)
+      made_correction = 0;
+      made_correction = Herget_guess_fix(trialdist, timediff, num_notnormal, num_smalldist, num_largedist, num_velcor, 0);
+      // Calculate chi-square value at this new point     
       newchi = Hergetchi_vstar2(trialdist[0], trialdist[1], Hergetpoint1, Hergetpoint2, observerpos, observervel, obsMJD, obsRA, obsDec, crosstrack, alongtrack, fitRA, fitDec, crossresid, alongresid, orbit, verbose);
       if(newchi>=LARGERR3) {
 	cerr << "WARNING: Hergetchi_vstar2() returned error code with input " << trialdist[0] << ", " << trialdist[1] << "\n";
@@ -19606,13 +19683,9 @@ double Hergetfit_vstar_chisq(double geodist1, double geodist2, double simplex_sc
 	// instead of reflecting away from it.
 	trialdist[0] = 0.5L*(simplex[worstpoint][0] + refdist[0]);
 	trialdist[1] = 0.5L*(simplex[worstpoint][1] + refdist[1]);
-	// Make sure we don't have negative distances
-	if(trialdist[0]<0.0) trialdist[0] = -trialdist[0];
-	if(trialdist[0]>=0.0 && trialdist[0]<MINHERGETDIST) trialdist[0] += MINHERGETDIST*10.0;
-	if(trialdist[1]<0.0) trialdist[1] = -trialdist[1];
-	else if(trialdist[1]>=0.0 && trialdist[0]<MINHERGETDIST) trialdist[1] += MINHERGETDIST*10.0;
-	if(trialdist[0]>MAXORBDIST_AU) trialdist[0] = LARGE_HERGET_DIST;
-	if(trialdist[1]>MAXORBDIST_AU) trialdist[1] = trialdist[1] - 0.01*M_PI;
+	// Check for bad distance values (non-normal, too small or too large, implausible implied velocity)
+	made_correction = 0;
+	made_correction = Herget_guess_fix(trialdist, timediff, num_notnormal, num_smalldist, num_largedist, num_velcor, 0);
 	// Calculate chi-square value at this new point
 	chisq = Hergetchi_vstar2(trialdist[0], trialdist[1], Hergetpoint1, Hergetpoint2, observerpos, observervel, obsMJD, obsRA, obsDec, crosstrack, alongtrack, fitRA, fitDec, crossresid, alongresid, orbit, verbose);
 	if(chisq>=LARGERR3) {
@@ -19636,13 +19709,10 @@ double Hergetfit_vstar_chisq(double geodist1, double geodist2, double simplex_sc
 	    if(i!=bestpoint) {
 	      simplex[i][0] = 0.5L*(simplex[i][0] + simplex[bestpoint][0]);
 	      simplex[i][1] = 0.5L*(simplex[i][1] + simplex[bestpoint][1]);
-	      // Make sure we don't have negative distances
-	      if(simplex[i][0]<0.0) simplex[i][0] = -simplex[i][0];
-	      else if(simplex[i][0]==0.0) simplex[i][0] += MINHERGETDIST*10.0;
-	      else if(!isnormal(simplex[i][0]) || simplex[i][0]>MAXORBDIST_AU) simplex[i][0] = 1.0 + 0.01*M_PI*double(i)*intpowD(-1.1, i);
-	      if(simplex[i][1]<0.0) simplex[i][1] = -simplex[i][1];
-	      else if(simplex[i][1]==0.0) simplex[i][1] += MINHERGETDIST*10.0;
-	      else if(!isnormal(simplex[i][1]) || simplex[i][1]>MAXORBDIST_AU) simplex[i][1] = 1.0 - 0.02*M_PI*double(i)*intpowD(-1.1, i);
+	      // Check for bad distance values (non-normal, too small or too large, implausible implied velocity)
+	      made_correction = 0;
+	      made_correction = Herget_guess_fix(simplex[i], timediff, num_notnormal, num_smalldist, num_largedist, num_velcor, i);
+	      // Calculate the new chi-square value	      
 	      simpchi[i] = Hergetchi_vstar2(simplex[i][0], simplex[i][1], Hergetpoint1, Hergetpoint2, observerpos, observervel, obsMJD, obsRA, obsDec, crosstrack, alongtrack, fitRA, fitDec, crossresid, alongresid, orbit, verbose);
 	      if(simpchi[i]>=LARGERR3) {
 		cerr << "WARNING: Hergetchi_vstar2() returned error code on simplex point " << i << ": " << simplex[i][0] << ", " << simplex[i][1] << "\n";
@@ -19670,13 +19740,9 @@ double Hergetfit_vstar_chisq(double geodist1, double geodist2, double simplex_sc
       for(i=0;i<3;i++) {
 	simplex[i][0] = refdist[0] + (simplex[i][0]-refdist[0])*SIMP_EXPAND_FAC;
 	simplex[i][1] = refdist[1] + (simplex[i][1]-refdist[1])*SIMP_EXPAND_FAC;
-	// Make sure we don't have negative distances
-	if(simplex[i][0]<0.0) simplex[i][0] = -simplex[i][0];
-	else if(simplex[i][0]==0.0) simplex[i][0] += MINHERGETDIST*10.0;
-	else if(!isnormal(simplex[i][0]) || simplex[i][0]>MAXORBDIST_AU) simplex[i][0] = 1.0 + 0.01*M_PI*double(i)*intpowD(-1.1, i);
-	if(simplex[i][1]<0.0) simplex[i][1] = -simplex[i][1];
-	else if(simplex[i][1]==0.0) simplex[i][1] += MINHERGETDIST*10.0;
-	else if(!isnormal(simplex[i][1]) || simplex[i][1]>MAXORBDIST_AU) simplex[i][1] = 1.0 - 0.02*M_PI*double(i)*intpowD(-1.1, i);
+	// Check for bad distance values (non-normal, too small or too large, implausible implied velocity)
+	made_correction = 0;
+	made_correction = Herget_guess_fix(simplex[i], timediff, num_notnormal, num_smalldist, num_largedist, num_velcor, i);
       }
       if(Herget_simplex_check(simplex) != 1) {
 	cerr << "ERROR: expanded simplex fails check\n";
@@ -19733,6 +19799,11 @@ double Hergetfit_vstar_chisq(double geodist1, double geodist2, double simplex_sc
 	  cerr << "ERROR: Herget_simplex_int() failed to create a good simplex\n";
 	  return(LARGERR3);
 	}
+	// Check for bad distance values (non-normal, too small or too large, implausible implied velocity)
+	for(i=0;i<3;i++) {
+	  made_correction = 0;
+	  made_correction = Herget_guess_fix(simplex[i], timediff, num_notnormal, num_smalldist, num_largedist, num_velcor, i);
+	}
 	if(Herget_simplex_check(simplex) != 1) {
 	  cerr << "ERROR: Herget_simplex_int() reported success, but simplex fails check\n";
 	  cerr << simplex[0][0] << " " << simplex[0][1] << " " << simplex[1][0] << " " << simplex[1][1] << " " << simplex[2][0] << " " << simplex[2][1] << "\n";
@@ -19784,7 +19855,10 @@ double Hergetfit_vstar_chisq(double geodist1, double geodist2, double simplex_sc
     }
     // Close main optimization loop.
   }
-  
+  if(num_notnormal > SIMP_MAXCT_FIX) cerr << "Warning: more than " << num_notnormal << " instances of non-normal distances had to be fixed in Hergetfit_vstar_chisq\n";
+  if(num_smalldist > SIMP_MAXCT_FIX) cerr << "Warning: more than " << num_smalldist << " instances of unreasonably small distances had to be fixed in Hergetfit_vstar_chisq\n";
+  if(num_largedist > SIMP_MAXCT_FIX) cerr << "Warning: more than " << num_largedist << " instances of unreasonably large distances had to be fixed in Hergetfit_vstar_chisq\n";
+  if(num_velcor > SIMP_MAXCT_FIX && verbose>0) cerr << "Warning: more than " << num_velcor << " instances of out-of-range velocities had to be fixed in Hergetfit_vstar_chisq\n";
   // Perform fit with final best parameters
   chisq = Hergetchi_vstar2(global_bestd1, global_bestd2, Hergetpoint1, Hergetpoint2, observerpos, observervel, obsMJD, obsRA, obsDec, crosstrack, alongtrack, fitRA, fitDec, crossresid, alongresid, orbit, verbose);
   if(TRACECONV>0) cout << "TRACECONV: " << global_bestd1 << " " << global_bestd2  << ": " << chisq << "\n";
@@ -57485,3 +57559,6 @@ int unpack_objstring(string packstring, string &unpackstring) {
   else unpackstring = to_string(year) + " " + letterstring;
   return(0);
 }
+
+
+

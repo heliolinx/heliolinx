@@ -46,9 +46,6 @@ using namespace std;
 #define EARTHEQUATRAD 6378.140L // Earth's equatorial radius in km.
 #define AU_KM 1.495978700e8L /*One AU in km*/
 #define AU 1.49597870700e11L /*One AU in meters*/
-#define MAXORBDIST_AU 10000.0 // Ten thousand AU: max valid distance in an orbit-fit.
-#define MAXORBDIST_KM 1.495978700e12L // Ten thousand AU in km: max valid distance in an orbit-fit.
-#define LARGE_HERGET_DIST 40.0 // Value in AU to which too-large distances in Herget fit will be reset.
 #define EFOLDS_PER_MAG 0.921034037197618 // E-foldings per astronomical magnitude
 #define ZET0 2.5976176L /*precession formula constants in units of arcsec*/
 #define ZET1 2306.0809506L
@@ -129,6 +126,12 @@ using namespace std;
                               // shrink the distances by this factor to see if you can bring them in range.
 #define MINHERGETDIST 0.000001L // Make sure distances and distance separations in Herget
                               // orbit fitting don't get smaller than this value (in AU).
+#define MAXORBDIST_AU 10000.0 // Ten thousand AU: max valid distance in an orbit-fit.
+#define MAXORBDIST_KM 1.495978700e12L // Ten thousand AU in km: max valid distance in an orbit-fit.
+#define LARGE_HERGET_DIST 40.0 // Value in AU to which too-large distances in Herget fit will be reset.
+#define DEFAULT_HERGET_DIST 1.0 // Value in AU to which too-small distances in Herget fit will be reset.
+#define SMALL_HERGET_DIST 0.01 // Value in AU to which too-small distances in Herget fit will be reset.
+#define HERGET_MAXVEL 250.0 // Maximum implied radial velocity in km/s for Herget fit.
 #define SIMPLEX_SCALEFAC 0.2L // Initial scaling for Herget simplex. For input guess x, y points will be
                               // x ( 1 + SIMPLEX_SCALEFAC - SIMPLEX_SCALEFACE^2),
                               // y ( 1 + SIMPLEX_SCALEFAC + SIMPLEX_SCALEFACE^2) and
@@ -1905,6 +1908,7 @@ long double Hergetchi01(long double geodist1, long double geodist2, int Hergetpo
 double Hergetchi01(double geodist1, double geodist2, int Hergetpoint1, int Hergetpoint2, const vector <point3d> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid, vector <double> &orbit, int verbose);
 double Hergetchi_vstar(double geodist1, double geodist2, int Hergetpoint1, int Hergetpoint2, const vector <point3d> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid, vector <double> &orbit, int verbose);
 double Hergetchi_vstarSV(double geodist1, double geodist2, int Hergetpoint1, int Hergetpoint2, const vector <vector <double>> &observerpos, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &sigastrom, vector <double> &fitRA, vector <double> &fitDec, vector <double> &resid, vector <double> &out_statevec, double &stateMJD, int verbose);
+int Herget_guess_fix(double distance_guesses[2], double timediff, long &num_notnormal, long &num_smalldist, long &num_largedist, long &num_velcor, long whichpoint);
 double Hergetfit_vstar_chisq(double geodist1, double geodist2, double simplex_scale, int simptype, double ftol, int point1, int point2, const vector <point3d> &observerpos, const vector <point3d> &observervel, const vector <double> &obsMJD, const vector <double> &obsRA, const vector <double> &obsDec, const vector <double> &crosstrack, const vector <double> &alongtrack, double ecc_penalty, vector <double> &fitRA, vector <double> &fitDec, vector <double> &crossresid, vector <double> &alongresid, vector <double> &orbit, int verbose);
 int statevec2kep_easy(const double MGsun, vector <double> &statevec, double &a, double &e, double &incl);
 double statevec2kep_incl(const vector <double> &statevec);
