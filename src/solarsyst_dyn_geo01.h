@@ -187,6 +187,9 @@ using namespace std;
                               // in seconds, are implausible and will cause link_refine_Herget
                               // to exit with an error.
 // End parameters related to heliolinc clustering
+#define MAXTANVELCUT 50.0 // Maximum value that can be placed on the minimum tangential velocity in km/sec
+                          // for a valid tracklet in heliolinc. Note that setting it anywhere near
+                          // this would reject almost all tracklets.
 
 // Begin set or parameters related to the Everhart (1974) integrator
 #define h3_1 0.0l
