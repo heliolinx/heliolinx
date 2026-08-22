@@ -51,6 +51,8 @@ void fill_struct(hlimage & out, hlimage const& in) {
     out.VX = in.VX;
     out.VY = in.VY;
     out.VZ = in.VZ;
+    out.startind = in.startind;
+    out.endind = in.endind;
     out.exptime = in.exptime;
 }
 
