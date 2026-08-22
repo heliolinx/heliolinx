@@ -138,7 +138,7 @@ template<typename T>
 std::vector<T> ndarray_to_vec(py::array_t<T> py_vec) {
     py::dtype expected_dtype = py::dtype::of<T>();
     if (!py_vec.dtype().is(expected_dtype)) {
-	throw std::runtime_error("Array dtype does not match expected type 'foo'. See mjuric@astro.washington.edu for more details");
+	throw std::runtime_error("Array dtype " + std::string(py::str(py_vec.dtype())) + " does not match expected dtype " + std::string(py::str(expected_dtype)) + ". See https://github.com/heliolinx/heliolinx/issues for more details");
     }
     std::vector<T> vec = {};
 
