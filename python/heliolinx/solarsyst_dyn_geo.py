@@ -258,8 +258,8 @@ def load_earth_ephemerides(fn, **kwargs):
         jpl_file(fn),
         dtype=[
                 ('MJD', float),
-                ('X', float), ('Y', float), ('Z', float),
-                ('VX', float), ('VY', float), ('VZ', float)
+                ('x', float), ('y', float), ('z', float),
+                ('vx', float), ('vy', float), ('vz', float)
         ],
         usecols=[0, 2, 3, 4, 5, 6, 7],
         autostrip=True,
