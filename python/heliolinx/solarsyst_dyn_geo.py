@@ -84,6 +84,7 @@ hlclust = np.dtype(list(dict(
     obsnights = int,
     metric = float,
     rating = SSHORT,
+    reference_MJD = float,
     heliohyp0 = float, 
     heliohyp1 = float,
     heliohyp2 = float,
