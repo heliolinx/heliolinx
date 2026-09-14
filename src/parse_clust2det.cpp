@@ -47,7 +47,8 @@ int main(int argc, char *argv[])
   long clustct=0;
   long i=0;
   int verbose=0;
-  long max_known_obj=0;
+  //long max_known_obj=0;
+  double avg_known_obj=0.0;
   double avg_det_qual=0.0l;
   double magrange,magmean,magrms,minGCR,maxGCR;
   magrange = magmean = magrms = minGCR = maxGCR = 0.0l;
@@ -222,15 +223,18 @@ int main(int argc, char *argv[])
       // Time-sort clustvec, just to be sure
       sort(clustvec.begin(), clustvec.end(), early_hldet());
       // Run some analytics on this detection cluster
-      avg_det_qual = 0.0l;
-      max_known_obj=0;
+      avg_det_qual = 0.0;
+      //max_known_obj=0;
+      avg_known_obj=0.0;
       magvec={};
       for(i=0; i<long(clustvec.size()); i++) {
 	avg_det_qual += double(clustvec[i].det_qual);
-	if(clustvec[i].known_obj > max_known_obj) max_known_obj = clustvec[i].known_obj;
+	avg_known_obj += double(clustvec[i].known_obj);
+	//if(clustvec[i].known_obj > max_known_obj) max_known_obj = clustvec[i].known_obj;
 	if(clustvec[i].mag>0.0l) magvec.push_back(clustvec[i].mag);
       }
       avg_det_qual/=double(clustvec.size());
+      avg_known_obj/=double(clustvec.size());
       // New steps added April 30, 2025: perform global Great Circle fit,
       // and calculate the quadratic divergence.
       greatcircfit(clustvec, poleRA, poleDec, angvel, PA, crosstrack, alongtrack);
@@ -380,14 +384,14 @@ int main(int argc, char *argv[])
       }
       magvec={};
       
-      outstream1 << "\n#clusternum,posRMS,velRMS,totRMS,astromRMS,timespan,uniquepoints,obsnights,metric,orbit_a,orbit_e,orbit_incl,orbit_MJD,orbitX,orbitY,orbitZ,orbitVX,orbitVY,orbitVZ,orbit_eval_count,avg_det_qual,max_known_obj,minvel,maxvel,minGCR,maxGCR,minpa,maxpa,mintimespan,maxtimespan,minarc,maxarc,stringID,min_nightstep,max_nightstep,magmean,magrms,magrange,rating,crossaccel,alongaccel,totalaccel\n";
+      outstream1 << "\n#clusternum,posRMS,velRMS,totRMS,astromRMS,timespan,uniquepoints,obsnights,metric,orbit_a,orbit_e,orbit_incl,orbit_MJD,orbitX,orbitY,orbitZ,orbitVX,orbitVY,orbitVZ,orbit_eval_count,avg_det_qual,avg_known_obj,minvel,maxvel,minGCR,maxGCR,minpa,maxpa,mintimespan,maxtimespan,minarc,maxarc,stringID,min_nightstep,max_nightstep,magmean,magrms,magrange,rating,crossaccel,alongaccel,totalaccel\n";
       outstream1 << fixed << setprecision(3) << inclustvec[clustct].clusternum << "," << inclustvec[clustct].posRMS << "," << inclustvec[clustct].velRMS << "," << inclustvec[clustct].totRMS << ",";
       outstream1 << fixed << setprecision(4) << inclustvec[clustct].astromRMS << ",";
       outstream1 << fixed << setprecision(6) << inclustvec[clustct].timespan << "," << inclustvec[clustct].uniquepoints << "," << inclustvec[clustct].obsnights << "," << inclustvec[clustct].metric << ",";
       outstream1 << fixed << setprecision(6) << inclustvec[clustct].orbit_a << "," << inclustvec[clustct].orbit_e << "," << inclustvec[clustct].orbit_incl << "," << inclustvec[clustct].orbit_MJD << ",";
       outstream1 << fixed << setprecision(1) << inclustvec[clustct].orbitX << "," << inclustvec[clustct].orbitY << "," << inclustvec[clustct].orbitZ << ",";
       outstream1 << fixed << setprecision(4) << inclustvec[clustct].orbitVX << "," << inclustvec[clustct].orbitVY << "," << inclustvec[clustct].orbitVZ << "," << inclustvec[clustct].orbit_eval_count << ",";
-      outstream1 << fixed << setprecision(1) << avg_det_qual << "," << max_known_obj << ",";
+      outstream1 << fixed << setprecision(1) << avg_det_qual << "," << avg_known_obj << ",";
       outstream1 << fixed << setprecision(6) << angvelvec[0] << "," << angvelvec[tracknum-1] << "," << minGCR << "," << maxGCR << "," << PAvec[0] << "," << PAvec[tracknum-1] << "," << timespanvec[0] << "," << timespanvec[tracknum-1] << "," << arcvec[0] << "," << arcvec[tracknum-1] << "," << clustvec[0].idstring << "," << min_nightstep << "," << max_nightstep << "," << magmean << "," << magrms << "," << magrange << "," << inclustvec[clustct].rating << "," << crossquad << "," << alongquad << "," << sqrt(crossquad*crossquad + alongquad*alongquad) << "\n";
 	
       // Write this data to the output file
