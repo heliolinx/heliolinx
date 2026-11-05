@@ -21,6 +21,9 @@ void fill_struct(hldet & out, hldet const& in) {
     out.sigmag = in.sigmag;
     out.sig_across = in.sig_across;
     out.sig_along = in.sig_along;
+    out.sig_RA = in.sig_RA;
+    out.sig_Dec = in.sig_Dec;
+    out.radec_covar = in.radec_covar;
     out.image = in.image;
     memcpy(out.idstring, in.idstring, sizeof(in.idstring));
     memcpy(out.band, in.band, sizeof(in.band));
@@ -65,7 +68,23 @@ void fill_struct(tracklet & out, tracklet const& in) {
     out.trk_ID = in.trk_ID;
 }
 
+void fill_struct(uint_tracklet & out, uint_tracklet const& in) {
+    out.Img1 = in.Img1;
+    out.RA1 = in.RA1;
+    out.Dec1 = in.Dec1;
+    out.Img2 = in.Img2;
+    out.RA2 = in.RA2;
+    out.Dec2 = in.Dec2;
+    out.npts = in.npts;
+    out.trk_ID = in.trk_ID;
+}
+
 void fill_struct(longpair & out, longpair const& in) {
+    out.i1 = in.i1;
+    out.i2 = in.i2;
+}
+
+void fill_struct(uint_pair & out, uint_pair const& in) {
     out.i1 = in.i1;
     out.i2 = in.i2;
 }
@@ -181,7 +200,7 @@ py::array iotest02(py::array_t<hldet> py_ioin)
   std::vector <hldet> iovec = ndarray_to_vec(py_ioin);
   long unsigned int i=0;
   for(i=0; i<iovec.size(); i++) {
-    std::cout << iovec[i].MJD << " " << iovec[i].RA << " " << iovec[i].Dec << " " << iovec[i].mag << " " << iovec[i].trail_len << " " << iovec[i].trail_PA << " " << iovec[i].sigmag  << " " << iovec[i].sig_across << " " << iovec[i].sig_along << " " << iovec[i].image << " " << iovec[i].idstring << " " << iovec[i].band << " " << iovec[i].obscode << " " << iovec[i].index << "\n";
+    std::cout << iovec[i].MJD << " " << iovec[i].RA << " " << iovec[i].Dec << " " << iovec[i].mag << " " << iovec[i].trail_len << " " << iovec[i].trail_PA << " " << iovec[i].sigmag  << " " << iovec[i].sig_across << " " << iovec[i].sig_along << " " << iovec[i].sig_RA << " " << iovec[i].sig_Dec << " " << iovec[i].radec_covar << " " << iovec[i].image << " " << iovec[i].idstring << " " << iovec[i].band << " " << iovec[i].obscode << " " << iovec[i].index << "\n";
     iovec[i].MJD += MJDOFF;
   }
 
@@ -350,15 +369,15 @@ std::tuple<py::array, py::array>heliolinc(
   
   std::vector <hlimage> image_log = ndarray_to_vec(py_imglog);
   std::vector <hldet> detvec = ndarray_to_vec(py_detvec);
-  std::vector <tracklet> tracklets = ndarray_to_vec(py_tracklets);
-  std::vector <longpair> trk2det = ndarray_to_vec(py_trk2det);
+  std::vector <uint_tracklet> tracklets = ndarray_to_vec(py_tracklets);
+  std::vector <uint_pair> trk2det = ndarray_to_vec(py_trk2det);
   std::vector <hlradhyp> radhyp = ndarray_to_vec(py_radhyp);
   std::vector <EarthState> earthpos = ndarray_to_vec(earthin);
   int status = 0;
   std::vector <hlclust> outclust;
   std::vector <longpair> clust2det;
      
-  status = heliolinc_alg_lowmem(image_log, detvec, tracklets, trk2det, radhyp, earthpos, config, outclust, clust2det);
+  status = heliolinc_alg_uint_lowmem(image_log, detvec, tracklets, trk2det, radhyp, earthpos, config, outclust, clust2det);
   if(status!=0) {
     cerr << "ERROR: heliolinc returned failure status " << status << "\n";
     auto py_clustout = vec_to_ndarray<hlclust>({});

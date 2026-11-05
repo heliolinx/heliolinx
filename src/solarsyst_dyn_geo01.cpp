@@ -22396,6 +22396,7 @@ unsigned int uint_RAconv(double RAdub)
 {
   long templong=0;
   templong = RAdub*10000000.0 + 0.5;
+  if(templong>=3600000000) templong=0;
   return(unsigned(templong));
 }
 
