@@ -736,7 +736,7 @@ Two output files are produced for each execution of `heliolinc`: the "summary" f
 
 #### The cluster summary file ####
 
-The file providing summary lines for each cluster/linkage has a one-line header and 31 columns, as follows:
+The file providing summary lines for each cluster/linkage has a one-line header and 32 columns, as follows:
 
 Column &nbsp;&nbsp;| Name               | Description
 :---               | :---               | :---
@@ -763,14 +763,15 @@ Column &nbsp;&nbsp;| Name               | Description
 21                 | velZ               | Mean Z-component of velocity state vectors at the reference time (km/sec)
 22                 | orbit_a            | Semimajor axis of best-fit orbit, in AU (written only in post-processing)
 23                 | orbit_e            | eccentricity of best-fit orbit (written only in post-processing)
-24                 | orbit_MJD          | MJD at epoch of best-fit orbit (written only in post-processing)
-25                 | orbitX             | X-component of position state vector for best-fit orbit, in km (written only in post-processing)
-26                 | orbitY             | Y-component of position state vector for best-fit orbit, in km (written only in post-processing)
-27                 | orbitZ             | Z-component of position state vector for best-fit orbit, in km (written only in post-processing)
-28                 | orbitVX            | X-component of velocity state vector for best-fit orbit, in km/sec (written only in post-processing)
-29                 | orbitVY            | Y-component of velocity state vector for best-fit orbit, in km/sec (written only in post-processing)
-30                 | orbitVZ            | Z-component of velocity state vector for best-fit orbit, in km/sec (written only in post-processing)
-31                 | orbit_eval_count   | Iterations used to converge to best-fit orbit (written only in post-processing)
+24                 | orbit_incl         | Inclination of best-fit orbit relative to the ecliptic, in degrees (written only in post-processing)
+25                 | orbit_MJD          | MJD at epoch of best-fit orbit (written only in post-processing)
+26                 | orbitX             | X-component of position state vector for best-fit orbit, in km (written only in post-processing)
+27                 | orbitY             | Y-component of position state vector for best-fit orbit, in km (written only in post-processing)
+28                 | orbitZ             | Z-component of position state vector for best-fit orbit, in km (written only in post-processing)
+29                 | orbitVX            | X-component of velocity state vector for best-fit orbit, in km/sec (written only in post-processing)
+30                 | orbitVY            | Y-component of velocity state vector for best-fit orbit, in km/sec (written only in post-processing)
+31                 | orbitVZ            | Z-component of velocity state vector for best-fit orbit, in km/sec (written only in post-processing)
+32                 | orbit_eval_count   | Iterations used to converge to best-fit orbit (written only in post-processing)
 
 ##### Notes on specific, potentially confusing columns #####
 
@@ -778,7 +779,7 @@ The quality metric (column 10) has one definition when written be `heliolinc` an
 
 The heliocentric hypotheses (columns 13-15) have the same meaning as those in the input hypothesis file supplied to heliolinc using the command line keyword `-heliodist`, but they do **not** all have the same units. The distance hypothesis does have the same units (AU), but the velocity, which was in AU/day in the input hypothesis file, is converted into km/sec for the output file, and the derivative of the velocity, which was given in units of the local GMsun/r^2 in the hypothesis file, is converted into m/sec^2. These physical units are likely more intuitive, and in the case of the velocity they match the state vector units. We use m/sec^2 rather than km/sec^2 for the derivative of the velocity in order to keep the numerical values from being inconveniently small.
 
-The MJD at the epoch of the best fit orbit (colum 24), like all the columns from 22 to 31, is written only by the post-processing code, since `heliolinc` does not carry out an orbit-fit. This MJD at the epoch is chosen to lie at the midpoint of the time spanned by the observations corresponding to a particular linkage -- i.e., the time when the orbit fit is most strongly constrained by the data and the corresponding state vectors are likely to have the least error. This can differ from the overall reference MJD (column 12) because that is referenced to the time spanned by the data as a whole, while the observations corresponding to one particular object will in general span a smaller time interval and have a different central time. 
+The MJD at the epoch of the best fit orbit (colum 25), like all the columns from 22 to 32, is written only by the post-processing code, since `heliolinc` does not carry out an orbit-fit. This MJD at the epoch is chosen to lie at the midpoint of the time spanned by the observations corresponding to a particular linkage -- i.e., the time when the orbit fit is most strongly constrained by the data and the corresponding state vectors are likely to have the least error. This can differ from the overall reference MJD (column 12) because that is referenced to the time spanned by the data as a whole, while the observations corresponding to one particular object will in general span a smaller time interval and have a different central time. 
 
 #### The cluster-to-detection (clust2det) file ####
 

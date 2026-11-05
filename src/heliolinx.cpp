@@ -51,6 +51,8 @@ void fill_struct(hlimage & out, hlimage const& in) {
     out.VX = in.VX;
     out.VY = in.VY;
     out.VZ = in.VZ;
+    out.startind = in.startind;
+    out.endind = in.endind;
     out.exptime = in.exptime;
 }
 
@@ -138,7 +140,7 @@ template<typename T>
 std::vector<T> ndarray_to_vec(py::array_t<T> py_vec) {
     py::dtype expected_dtype = py::dtype::of<T>();
     if (!py_vec.dtype().is(expected_dtype)) {
-	throw std::runtime_error("Array dtype does not match expected type 'foo'. See mjuric@astro.washington.edu for more details");
+	throw std::runtime_error("Array dtype " + std::string(py::str(py_vec.dtype())) + " does not match expected dtype " + std::string(py::str(expected_dtype)) + ". See https://github.com/heliolinx/heliolinx/issues for more details");
     }
     std::vector<T> vec = {};
 
@@ -515,7 +517,7 @@ PYBIND11_MODULE(heliolinx, m) {
     PYBIND11_NUMPY_DTYPE(longpair, i1, i2);
     PYBIND11_NUMPY_DTYPE(tracklet, Img1, RA1, Dec1, Img2, RA2, Dec2, npts, trk_ID);
     PYBIND11_NUMPY_DTYPE(hlradhyp, HelioRad, R_dot, R_dubdot);
-    PYBIND11_NUMPY_DTYPE(hlclust, clusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, metric, rating, reference_MJD, heliohyp0, heliohyp1, heliohyp2, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
+    PYBIND11_NUMPY_DTYPE(hlclust, clusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, metric, rating, reference_MJD, heliohyp0, heliohyp1, heliohyp2, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_incl, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
     PYBIND11_NUMPY_DTYPE(point3d_index, x, y, z, index);
     PYBIND11_NUMPY_DTYPE(glint_trail, x, y, length, PA, linrms, eqrms, magmean, magrms, stepsize, qc1, npt, flashnum);
 		     
