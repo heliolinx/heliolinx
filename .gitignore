@@ -9,12 +9,24 @@ heliolinx-*/
 
 # binaries
 bin
-src/heliolinc_kd
-src/make_tracklets_new
-src/link_purify
+src/analyze_linkage01a
+src/calc_heliohypmat
+src/helio_highgrade
+src/heliolinc
+src/heliolinc_lowmem
+src/heliolinc_omp
+src/heliovane
+src/label_hldet
 src/link_planarity
+src/link_purify
+src/link_purify_chisq
+src/make_tracklets
+src/make_trailed_tracklets
+src/merge_tracklet_files
+src/modsplit_hlfile
+src/parse_clust2det
 src/parse_clust2det_MPC80
-src/parse_clust2det_new
+src/parse_trk2det
 
 # the static library
 src/libheliolinx.a
