@@ -68,13 +68,13 @@ void fill_struct(tracklet & out, tracklet const& in) {
     out.trk_ID = in.trk_ID;
 }
 
-void fill_struct(uint_tracklet & out, uint_tracklet const& in) {
+void fill_struct(uint_tracklet & out, tracklet const& in) {
     out.Img1 = in.Img1;
-    out.RA1 = in.RA1;
-    out.Dec1 = in.Dec1;
+    out.RA1 = uint_RAconv(in.RA1);
+    out.Dec1 = int_Decconv(in.Dec1);
     out.Img2 = in.Img2;
-    out.RA2 = in.RA2;
-    out.Dec2 = in.Dec2;
+    out.RA2 = uint_RAconv(in.RA2);
+    out.Dec2 = int_Decconv(in.Dec2);
     out.npts = in.npts;
     out.trk_ID = in.trk_ID;
 }
