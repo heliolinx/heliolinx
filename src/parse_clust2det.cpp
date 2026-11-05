@@ -12,7 +12,7 @@
 
 static void show_usage()
 {
-  cerr << "Usage: parse_clust2det -pairdet pairdet_file -insum input cluster summary file -clust2det input cluster-to-detection file -trackdiv tracklet_division_time -out output file\n";
+  cerr << "Usage: parse_clust2det -pairdet pairdet_file -insum input cluster summary file -clust2det input cluster-to-detection file -forcerun 0|1 (default 0) -nightstep days(default_0.6) -out output file\n";
 }
 
 int main(int argc, char *argv[])
@@ -58,6 +58,7 @@ int main(int argc, char *argv[])
   vector <double> alongvec;
   vector <double> timevec;
   vector <double> quadfitvec;
+  int forcerun=0;
   
   if(argc<9) {
     show_usage();
@@ -100,15 +101,25 @@ int main(int argc, char *argv[])
 	show_usage();
 	return(1);
       }
-    } else if(string(argv[i]) == "-trackdiv" || string(argv[i]) == "-nightstep") {
+    } else if(string(argv[i]) == "-forcerun") {
       if(i+1 < argc) {
 	//There is still something to read;
-	nightstep = stod(argv[++i]);
-	nightstep /= 24.0l;
+	forcerun = stoi(argv[++i]);
 	i++;
       }
       else {
-	cerr << "Input cluster list keyword supplied with no corresponding argument\n";
+	cerr << "Input forcerun keyword supplied with no corresponding argument\n";
+	show_usage();
+	return(1);
+      }
+    } else if(string(argv[i]) == "-nightstep" || string(argv[i]) == "-night_step" || string(argv[i]) == "-nstep" || string(argv[i]) == "-trackdiv") {
+      if(i+1 < argc) {
+	//There is still something to read;
+	nightstep = stod(argv[++i]);
+	i++;
+      }
+      else {
+	cerr << "Input nightstep keyword supplied with no corresponding argument\n";
 	show_usage();
 	return(1);
       }
@@ -158,6 +169,17 @@ int main(int argc, char *argv[])
     show_usage();
     return(1);
   }
+  
+  if(nightstep>1.0 && forcerun<=0) {
+    cerr << "ERROR (possibly): you have set nightstep (AKA trackdiv) to " << nightstep << " days\n";
+    cerr << "This may be a mistake based on an old version that used units of hours\n";
+    cerr << "To force the program to accept your unusually large nightstep, re-run with -forcerun 1\n";
+    return(1);
+  } else if(nightstep>1.0 && forcerun>0) {
+    cerr << "WARNING: you have set nightstep (AKA trackdiv) to " << nightstep << " days\n";
+    cerr << "This may be a mistake based on an old version that used units of hours, but since\n";
+    cerr << "forcerun 1 is set, processing will proceed with your unusually large nightstep\n";
+  }
 
   cout << "input paired detection file " << pairdetfile << "\n";
   cout << "input cluster summary file " << sumfile << "\n";
@@ -167,10 +189,11 @@ int main(int argc, char *argv[])
 
   // Read paired detection file
   detvec={};
-  status=read_pairdet_file(pairdetfile, detvec, verbose);
+  int headerlines=1;
+  status=read_hldet_file(pairdetfile, detvec, headerlines, verbose);
   if(status!=0) {
     cerr << "ERROR: could not successfully read paired detection file " << pairdetfile << "\n";
-    cerr << "read_pairdet_file returned status = " << status << ".\n";
+    cerr << "read_hldet_file returned status = " << status << ".\n";
    return(1);
   }
   cout << "Read " << detvec.size() << " data lines from paired detection file " << pairdetfile << "\n";
@@ -395,16 +418,10 @@ int main(int argc, char *argv[])
       outstream1 << fixed << setprecision(6) << angvelvec[0] << "," << angvelvec[tracknum-1] << "," << minGCR << "," << maxGCR << "," << PAvec[0] << "," << PAvec[tracknum-1] << "," << timespanvec[0] << "," << timespanvec[tracknum-1] << "," << arcvec[0] << "," << arcvec[tracknum-1] << "," << clustvec[0].idstring << "," << min_nightstep << "," << max_nightstep << "," << magmean << "," << magrms << "," << magrange << "," << inclustvec[clustct].rating << "," << crossquad << "," << alongquad << "," << sqrt(crossquad*crossquad + alongquad*alongquad) << "\n";
 	
       // Write this data to the output file
-      outstream1 << "#MJD,RA,Dec,mag,trail_len,trail_PA,sigmag,sig_across,sig_along,image,idstring,band,obscode,known_obj,det_qual,clusternum\n";
+      outstream1 << "#MJD,RA,Dec,mag,trail_len,trail_PA,sigmag,sig_across,sig_along,sig_RA,sig_Dec,radec_covar,image,idstring,band,obscode,known_obj,det_qual,origindex\n";
       for(i=0; i<long(clustvec.size()); i++) {
-	outstream1 << fixed << setprecision(7) << clustvec[i].MJD << "," << clustvec[i].RA << "," << clustvec[i].Dec << ",";
-	outstream1 << fixed << setprecision(4) << clustvec[i].mag << ",";
-	outstream1 << fixed << setprecision(2) << clustvec[i].trail_len << "," << clustvec[i].trail_PA << ",";
-	outstream1 << fixed << setprecision(4) << clustvec[i].sigmag << ",";
-	outstream1 << fixed << setprecision(4) << clustvec[i].sig_across << "," << clustvec[i].sig_along << ",";
-	outstream1 << clustvec[i].image << "," << clustvec[i].idstring << "," << clustvec[i].band << ",";
-	outstream1 << clustvec[i].obscode << "," << clustvec[i].known_obj << ",";
-	outstream1 << clustvec[i].det_qual << "," << clustvec[i].index << "\n";
+	int precstandard=1;
+	write_hldetline(outstream1,clustvec[i],precstandard);
       }
     }
   }

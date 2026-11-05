@@ -1,3 +1,6 @@
+// heliolinc_TNV: First prototype implementation using Ben
+// Engebreth's concept of SAD (Swept Angle Discrepancy) tracklets.
+//
 // Implements in C++ (with some modifications) the Heliolinc3D
 // algorithm developed by Siegfried Eggl, which in turn was based
 // on the original HelioLinC algorithm developed by Matthew Holman
@@ -180,9 +183,9 @@
 
 static void show_usage()
 {
-  cerr << "Usage: heliolinc -imgs imfile -pairdets paired detection file -tracklets tracklet file -trk2det tracklet-to-detection file -mjd mjdref -autorun 1=yes_auto-generate_MJDref -obspos observer_position_file -heliodist heliocentric_dist_vel_acc_file -clustrad clustrad -clustchangerad min_distance_for_cluster_scaling -npt dbscan_npt -minobsnights minobsnights -mintimespan mintimespan -mingeodist minimum_geocentric_distance -maxgeodist maximum_geocentric_distance -geologstep logarithmic_step_size_for_geocentric_distance_bins -mingeoobs min_geocentric_dist_at_observation(AU) -minimpactpar min_impact_parameter(km) -useunivar 1_for_univar_0_for_fgfunc -vinf max_v_inf  -outsum summary_file -clust2det clust2detfile -verbose verbosity\n";
+  cerr << "Usage: heliolinc_TNV -imgs imfile -pairdets paired detection file -tracklets tracklet file -trk2det tracklet-to-detection_file -autorun 0=do_not_auto-generate_MJDref -mjd mjdref -earth earthfile -heliodist heliocentric_dist_vel_acc_file -clustrad clustrad -clustchangerad min_distance_for_cluster_scaling -cluster_minpts cluster_minpts -minobsnights minobsnights -mintimespan mintimespan -mingeodist minimum_geocentric_distance -maxgeodist maximum_geocentric_distance -geologstep logarithmic_step_size_for_geocentric_distance_bins -mingeoobs min_geocentric_dist_at_observation(AU) -min_obstanvel min_tanvel_wrt_observer -minimpactpar min_impact_parameter(km) -tanveltol tanveltol -veltol_changerad veltol_changerad -vinf max_v_inf -nightstep nightstep -use_univar 1_for_universal_variables -use_rr 1_for_heliolincRR -use_dbscan 1_for_DBSCAN -use_taylor 1_for_TaylorSeries_hypotheses -use_smallclust 1_for_lowmem_clusters -use_smalltrk 1_for_lowmem_tracklets -use_streaming 1_for_output_streaming -outsum summary_file -clust2det clust2detfile -verbose verbosity\n";
   cerr << "\nor, at minimum:\n\n";
-  cerr << "heliolinc -imgs imfile -pairdets paired detection file -tracklets tracklet file -trk2det tracklet-to-detection file -obspos observer_position_file -heliodist heliocentric_dist_vel_acc_file\n";
+  cerr << "heliolinc_TNV -imgs imfile -pairdets paired detection file -tracklets tracklet file -trk2det tracklet-to-detection file -earth earthfile -heliodist heliocentric_dist_vel_acc_file\n";
   cerr << "\nNote that the minimum invocation leaves some things set to defaults\n";
   cerr << "that you may well wish to specify: in particular, the output file names\n";
   
@@ -193,14 +196,12 @@ int main(int argc, char *argv[])
   vector <hldet> detvec = {};
   vector <hldet> pairdets = {};
   vector <hlimage> image_log;
-  vector <tracklet> tracklets;
-  vector <longpair> trk2det;
   vector <hlradhyp> radhyp;
   vector <EarthState> earthpos;
   HeliolincConfig config;
   vector <hlclust> outclust;
   vector <longpair> clust2det;
-  string imfile,pairdetfile,trackletfile,trk2detfile,planetfile,accelfile;
+  string imfile,pairdetfile,trackletfile,trk2detfile,earthfile,accelfile;
   string sumfile = "sumfile_test.csv";
   string clust2detfile = "clust2detfile_test.csv";
   int default_clustrad, default_clustchangerad, default_npt, default_minobsnights;
@@ -208,32 +209,29 @@ int main(int argc, char *argv[])
   int default_geologstep,default_clust2detfile,default_sumfile;
   int default_mingeoobs, default_minimpactpar;
   int default_use_univar, default_max_v_inf;
+  int default_tanveltol, default_veltol_changerad, default_min_obstanvel;
   default_clustrad = default_clustchangerad = default_npt = default_minobsnights = 1;
-  default_mintimespan = 1;
+  default_mintimespan = default_min_obstanvel = 1;
   default_mingeodist = default_maxgeodist = default_geologstep = 1;
   default_clust2detfile = default_sumfile = 1;
   default_mingeoobs = default_minimpactpar = 1;
   default_use_univar = default_max_v_inf = 1;
+  default_tanveltol = default_veltol_changerad = 1;
+  int default_use_dbscan,default_use_taylor,default_use_rr;
+  default_use_dbscan = default_use_taylor = default_use_rr = 1;
+  int default_use_smallclust,default_use_smalltrk,default_use_streaming;
+  default_use_smallclust = default_use_smalltrk = default_use_streaming = 1;
+  int default_nightstep = 1;
   ofstream outstream1;
   long i=0;
   long clustct=0;
   int status=0;
+  int use_sad=0;
   
   i=1;
   while(i<argc) {
     cout << "Checking out argv[" << i << "] = " << argv[i] << ".\n";
-    if(string(argv[i]) == "-pairdet" || string(argv[i]) == "-pairdets" || string(argv[i]) == "-detpairs") {
-      if(i+1 < argc) {
-	//There is still something to read;
-        pairdetfile=argv[++i];
-	i++;
-      }
-      else {
-	cerr << "Input paired detection file keyword supplied with no corresponding argument\n";
-	show_usage();
-	return(1);
-      }
-    }  else if(string(argv[i]) == "-i" || string(argv[i]) == "-imgs" || string(argv[i]) == "-inimgs" || string(argv[i]) == "-img" || string(argv[i]) == "--inimgs" || string(argv[i]) == "--img" || string(argv[i]) == "--image" || string(argv[i]) == "--images") {
+    if(string(argv[i]) == "-i" || string(argv[i]) == "-imgs" || string(argv[i]) == "-inimgs" || string(argv[i]) == "-img" || string(argv[i]) == "--inimgs" || string(argv[i]) == "--img" || string(argv[i]) == "--image" || string(argv[i]) == "--images") {
       if(i+1 < argc) {
 	//There is still something to read;
 	imfile=argv[++i];
@@ -244,14 +242,25 @@ int main(int argc, char *argv[])
 	show_usage();
 	return(1);
       }
-    } else if(string(argv[i]) == "-tracklets" || string(argv[i]) == "-tracklet" || string(argv[i]) == "-tf" || string(argv[i]) == "-trkfile" || string(argv[i]) == "-trackletfile" || string(argv[i]) == "--trackletfile") {
+    } else if(string(argv[i]) == "-pairdet" || string(argv[i]) == "-pairdets" || string(argv[i]) == "-detpairs") {
+      if(i+1 < argc) {
+	//There is still something to read;
+        pairdetfile=argv[++i];
+	i++;
+      }
+      else {
+	cerr << "Input paired detection file keyword supplied with no corresponding argument\n";
+	show_usage();
+	return(1);
+      }
+    }  else if(string(argv[i]) == "-tracklets" || string(argv[i]) == "-tracklet" || string(argv[i]) == "-tf" || string(argv[i]) == "-trkfile" || string(argv[i]) == "-trackletfile" || string(argv[i]) == "--trackletfile") {
       if(i+1 < argc) {
 	//There is still something to read;
 	trackletfile=argv[++i];
 	i++;
       }
       else {
-	cerr << "Input pair file keyword supplied with no corresponding argument\n";
+	cerr << "Input tracklet file keyword supplied with no corresponding argument\n";
 	show_usage();
 	return(1);
       }
@@ -262,18 +271,7 @@ int main(int argc, char *argv[])
 	i++;
       }
       else {
-	cerr << "Input pair file keyword supplied with no corresponding argument\n";
-	show_usage();
-	return(1);
-      }
-    } else if(string(argv[i]) == "-m" || string(argv[i]) == "-mjd" || string(argv[i ]) == "-mjdref" || string(argv[i]) == "-MJD" || string(argv[i]) == "--mjd" || string(argv[i]) == "--MJD" || string(argv[i]) == "--modifiedjulianday" || string(argv[i]) == "--ModifiedJulianDay") {
-      if(i+1 < argc) {
-	//There is still something to read;
-	config.MJDref=stod(argv[++i]);
-	i++;
-      }
-      else {
-	cerr << "Reference MJD keyword supplied with no corresponding argument";
+	cerr << "Input trk2det file keyword supplied with no corresponding argument\n";
 	show_usage();
 	return(1);
       }
@@ -288,14 +286,25 @@ int main(int argc, char *argv[])
 	show_usage();
 	return(1);
       }
-    } else if(string(argv[i]) == "-obspos" || string(argv[i]) == "-op" || string(argv[i]) == "-obsvec" || string(argv[i]) == "--observer" || string(argv[i]) == "--observer_position" || string(argv[i]) == "--observer_statevec") {
+    } else if(string(argv[i]) == "-m" || string(argv[i]) == "-mjd" || string(argv[i ]) == "-mjdref" || string(argv[i]) == "-MJD" || string(argv[i]) == "--mjd" || string(argv[i]) == "--MJD" || string(argv[i]) == "--modifiedjulianday" || string(argv[i]) == "--ModifiedJulianDay") {
       if(i+1 < argc) {
 	//There is still something to read;
-	planetfile=argv[++i];
+	config.MJDref=stod(argv[++i]);
 	i++;
       }
       else {
-	cerr << "Observer position file keyword supplied with no corresponding argument\n";
+	cerr << "Reference MJD keyword supplied with no corresponding argument";
+	show_usage();
+	return(1);
+      }
+    } else if(string(argv[i]) == "-earth" || string(argv[i]) == "-e" || string(argv[i]) == "-Earth" || string(argv[i]) == "--earthfile" || string(argv[i]) == "--Earthfile" || string(argv[i]) == "--earth" || string(argv[i]) == "--Earth" || string(argv[i]) == "-obspos" || string(argv[i]) == "-op" || string(argv[i]) == "-obsvec" || string(argv[i]) == "--observer" || string(argv[i]) == "--observer_position" || string(argv[i]) == "--observer_statevec") {
+      if(i+1 < argc) {
+	//There is still something to read;
+	earthfile=argv[++i];
+	i++;
+      }
+      else {
+	cerr << "Earth file keyword supplied with no corresponding argument\n";
 	show_usage();
 	return(1);
       }
@@ -334,15 +343,15 @@ int main(int argc, char *argv[])
 	show_usage();
 	return(1);
       }
-    } else if(string(argv[i]) == "-npt" || string(argv[i]) == "-npoints" || string(argv[i]) == "-minpts" || string(argv[i]) == "-np" || string(argv[i]) == "--npt" || string(argv[i]) == "--dbscan_npt" || string(argv[i]) == "--DBSCANnpt") {
+    } else if(string(argv[i]) == "-cluster_minpts" || string(argv[i]) == "-minpts" || string(argv[i]) == "-cluster_min_points" || string(argv[i]) == "-min_cluster_pts" || string(argv[i]) == "-minclusterpts" || string(argv[i]) == "-min_clusterpts" || string(argv[i]) == "-npt" || string(argv[i]) == "-npoints" || string(argv[i]) == "-minpts" || string(argv[i]) == "-np" || string(argv[i]) == "--npt" || string(argv[i]) == "--dbscan_npt" || string(argv[i]) == "--DBSCANnpt") {
       if(i+1 < argc) {
 	//There is still something to read;
-	config.dbscan_npt=stoi(argv[++i]);
+	config.cluster_minpts=stoi(argv[++i]);
 	default_npt = 0;
 	i++;
       }
       else {
-	cerr << "DBSCAN npt keyword supplied with no corresponding argument\n";
+	cerr << "Cluster minimum number of points keyword supplied with no corresponding argument\n";
 	show_usage();
 	return(1);
       }
@@ -418,6 +427,18 @@ int main(int argc, char *argv[])
 	show_usage();
 	return(1);
       }
+    } else if(string(argv[i]) == "-min_obstanvel" || string(argv[i]) == "-minobstanvel" || string(argv[i]) == "-minotv" || string(argv[i]) == "-obstanvel" || string(argv[i]) == "-otv" || string(argv[i]) == "-motv" || string(argv[i]) == "--min_obs_tanvel") {
+      if(i+1 < argc) {
+	//There is still something to read;
+	config.min_obstanvel=stod(argv[++i]);
+	default_min_obstanvel = 0;
+	i++;
+      }
+      else {
+	cerr << "Keyword for min. tangential velocity w.r.t. observer supplied with no corresponding argument\n";
+	show_usage();
+	return(1);
+      }
     } else if(string(argv[i]) == "-minimpactpar" || string(argv[i]) == "-mip" || string(argv[i]) == "-minimp" || string(argv[i]) == "-minimppar" || string(argv[i]) == "--minimum_impact_parameter" || string(argv[i]) == "--minimpactpar" || string(argv[i]) == "--min_impact_par") {
       if(i+1 < argc) {
 	//There is still something to read;
@@ -430,7 +451,55 @@ int main(int argc, char *argv[])
 	show_usage();
 	return(1);
       }
-    }  else if(string(argv[i]) == "-useunivar" || string(argv[i]) == "-use_univar" || string(argv[i]) == "-univar" || string(argv[i]) == "-universalvar") {
+    } else if(string(argv[i]) == "-tanveltol" || string(argv[i]) == "-veltol" || string(argv[i]) == "-tanvel") {
+      if(i+1 < argc) {
+	//There is still something to read;
+	config.tanveltol=stod(argv[++i]);
+	default_tanveltol = 0;
+	i++;
+      }
+      else {
+	cerr << "Tangential velocity tolerance keyword supplied with no corresponding argument\n";
+	show_usage();
+	return(1);
+      }
+    } else if(string(argv[i]) == "-veltol_changerad" || string(argv[i]) == "-vel_changerad" || string(argv[i]) == "-veltol_changerad") {
+      if(i+1 < argc) {
+	//There is still something to read;
+	config.veltol_changerad=stod(argv[++i]);
+	default_veltol_changerad = 0;
+	i++;
+      }
+      else {
+	cerr << "Velocity tolerance changerad keyword supplied with no corresponding argument\n";
+	show_usage();
+	return(1);
+      }
+    } else if(string(argv[i]) == "-vinf" || string(argv[i]) == "-maxvinf" || string(argv[i]) == "-max_v_inf") {
+      if(i+1 < argc) {
+	//There is still something to read;
+	config.max_v_inf=stod(argv[++i]);
+	default_max_v_inf = 0;
+	i++;
+      }
+      else {
+	cerr << "v_infinity keyword supplied with no corresponding argument\n";
+	show_usage();
+	return(1);
+      }
+    } else if(string(argv[i]) == "-nightstep" || string(argv[i]) == "-night_step" || string(argv[i]) == "-trackdiv") {
+      if(i+1 < argc) {
+	//There is still something to read;
+	config.nightstep=stod(argv[++i]);
+	default_nightstep = 0;
+	i++;
+      }
+      else {
+	cerr << "Nighstep keyword supplied with no corresponding argument\n";
+	show_usage();
+	return(1);
+      }
+    } else if(string(argv[i]) == "-use_univar" || string(argv[i]) == "-useunivar" || string(argv[i]) == "-univar" || string(argv[i]) == "-universalvar") {
       if(i+1 < argc) {
 	//There is still something to read;
 	config.use_univar=stoi(argv[++i]);
@@ -442,26 +511,75 @@ int main(int argc, char *argv[])
 	show_usage();
 	return(1);
       }
-    }  else if(string(argv[i]) == "-vinf" || string(argv[i]) == "-maxvinf" || string(argv[i]) == "-max_v_inf") {
+    }  else if(string(argv[i]) == "-use_rr" || string(argv[i]) == "-RR" || string(argv[i]) == "-rr" || string(argv[i]) == "-userr" || string(argv[i]) == "-use_RR") {
       if(i+1 < argc) {
 	//There is still something to read;
-	config.max_v_inf=stod(argv[++i]);
-	default_max_v_inf = 0;
+	config.use_rr=stoi(argv[++i]);
+	default_use_rr = 0;
 	i++;
       }
       else {
-	cerr << "Minimum impact parameter keyword supplied with no corresponding argument\n";
+	cerr << "use_rr keyword supplied with no corresponding argument\n";
 	show_usage();
 	return(1);
       }
-    } else if(string(argv[i]) == "-verbose" || string(argv[i]) == "-verb" || string(argv[i]) == "-VERBOSE" || string(argv[i]) == "-VERB" || string(argv[i]) == "--verbose" || string(argv[i]) == "--VERBOSE" || string(argv[i]) == "--VERB") {
+    } else if(string(argv[i]) == "-use_dbscan" || string(argv[i]) == "-dbscan" || string(argv[i]) == "-DBSCAN" || string(argv[i]) == "-DBscan") {
       if(i+1 < argc) {
 	//There is still something to read;
-	config.verbose=stoi(argv[++i]);
+	config.use_dbscan=stoi(argv[++i]);
+	default_use_dbscan = 0;
 	i++;
       }
       else {
-	cerr << "Verbosity keyword supplied with no corresponding argument\n";
+	cerr << "use_dbscan keyword supplied with no corresponding argument\n";
+	show_usage();
+	return(1);
+      }
+    } else if(string(argv[i]) == "-use_taylor" || string(argv[i]) == "-taylor" || string(argv[i]) == "-Taylor" || string(argv[i]) == "-usetaylor") {
+      if(i+1 < argc) {
+	//There is still something to read;
+	config.use_taylor=stoi(argv[++i]);
+	default_use_taylor = 0;
+	i++;
+      }
+      else {
+	cerr << "use_taylor keyword supplied with no corresponding argument\n";
+	show_usage();
+	return(1);
+      }
+    } else if(string(argv[i]) == "-use_smallclust" || string(argv[i]) == "-smallclust" || string(argv[i]) == "-use_lowmem" || string(argv[i]) == "-lowmem") {
+      if(i+1 < argc) {
+	//There is still something to read;
+	config.use_smallclust=stoi(argv[++i]);
+	default_use_smallclust = 0;
+	i++;
+      }
+      else {
+	cerr << "use_smallclust keyword supplied with no corresponding argument\n";
+	show_usage();
+	return(1);
+      }
+    } else if(string(argv[i]) == "-use_smalltrk" || string(argv[i]) == "-smalltrk" || string(argv[i]) == "-use_uint" || string(argv[i]) == "-uint") {
+      if(i+1 < argc) {
+	//There is still something to read;
+	config.use_smalltrk=stoi(argv[++i]);
+	default_use_smalltrk = 0;
+	i++;
+      }
+      else {
+	cerr << "use_smalltrk keyword supplied with no corresponding argument\n";
+	show_usage();
+	return(1);
+      }
+    } else if(string(argv[i]) == "-use_streaming" || string(argv[i]) == "-streaming" || string(argv[i]) == "-usestreaming" || string(argv[i]) == "-Streaming") {
+      if(i+1 < argc) {
+	//There is still something to read;
+	config.use_streaming=stoi(argv[++i]);
+	default_use_streaming = 0;
+	i++;
+      }
+      else {
+	cerr << "use_streaming keyword supplied with no corresponding argument\n";
 	show_usage();
 	return(1);
       }
@@ -501,11 +619,11 @@ int main(int argc, char *argv[])
 	return(1);
       }
     } else {
-      cerr << "Warning: unrecognized keyword or argument " << argv[i] << "\n";
-      i++;
+      cerr << "ERROR: unrecognized keyword or argument " << argv[i] << "\n";
+      return(2);
     }
   }
-  if(config.minobsnights > config.dbscan_npt) config.minobsnights = config.dbscan_npt; // Otherwise the low setting of dbscan_npt is not operative.
+  if(config.minobsnights > config.cluster_minpts) config.minobsnights = config.cluster_minpts; // Otherwise the low setting of cluster_minpts is not operative.
 
   if(argc<11)
     {
@@ -519,7 +637,7 @@ int main(int argc, char *argv[])
   cout << "input detection file " << pairdetfile << "\n";
   cout << "input tracklet file " << trackletfile << "\n";
   cout << "input trk2det file " << trk2detfile << "\n";
-  cout << "input observer position file " << planetfile << "\n";
+  cout << "input Earth position file " << earthfile << "\n";
   cout << "input heliocentric hypothesis file " << accelfile << "\n";
   cout << "input reference MJD " << config.MJDref << "\n";
 
@@ -540,8 +658,8 @@ int main(int argc, char *argv[])
     cout << "\nERROR: input trk2det file is required\n";
     show_usage();
     return(1);
-  } else if(planetfile.size()<=0) {
-    cout << "\nERROR: input observer position file is required:\n";
+  } else if(earthfile.size()<=0) {
+    cout << "\nERROR: input Earth position file is required:\n";
     cout << "e.g. Earth1day2020s_02a.txt\n";
     show_usage();
     return(1);
@@ -551,22 +669,47 @@ int main(int argc, char *argv[])
     return(1);
   }
 
+  if(config.use_streaming>0) {
+    cerr << "ERROR: use_streaming is set, but this version of heliolinc\n";
+    cerr << "does not support it. Use a heliolinc_omp or a similar multi-threaded version\n";
+    return(1);
+  }
+
   // Catch case where max v_inf > 0 but universal variables are not set.
   if(config.max_v_inf>0.0l && config.use_univar<=0) {
     cerr << "ERROR: unbound orbits being probed (max_v_inf = " << config.max_v_inf << "),\n";
-    cerr << "but code is not set to use universal variables (use_univar = " << config.use_univar << ".\n";
+    cerr << "but code is not set to use universal variables (use_univar = " << config.use_univar << ").\n";
     show_usage();
     return(1);
   }
 
+  if(config.tanveltol>0.0) use_sad=1;
+  if(use_sad>0 && config.use_taylor>0) {
+    cerr << "ERROR: non-Keplerian (Taylor Series) interpretation of hypotheses\n";
+    cerr << "requested at the same time as intrinsically Keplerian tangential velocity\n";
+    cerr << "checking with tolerance " << config.tanveltol << "\n";
+    return(0);
+  }
+   if(use_sad==0 && config.min_obstanvel>0) {
+     cerr << "ERROR: min_obstanvel set to operative value (" << config.min_obstanvel << " km/sec without also\n";
+     cerr << "setting the heliocentric tangential velocity tolerance tanveltol, which\n";
+     cerr << "remains at its default, non-operative value of " << config.tanveltol << " km/sec.\n";
+     cerr << "Re-run with -tanveltol set. If you want tanveltol not to exclude any,\n";
+     cerr << "tracklets, set it to a very large positive value (e.g. -tanveltol 1000.0).\n";
+     cerr << "This, combined with your desired operative setting for min_obstanvel, will render\n";
+     cerr << "min_obstanvel operative while tanveltol is not.\n";
+     return(0);
+   }
+ 
+  if(config.autorun==0) cout << "Automatic reference MJD is disabled: user set MJDref = " << config.MJDref << "\n";
   if(default_clustrad==1) cout << "Defaulting to cluster radius = " << config.clustrad << "km\n";
   else cout << "input clustering radius " << config.clustrad << "km\n";
   if(default_clustchangerad==1) cout << "Defaulting to min. geocentric distance for cluster scaling = " << config.clustchangerad << "AU\n";
   else cout << "Min. geocentric distance for cluster scaling is " << config.clustchangerad << "AU\n";
   cout << "Minimum cluster radius, which will apply for all geocentric distances less\n";
   cout << "than " << config.clustchangerad << "AU, is " << config.clustrad*config.clustchangerad/REF_GEODIST << "km\n";
-  if(default_npt==1) cout << "Defaulting to DBSCAN npt (min. no. of tracklets in a linkage) = " << config.dbscan_npt << "\n";
-  else cout << "input DBSCAN npt (min. no. of tracklets in a linkage) is " << config.dbscan_npt << "\n";
+  if(default_npt==1) cout << "Defaulting to cluster_minpts (min. no. of tracklets in a linkage) = " << config.cluster_minpts << "\n";
+  else cout << "input cluster_minpts (min. no. of tracklets in a linkage) is " << config.cluster_minpts << "\n";
   if(default_minobsnights==1) cout << "Defaulting to minimum number of unique nights = " << config.minobsnights << "\n";
   else cout << "minimum number of unique nights is " << config.minobsnights << "\n";
   if(default_mintimespan==1) cout << "Defaulting to minimum time span for a linkage = " << config.mintimespan << " days\n";
@@ -584,17 +727,41 @@ int main(int argc, char *argv[])
   if(default_use_univar==1) cout << "For Keplerian integration, defaulting to f and g functions\nrather than universal variables\n";
   else if(config.use_univar>0) cout << "Using universal variables for Keplerian integration\n";
   else cout << "Using f and g functions for Keplerian integration\n";
+  if(default_use_dbscan==1) cout << "Defaulting to k-d tree range query rather than DBSCAN for clustering\n";
+  else if(config.use_dbscan>0) cout << "Using DBSCAN for clustering rather than a k-d tree range query.\n";
+  else cout << "Using a k-d tree range query rather than DBSCAN for clustering\n";
+  if(default_use_rr==1) cout << "Defaulting to using heliolinc3D, r-v parameter space for clustering\n";
+  else if(config.use_rr>0) cout << "Using heliolincRR parameter space rather than r-v for clustering.\n";
+  else cout << "Using heliolinc3D, r-v parameter space for clustering\n";
+  if(default_use_taylor==1) cout << "Defaulting to Keplerian interpretation of heliolinc hypotheses.\n";
+  else if(config.use_taylor>0) cout << "Using Taylor Series interpretation of heliolinc hypotheses.\n";
+  else cout << "Using Keplerian interpretation of heliolinc hypotheses.\n";
+  if(default_use_taylor==1) cout << "Defaulting to Keplerian interpretation of heliolinc hypotheses.\n";
+  else if(config.use_taylor>0) cout << "Using Taylor Series interpretation of heliolinc hypotheses.\n";
+  else cout << "Using Keplerian interpretation of heliolinc hypotheses.\n";
+  if(default_use_smallclust==1) cout << "Defaulting to using normal, full-precision cluster class.\n";
+  else if(config.use_smallclust>0) cout << "Using using compressed, memory-efficient cluster class.\n";
+  else cout << "Using using normal, full-precision cluster class.\n";
+  if(default_use_smalltrk==1) cout << "Defaulting to using normal, full-precision tracklet classes.\n";
+  else if(config.use_smalltrk>0) cout << "Using using compressed, memory-efficient tracklet classes.\n";
+  else cout << "Using using normal, full-precision tracklet classes.\n";
   if(default_max_v_inf==1) cout << "Defaulting to maximum v_inf relative to the sun = " << config.max_v_inf << " km/sec\n";
   else cout << "Maximum v_inf relative to the sun is " << config.max_v_inf << " km\n";
+  if(default_nightstep==1) cout << "Defaulting to nightstep = " << config.nightstep << " days\n";
+  else cout << "Nightstep is " << config.nightstep << " days\n";
+  if(default_tanveltol==1) cout << "Defaulting to tangential velocity tolerance = " << config.tanveltol << " km/sec\n";
+  else cout << "Tangential velocity tolerance is " << config.tanveltol << " km\n";
+  if(default_veltol_changerad==1) cout << "Defaulting to veltol_changerad = " << config.veltol_changerad << " AU\n";
+  else cout << "veltol_changerad is " << config.veltol_changerad << " km\n";
   if(default_sumfile==1) cout << "WARNING: using default name " << sumfile << " for summary output file\n";
   else cout << "summary output file " << sumfile << "\n";
   if(default_clust2detfile==1) cout << "WARNING: using default name " << clust2detfile << " for output clust2det file\n";
   else cout << "output clust2det file " << clust2detfile << "\n";
 
-  cout << "Heliocentric ephemeris for Earth is named " << planetfile << "\n";
-  status = read_horizons_csv(planetfile, earthpos);
+  cout << "Heliocentric ephemeris for Earth is named " << earthfile << "\n";
+  status = read_horizons_csv(earthfile, earthpos);
   if(status!=0) {
-    cerr << "ERROR: could not successfully Earth ephemeris file " << planetfile << "\n";
+    cerr << "ERROR: could not successfully Earth ephemeris file " << earthfile << "\n";
     cerr << "read_horizons_csv returned status = " << status << ".\n";
    return(1);
   } 
@@ -608,13 +775,19 @@ int main(int argc, char *argv[])
   }
   
   detvec={};
-  status=read_pairdet_file(pairdetfile, detvec, config.verbose);
+  int headerlines = 1;
+  status=read_hldet_file(pairdetfile, detvec, headerlines, config.verbose);
   if(status!=0) {
     cerr << "ERROR: could not successfully read paired detection file " << pairdetfile << "\n";
     cerr << "read_pairdet_file returned status = " << status << ".\n";
    return(1);
   }
   cout << "Read " << detvec.size() << " data lines from paired detection file " << pairdetfile << "\n";
+  if(config.use_smalltrk==1 && detvec.size()>=UINT_MAX) {
+    cerr << "ERROR: too many detections to work with -use_smalltrk 1\n";
+    cerr << "(" << detvec.size() << " >= " << UINT_MAX << "). Re-run with -use_smalltrk 0 (which is the default).\n";
+    return(1);
+  }
 
   // Find MJD for first and last detections.
   double minMJD = detvec[0].MJD;
@@ -647,29 +820,72 @@ int main(int argc, char *argv[])
    return(1);
   }
   cout << "Read " << image_log.size() << " data lines from image file " << imfile << "\n";
+
+  if(config.use_smalltrk==1) {
+    vector <uint_tracklet> tracklets;
+    vector <uint_pair> trk2det;
+    tracklets={};
+    trk2det={};
+    
+    status=read_tracklet_file_uint(trackletfile, tracklets, config.verbose);
+    if(status!=0) {
+      cerr << "ERROR: could not successfully read tracklet file " << trackletfile << "\n";
+      cerr << "read_tracklet_file returned status = " << status << ".\n";
+      return(1);
+    }
+    cout << "Read " << tracklets.size() << " data lines from tracklet file " << trackletfile << "\n";
+    if(tracklets.size()>=UINT_MAX) {
+      cerr << "ERROR: too many tracklets to work with -use_smalltrk 1\n";
+      cerr << "(" << tracklets.size() << " >= " << UINT_MAX << "). Re-run with -use_smalltrk 0 (which is the default).\n";
+      return(1);
+    }
+    status=read_uint_pair_file(trk2detfile, trk2det, config.verbose);
+    if(status!=0) {
+      cerr << "ERROR: could not successfully read trk2det file " << trk2detfile << "\n";
+      cerr << "read_longpair_file returned status = " << status << ".\n";
+      return(1);
+    }
+    cout << "Read " << trk2det.size() << " data lines from trk2det file " << trk2detfile << "\n";
+    if(config.use_smallclust==1) {
+      status=heliolinc_alg_uint_lowmem(image_log, detvec, tracklets, trk2det, radhyp, earthpos, config, outclust, clust2det);
+      if(status!=0) {
+	cerr << "ERROR: heliolinc_alg_uint_lowmem failed with status " << status << "\n";
+	return(status);
+      }
+    } else {
+      status=heliolinc_alg_uint(image_log, detvec, tracklets, trk2det, radhyp, earthpos, config, outclust, clust2det);
+      if(status!=0) {
+	cerr << "ERROR: heliolinc_alg_uint failed with status " << status << "\n";
+	return(status);
+      }
+    }
+  } else {
+    vector <tracklet> tracklets;
+    vector <longpair> trk2det;
+    tracklets={};
+    trk2det={};
+    
+    status=read_tracklet_file(trackletfile, tracklets, config.verbose);
+    if(status!=0) {
+      cerr << "ERROR: could not successfully read tracklet file " << trackletfile << "\n";
+      cerr << "read_tracklet_file returned status = " << status << ".\n";
+      return(1);
+    }
+    cout << "Read " << tracklets.size() << " data lines from tracklet file " << trackletfile << "\n";
   
-  tracklets={};
-  status=read_tracklet_file(trackletfile, tracklets, config.verbose);
-  if(status!=0) {
-    cerr << "ERROR: could not successfully read tracklet file " << trackletfile << "\n";
-    cerr << "read_tracklet_file returned status = " << status << ".\n";
-   return(1);
+    status=read_longpair_file(trk2detfile, trk2det, config.verbose);
+    if(status!=0) {
+      cerr << "ERROR: could not successfully read trk2det file " << trk2detfile << "\n";
+      cerr << "read_longpair_file returned status = " << status << ".\n";
+      return(1);
+    }
+    cout << "Read " << trk2det.size() << " data lines from trk2det file " << trk2detfile << "\n";
+    status=heliolinc_alg_all(image_log, detvec, tracklets, trk2det, radhyp, earthpos, config, outclust, clust2det);
+    if(status!=0) {
+      cerr << "ERROR: heliolinc_alg_all failed with status " << status << "\n";
+      return(status);
+    }
   }
-  cout << "Read " << tracklets.size() << " data lines from tracklet file " << trackletfile << "\n";
-  
-  trk2det={};
-  status=read_longpair_file(trk2detfile, trk2det, config.verbose);
-  if(status!=0) {
-    cerr << "ERROR: could not successfully read trk2det file " << trk2detfile << "\n";
-    cerr << "read_longpair_file returned status = " << status << ".\n";
-   return(1);
-  }
-  cout << "Read " << trk2det.size() << " data lines from trk2det file " << trk2detfile << "\n";
-  status=heliolinc_alg_all(image_log, detvec, tracklets, trk2det, radhyp, earthpos, config, outclust, clust2det);
-  if(status!=0) {
-    cerr << "ERROR: heliolinc_alg_all failed with status " << status << "\n";
-    return(status);
-  } 
   
   outstream1.open(sumfile);
   cout << "Writing " << outclust.size() << " lines to output cluster-summary file " << sumfile << "\n";

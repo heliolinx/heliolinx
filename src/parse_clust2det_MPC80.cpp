@@ -6,7 +6,7 @@
 
 static void show_usage()
 {
-  cerr << "Usage: parse_clust2det_MPC80 -pairdet pairdet_file -insum input cluster summary file -clust2det input cluster-to-detection file -trackdiv tracklet_division_time -out output file\n";
+  cerr << "Usage: parse_clust2det_MPC80 -pairdet pairdet_file -insum input cluster summary file -clust2det input cluster-to-detection file -forcerun 0|1 (default 0) -nightstep days(default_0.6) -out output file\n";
 }
 
 int main(int argc, char *argv[])
@@ -61,6 +61,7 @@ int main(int argc, char *argv[])
   int decdeg,decmin;
   double Dec,rasec,decsec;
   string signstring;
+  int forcerun=0;
 
   if(argc<9) {
     show_usage();
@@ -99,15 +100,25 @@ int main(int argc, char *argv[])
 	i++;
       }
       else {
-	cerr << "Input cluster list keyword supplied with no corresponding argument\n";
+	cerr << "Input cluster-to-detection file keyword supplied with no corresponding argument\n";
 	show_usage();
 	return(1);
       }
-    } else if(string(argv[i]) == "-trackdiv" || string(argv[i]) == "-nightstep") {
+    } else if(string(argv[i]) == "-forcerun") {
+      if(i+1 < argc) {
+	//There is still something to read;
+	forcerun = stoi(argv[++i]);
+	i++;
+      }
+      else {
+	cerr << "Input forcerun keyword supplied with no corresponding argument\n";
+	show_usage();
+	return(1);
+      }
+    } else if(string(argv[i]) == "-nightstep" || string(argv[i]) == "-night_step" || string(argv[i]) == "-nstep" || string(argv[i]) == "-trackdiv") {
       if(i+1 < argc) {
 	//There is still something to read;
 	nightstep = stod(argv[++i]);
-	nightstep /= 24.0l;
 	i++;
       }
       else {
@@ -161,6 +172,17 @@ int main(int argc, char *argv[])
     show_usage();
     return(1);
   }
+  
+  if(nightstep>1.0 && forcerun<=0) {
+    cerr << "ERROR (possibly): you have set nightstep (AKA trackdiv) to " << nightstep << " days\n";
+    cerr << "This may be a mistake based on an old version that used units of hours\n";
+    cerr << "To force the program to accept your unusually large nightstep, re-run with -forcerun 1\n";
+    return(1);
+  } else if(nightstep>1.0 && forcerun>0) {
+    cerr << "WARNING: you have set nightstep (AKA trackdiv) to " << nightstep << " days\n";
+    cerr << "This may be a mistake based on an old version that used units of hours, but since\n";
+    cerr << "forcerun 1 is set, processing will proceed with your unusually large nightstep\n";
+  }
 
   cout << "input paired detection file " << pairdetfile << "\n";
   cout << "input cluster summary file " << sumfile << "\n";
@@ -170,10 +192,11 @@ int main(int argc, char *argv[])
 
   // Read paired detection file
   detvec={};
-  status=read_pairdet_file(pairdetfile, detvec, verbose);
+  int headerlines=1;
+  status=read_hldet_file(pairdetfile, detvec, headerlines, verbose);
   if(status!=0) {
     cerr << "ERROR: could not successfully read paired detection file " << pairdetfile << "\n";
-    cerr << "read_pairdet_file returned status = " << status << ".\n";
+    cerr << "read_hldet_file returned status = " << status << ".\n";
    return(1);
   }
   cout << "Read " << detvec.size() << " data lines from paired detection file " << pairdetfile << "\n";

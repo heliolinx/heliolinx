@@ -516,6 +516,28 @@ double distradec01(double RA1, double Dec1, double RA2, double Dec2)
   return(DEGPRAD*2.0*asin(h/2.0));
 }
 
+// distradec01_uint: September 08, 2026
+// Given two pairs of RA, Dec coordinates, calculate
+// their angular separation on the sky in degrees.
+// Uses the memory-efficient, unsigned integer / integer
+// formulations for RA and Dec.
+double distradec01_uint(unsigned int iRA1, int iDec1, unsigned int iRA2, int iDec2)
+{
+  double RA1 = uint_RAconv(iRA1);
+  double Dec1 = int_Decconv(iDec1);
+  double RA2 = uint_RAconv(iRA2);
+  double Dec2 = int_Decconv(iDec2);
+  double x1,y1,z1,x2,y2,z2,h;
+  x1=cos(Dec1/DEGPRAD)*cos(RA1/DEGPRAD);
+  y1=cos(Dec1/DEGPRAD)*sin(RA1/DEGPRAD);
+  z1=sin(Dec1/DEGPRAD);
+  x2=cos(Dec2/DEGPRAD)*cos(RA2/DEGPRAD);
+  y2=cos(Dec2/DEGPRAD)*sin(RA2/DEGPRAD);
+  z2=sin(Dec2/DEGPRAD);
+  h=sqrt(DSQUARE(x1-x2)+DSQUARE(y1-y2)+DSQUARE(z1-z2));
+  return(DEGPRAD*2.0*asin(h/2.0));
+}
+
 
 // distradec02: November 08, 2021: Like distradec01, but also
 // calculates the celestial position angle from point 1 to point 2.
@@ -3908,6 +3930,7 @@ int get_csv_string01(const string &lnfromfile, string &outstring, int startpoint
   }
 }
 
+
 // get_sv_string01: Given a line read from a file with values
 // separated by one of the following: comma, space, tab, pipe, or ampersand;
 // and a starting point along that line, read the next value,
@@ -3920,14 +3943,20 @@ int get_sv_string01(const string &lnfromfile, string &outstring, int startpoint)
   unsigned int i=startpoint;
   char c='0';
   outstring="";
-  while(i<lnfromfile.size() && c!=',' && c!='&' && c!='|' && c!=' ' && c!='\t' && c!='\r' && c!='\n' && c!='\v' && c!='\f' && c!='\n' && c!=EOF) {
+  while(i<lnfromfile.size() && c!=',' && c!='&' && c!='|' && c!=' ' && c!='\t' && c!='\r' && c!='\v' && c!='\f' && c!='\n' && c!=EOF) {
     c=lnfromfile[i];
-    if(c!=',' && c!='\n' && c!=EOF) outstring.push_back(c);
+    if(c!=',' && c!='&' && c!='|' && c!=' ' && c!='\t' && c!='\r' && c!='\v' && c!='\f' && c!='\n' && c!=EOF) outstring.push_back(c);
     i++;
+  }
+  //Skip additional trailing spaces if necessary
+  while(i<lnfromfile.size() && (c==',' || c=='&' || c=='|' || c==' ' || c=='\t')) {
+    c=lnfromfile[i];
+    if(c==',' || c=='&' || c=='|' || c==' ' || c=='\t') i++;
   }
   if(outstring.size() > 0) return(i-1); // Worked fine.
   else return(-1); // Error code
 }
+
 
 // get_psv_string01: Given a line read from a file with values
 // separated by a pipe, and a starting point along that line, read the next value,
@@ -8301,7 +8330,7 @@ int Keplerint(const double MGsun, const double mjdstart, const point3d &startpos
 // Integrate an orbit assuming we have a Keplerian 2-body problem
 // with all the mass in the Sun, and the input position and velocity
 // are relative to the Sun.
-int Kepler_fg_func_int(const double MGsun, const double mjdstart, const point3d &startpos, const point3d &startvel, const double mjdend, point3d &endpos, point3d &endvel)
+int Kepler_fg_func_int(const double MGsun, const double mjdstart, const point3d &startpos, const point3d &startvel, const double mjdend, point3d &endpos, point3d &endvel, int verbose)
 {
   if(mjdend==mjdstart) {
     // Catch the trivial case
@@ -8313,9 +8342,10 @@ int Kepler_fg_func_int(const double MGsun, const double mjdstart, const point3d 
   double v0 = vecabs3d(startvel);
   double u = dotprod3d(startvel,startpos);
   double a = r0*MGsun/(2.0l*MGsun-v0*v0*r0);
-  if(a<=0.0l) {
+  if(a<=0.0l || !isnormal(a)) {
     // The orbit is unbound, and a solution will prove impossible
     // with the formulae implemented in this particular function.
+    if(verbose>0) cerr << "ERROR: Kepler_fg_func_int finds a = " << a << ", unable to proceed\n";
     return(1);
   }
   double n = sqrt(MGsun/a/a/a);
@@ -8323,7 +8353,13 @@ int Kepler_fg_func_int(const double MGsun, const double mjdstart, const point3d 
   double ES = u/n/a/a;
   double e = sqrt(EC*EC + ES*ES);
   double deltat = SOLARDAY*(mjdend-mjdstart);
-
+  if(e<0.0 || e>1.0 || (e!=0.0 && !isnormal(e))) {
+    if(verbose>0) {
+      cerr << "ERROR: Kepler_fg_func_int finds e = " << e << ", unable to proceed\n";
+      cerr << "Inputs were a = " << a << ", EC = " << EC << ", ES = " << ES << "\n";
+    }
+    return(1);
+  }
   double sinM, x, q, dqdx, dx;
   sinM = x = q = dqdx = dx = 0;
   int itct=0;
@@ -8345,7 +8381,11 @@ int Kepler_fg_func_int(const double MGsun, const double mjdstart, const point3d 
     itct++;
     // cout << "q, x, dqdx, dx: " << std::scientific << q << " " << x << " " << dqdx << " " << dx << "\n";
   }
-
+  if(verbose>0 && itct>=KEPTRANSITMAX) {
+    cerr << "Warning: Kepler_fg_func_int iterated " << itct << " times (max is " << KEPTRANSITMAX << ").\n";
+    cerr << "Remaining error term was " << q << ", while tolerance is " << KEPTRANSTOL << "n";
+  }
+  
   // Evaluate f and g functions
   double f,g,fdot,gdot,r,v;
   f = g = fdot = gdot = r = v = 0.0l;
@@ -8551,7 +8591,7 @@ int Kepler_univ_int(const double MGsun, const double mjdstart, const point3d &st
   double u = dotprod3d(startvel,startpos);
   double a = r0*MGsun/(2.0l*MGsun-v0*v0*r0);
   if(!isnormal(a)) {
-    cerr << "ERROR: Kepler_univ_int finds a = " << a << ", unable to proceed\n";
+    if(verbose>0) cerr << "ERROR: Kepler_univ_int finds a = " << a << ", unable to proceed\n";
     return(1);
   }
   double alpha = MGsun/a;
@@ -21567,21 +21607,24 @@ int read_detection_filemt(string indetfile, int idcol, int mjdcol, int racol, in
   } else return(reachedeof);
 }
 
+
 // read_detection_filemt2: April 18, 2023:
 // Read an input detection file for make_tracklets. This
 // function is quite specified to the exact needs of
 // make_tracklets, and not likely to be very generally
 // useful.
-int read_detection_filemt2(string indetfile, int mjdcol, int racol, int deccol, int magcol, int idcol, int bandcol, int obscodecol, int trail_len_col, int trail_PA_col, int sigmag_col, int sig_across_col, int sig_along_col, int known_obj_col, int det_qual_col, vector <hldet> &detvec, int verbose, int forcerun)
+int read_detection_filemt2(string indetfile, int mjdcol, int racol, int deccol, int magcol, int idcol, int bandcol, int obscodecol, int trail_len_col, int trail_PA_col, int sigmag_col, int sig_across_col, int sig_along_col, int sig_RA_col, int sig_Dec_col, int radec_covar_col, int known_obj_col, int det_qual_col, vector <hldet> &detvec, int verbose, int forcerun)
 {
   double MJD,RA,Dec;
   MJD = RA = Dec = 0.0l;
   float mag, trail_len, trail_PA, sigmag, sig_across, sig_along;
+  float sig_RA, sig_Dec, radec_covar;
   mag = -99.99;
   trail_len = 0.0;
   trail_PA = 90.0;
   sigmag = 9.999;
-  sig_across = sig_along = 1.0;
+  sig_across = sig_along = sig_RA = sig_Dec = 1.0;
+  radec_covar=0.0;
   char idstring[SHORTSTRINGLEN];
   char band[MINSTRINGLEN];
   char obscode[MINSTRINGLEN];
@@ -21591,13 +21634,15 @@ int read_detection_filemt2(string indetfile, int mjdcol, int racol, int deccol, 
   int image = -1;
   long known_obj, det_qual, index;
   known_obj = det_qual = index = -1;
-  hldet o1 = hldet(MJD, RA, Dec, mag, trail_len, trail_PA, sigmag, sig_across, sig_along, image, idstring, band, obscode, known_obj, det_qual, index);
+  hldet o1 = hldet(MJD, RA, Dec, mag, trail_len, trail_PA, sigmag, sig_across, sig_along, sig_RA, sig_Dec, radec_covar, image, idstring, band, obscode, known_obj, det_qual, index);
   ifstream instream1;
   string lnfromfile,stest;
   int lct,j,reachedeof,mjdread,raread,decread,magread,idread,bandread,obscoderead;
   lct = j = reachedeof = mjdread = raread = decread = magread = idread = bandread = obscoderead = 0;
   int trail_len_read, trail_PA_read, sigmag_read, sig_across_read, sig_along_read, known_obj_read, det_qual_read;
   trail_len_read = trail_PA_read = sigmag_read = sig_across_read = sig_along_read = known_obj_read = det_qual_read = 0;
+  int sig_RA_read, sig_Dec_read, radec_covar_read;
+  sig_RA_read = sig_Dec_read = radec_covar_read = 0;
   long i = 0;
   char c='0';
   
@@ -21624,12 +21669,14 @@ int read_detection_filemt2(string indetfile, int mjdcol, int racol, int deccol, 
     c='0';
     mjdread = raread = decread = magread = idread = bandread = obscoderead = 0;
     trail_len_read = trail_PA_read = sigmag_read = sig_across_read = known_obj_read = det_qual_read = 0;
+    sig_RA_read = sig_Dec_read = radec_covar_read = 0;
     MJD = RA = Dec = 0.0l;
     mag = -99.99;
     trail_len = 0.0;
     trail_PA = 90.0;
     sigmag = 9.999;
-    sig_across = sig_along = 1.0;
+    sig_across = sig_along = sig_RA = sig_Dec = 1.0;
+    radec_covar=0.0;
     stringncopy01(idstring,"",SHORTSTRINGLEN);
     stringncopy01(obscode,"500",MINSTRINGLEN);
     stringncopy01(band,"V",MINSTRINGLEN);
@@ -21694,6 +21741,21 @@ int read_detection_filemt2(string indetfile, int mjdcol, int racol, int deccol, 
 	try { sig_along=stod(stest); }
 	catch(...) { cerr << "ERROR: cannot read sig_along string " << stest << " from line " << lnfromfile << "\n"; 
 	sig_along_read=0; }
+      } else if(j==sig_RA_col) {
+	sig_RA_read=1;
+	try { sig_RA=stod(stest); }
+	catch(...) { cerr << "ERROR: cannot read sig_RA string " << stest << " from line " << lnfromfile << "\n"; 
+	sig_RA_read=0; }
+      } else if(j==sig_Dec_col) {
+	sig_Dec_read=1;
+	try { sig_Dec=stod(stest); }
+	catch(...) { cerr << "ERROR: cannot read sig_Dec string " << stest << " from line " << lnfromfile << "\n"; 
+	sig_Dec_read=0; }
+      } else if(j==radec_covar_col) {
+	radec_covar_read=1;
+	try { radec_covar=stod(stest); }
+	catch(...) { cerr << "ERROR: cannot read radec_covar string " << stest << " from line " << lnfromfile << "\n"; 
+	radec_covar_read=0; }
       } else if(j==idcol) {
 	stringncopy01(idstring,stest,SHORTSTRINGLEN);
 	idread=1;
@@ -21801,7 +21863,23 @@ int read_detection_filemt2(string indetfile, int mjdcol, int racol, int deccol, 
 	cerr << "Here is the line: " << lnfromfile << "\n";
       }
       if(verbose>2 && !sig_across_read) {
-	cerr << "Warning: cross-trail astrometric uncertainty sig_across not read from line " << detvec.size()+1 << " of input detection file " << indetfile << "!\n";
+	cerr << "Warning: cross-track astrometric uncertainty sig_across not read from line " << detvec.size()+1 << " of input detection file " << indetfile << "!\n";
+	cerr << "Here is the line: " << lnfromfile << "\n";
+      }
+      if(verbose>2 && !sig_along_read) {
+	cerr << "Warning: along-track astrometric uncertainty sig_along not read from line " << detvec.size()+1 << " of input detection file " << indetfile << "!\n";
+	cerr << "Here is the line: " << lnfromfile << "\n";
+      }
+      if(verbose>2 && !sig_RA_read) {
+	cerr << "Warning: astrometric uncertainty in RA not read from line " << detvec.size()+1 << " of input detection file " << indetfile << "!\n";
+	cerr << "Here is the line: " << lnfromfile << "\n";
+      }
+      if(verbose>2 && !sig_Dec_read) {
+	cerr << "Warning: astrometric uncertainty in Dec not read from line " << detvec.size()+1 << " of input detection file " << indetfile << "!\n";
+	cerr << "Here is the line: " << lnfromfile << "\n";
+      }
+      if(verbose>2 && !radec_covar_read) {
+	cerr << "Warning: RA Dec covariance not read from line " << detvec.size()+1 << " of input detection file " << indetfile << "!\n";
 	cerr << "Here is the line: " << lnfromfile << "\n";
       }
       if(verbose>2 && !known_obj_read) {
@@ -21812,7 +21890,7 @@ int read_detection_filemt2(string indetfile, int mjdcol, int racol, int deccol, 
 	cerr << "Warning: detection quality specifier not read from line " << detvec.size()+1 << " of input detection file " << indetfile << "!\n";
 	cerr << "Here is the line: " << lnfromfile << "\n";
       }
-      o1=hldet(MJD, RA, Dec, mag, trail_len, trail_PA, sigmag, sig_across, sig_along, image, idstring, band, obscode, known_obj, det_qual, -lct);
+      o1=hldet(MJD, RA, Dec, mag, trail_len, trail_PA, sigmag, sig_across, sig_along, sig_RA, sig_Dec, radec_covar, image, idstring, band, obscode, known_obj, det_qual, -lct);
       detvec.push_back(o1);
     }
   }
@@ -21833,6 +21911,7 @@ int read_detection_filemt2(string indetfile, int mjdcol, int racol, int deccol, 
   } else return(reachedeof);
 }
 
+
 // read_detection_file_MPC80: May 10, 2023:
 // Read an input file consiting of MPC 80-column formatted
 // observations, and store the output in the vector detvec of
@@ -21844,12 +21923,13 @@ int read_detection_file_MPC80(string indetfile, vector <hldet> &detvec)
 {
   double MJD,RA,Dec;
   MJD = RA = Dec = 0.0l;
-  double mag, trail_len, trail_PA, sigmag, sig_across, sig_along;
-  mag = -99.99;
+  double mag = -99.99;
+  float trail_len, trail_PA, sigmag, sig_across, sig_along, sig_RA, sig_Dec, radec_covar;
   trail_len = 0.0;
   trail_PA = 90.0;
   sigmag = 9.999;
-  sig_across = sig_along = 1.0;
+  sig_across = sig_along = sig_RA = sig_Dec = 1.0;
+  radec_covar = 0.0;
   string idstring,band,obscode;
   idstring = "";
   obscode = "500";
@@ -21857,7 +21937,7 @@ int read_detection_file_MPC80(string indetfile, vector <hldet> &detvec)
   int image = -1;
   long known_obj, det_qual, index;
   known_obj = det_qual = index = -1;
-  hldet o1 = hldet(MJD, RA, Dec, mag, trail_len, trail_PA, sigmag, sig_across, sig_along, image, idstring, band, obscode, known_obj, det_qual, index);
+  hldet o1 = hldet(MJD, RA, Dec, mag, trail_len, trail_PA, sigmag, sig_across, sig_along, sig_RA, sig_Dec, radec_covar, image, idstring, band, obscode, known_obj, det_qual, index);
   ifstream instream1;
   string lnfromfile,stest;
   int lct,j,reachedeof;
@@ -21877,7 +21957,8 @@ int read_detection_file_MPC80(string indetfile, vector <hldet> &detvec)
     trail_len = 0.0;
     trail_PA = 90.0;
     sigmag = 9.999;
-    sig_across = sig_along = 1.0;
+    sig_across = sig_along = sig_RA = sig_Dec = 1.0;
+    radec_covar = 0.0;
     idstring = "";
     obscode = "500";
     band = "V";
@@ -21896,7 +21977,7 @@ int read_detection_file_MPC80(string indetfile, vector <hldet> &detvec)
 	cerr << "Here is the line: " << lnfromfile << "\n";
 	return(2);
       }
-      o1=hldet(MJD, RA, Dec, mag, trail_len, trail_PA, sigmag, sig_across, sig_along, image, idstring, band, obscode, known_obj, det_qual, detvec.size());
+      o1=hldet(MJD, RA, Dec, mag, trail_len, trail_PA, sigmag, sig_across, sig_along, sig_RA, sig_Dec, radec_covar, image, idstring, band, obscode, known_obj, det_qual, detvec.size());
       detvec.push_back(o1);
     }
   }
@@ -21917,210 +21998,29 @@ int read_detection_file_MPC80(string indetfile, vector <hldet> &detvec)
   } else return(reachedeof);
 }
 
-  
-// read_pairdet_file: April 20, 2023:
-// Read a paired detection file produced by make_tracklets_new.
-int read_pairdet_file(string pairdetfile, vector <hldet> &detvec, int verbose)
+
+int comma_count(const string lnfromfile)
 {
-  double MJD, RA, Dec;
-  MJD = RA = Dec = 0.0l;
-  float mag, trail_len, trail_PA, sigmag, sig_across, sig_along;
-  mag =  trail_len = trail_PA = sigmag = sig_across = sig_along = 0.0;
-  int image = 0;
-  char idstring[SHORTSTRINGLEN];
-  char band[MINSTRINGLEN];
-  char obscode[MINSTRINGLEN];
-  stringncopy01(idstring,"",SHORTSTRINGLEN);
-  stringncopy01(obscode,"500",MINSTRINGLEN);
-  stringncopy01(band,"V",MINSTRINGLEN);
-  long known_obj, det_qual, index;
-  known_obj = det_qual = index = 0;
-  hldet o1 = hldet(MJD, RA, Dec, mag, trail_len, trail_PA, sigmag, sig_across, sig_along, image, idstring, band, obscode, known_obj, det_qual, index);
-  ifstream instream1;
-  string lnfromfile,stest;
-  int badread=0;
-  int reachedeof=0;
-  int startpoint=0;
-  int endpoint=0;
-
-  detvec={};
-  
-  instream1.open(pairdetfile);
-  if(!instream1) {
-    cerr << "can't open input file " << pairdetfile << "\n";
-    return(1);
+  int comma_num = 0;
+  for(int i=0;i<int(lnfromfile.size());i++) {
+    if(lnfromfile[i]==',') comma_num++;
   }
-  // Skip one-line header
-  getline(instream1,lnfromfile);
-  //cout << lnfromfile << "\n";
-  reachedeof = 0;
-  while(reachedeof==0) {
-    getline(instream1,lnfromfile);
-    if(!instream1.eof() && !instream1.fail() && !instream1.bad()) {
-      // Read on.
-      // Read the MJD
-      startpoint=0;
-      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
-      if(endpoint>0) {
-	try { MJD = stod(stest); }
-	catch(...) { cerr << "ERROR: cannot read MJD string " << stest << " from line " << lnfromfile << "\n";
-	  badread = 1; }
-      }
-      else badread=1;
-      // Read the RA
-      startpoint = endpoint+1;
-      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
-      if(endpoint>0) {
-	try { RA = stod(stest); }
-	catch(...) { cerr << "ERROR: cannot read RA string " << stest << " from line " << lnfromfile << "\n";
-	  badread = 1; }
-      } else badread=1;
-      // Read the Dec
-      startpoint = endpoint+1;
-      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
-      if(endpoint>0) {
-	try { Dec = stod(stest); }
-	catch(...) { cerr << "ERROR: cannot read Dec string " << stest << " from line " << lnfromfile << "\n";
-	  badread = 1; }
-      } else badread=1;
-      // Read the mag
-      startpoint = endpoint+1;
-      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
-      if(endpoint>0) {
-	try { mag = stof(stest); }
-	catch(...) { cerr << "ERROR: cannot read mag string " << stest << " from line " << lnfromfile << "\n";
-	  badread = 1; }
-      } else badread=1;
-      // Read the trail_len
-      startpoint = endpoint+1;
-      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
-      if(endpoint>0) {
-	try { trail_len = stof(stest); }
-      catch(...) { cerr << "ERROR: cannot read trail_len string " << stest << " from line " << lnfromfile << "\n";
-	badread = 1; }
-      } else badread=1;
-      // Read the trail_PA
-      startpoint = endpoint+1;
-      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
-      if(endpoint>0) {
-	try { trail_PA = stof(stest); }
-	catch(...) { cerr << "ERROR: cannot read trail_PA string " << stest << " from line " << lnfromfile << "\n";
-	  badread = 1; }
-      }
-      // Read the sigmag
-      startpoint = endpoint+1;
-      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
-      if(endpoint>0) {
-	try { sigmag = stof(stest); }
-	catch(...) { cerr << "ERROR: cannot read sigmag string " << stest << " from line " << lnfromfile << "\n";
-	  badread = 1; }
-      } else badread=1;
-      // Read the sig_across
-      startpoint = endpoint+1;
-      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
-      if(endpoint>0) {
-	try { sig_across = stof(stest); }
-	catch(...) { cerr << "ERROR: cannot read sig_across string " << stest << " from line " << lnfromfile << "\n";
-	  badread = 1; }
-      }
-      // Read the sig_along
-      startpoint = endpoint+1;
-      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
-      if(endpoint>0) {
-	try { sig_along = stof(stest); }
-	catch(...) { cerr << "ERROR: cannot read sig_along string " << stest << " from line " << lnfromfile << "\n";
-	  badread = 1; }
-      } else badread=1;
-      // Read the image
-      startpoint = endpoint+1;
-      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
-      if(endpoint>0) {
-	try { image = stoi(stest); }
-	catch(...) { cerr << "ERROR: cannot read image string " << stest << " from line " << lnfromfile << "\n";
-	  badread = 1; }
-      } else badread=1;
-      // Read the idstring
-      startpoint = endpoint+1;
-      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
-      if(endpoint>0) stringncopy01(idstring,stest,SHORTSTRINGLEN);
-      else badread=1;
-      // Read the band
-      startpoint = endpoint+1;
-      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
-      if(endpoint>0) stringncopy01(band,stest,MINSTRINGLEN);
-      else badread=1;
-      // Read the obscode
-      startpoint = endpoint+1;
-      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
-      if(endpoint>0) 	stringncopy01(obscode,stest,MINSTRINGLEN);
-      else badread=1;
-      // Read the known_obj
-      startpoint = endpoint+1;
-      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
-      if(endpoint>0) {
-	try { known_obj = stol(stest); }
-	catch(...) { cerr << "ERROR: cannot read known_obj string " << stest << " from line " << lnfromfile << "\n";
-	  badread = 1; }
-      } else badread=1;
-      // Read the det_qual
-      startpoint = endpoint+1;
-      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
-      if(endpoint>0) {
-	try { det_qual = stol(stest); }
-	catch(...) { cerr << "ERROR: cannot read det_qual string " << stest << " from line " << lnfromfile << "\n";
-	  badread = 1; }
-      } else badread=1;
-      // Read the index
-      startpoint = endpoint+1;
-      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
-      if(endpoint>0) {
-	try { index = stol(stest); }
-	catch(...) { cerr << "ERROR: cannot read origindex string " << stest << " from line " << lnfromfile << "\n";
-	  badread = 1; }
-      } else badread=1;
-      if(badread==0) {
-	o1 = hldet(MJD, RA, Dec, mag, trail_len, trail_PA, sigmag, sig_across, sig_along, image, idstring, band, obscode, known_obj, det_qual, index);
-	detvec.push_back(o1);
-      }
-    } else if(instream1.eof()) reachedeof=1; //End of file, fine.
-    else if(instream1.fail()) reachedeof=-1; //Something wrong, warn
-    else if(instream1.bad()) reachedeof=-2; //Worse problem, warn
-    if(badread!=0) {
-      cerr << "ERROR reading paired detection file " << pairdetfile << "\n";
-      cerr << "Last point was " << detvec.size() << "; last file line was " << lnfromfile << "\n";
-      return(badread);
-    }
-  }
-  instream1.close();
-
-  if(badread!=0) {
-    cerr << "ERROR reading paired detection file " << pairdetfile << "\n";
-    return(badread);
-  } 
-  if(reachedeof==1) { 
-    if(verbose>=1) cout << "Input file " << pairdetfile << " read successfully to the end.\n";
-    return(0);
-  } else if(reachedeof==0) {
-    cerr << "ERROR: Stopped reading file " << pairdetfile << " before the end\n";
-    return(1);
-  } else if(reachedeof==-1) {
-    cerr << "ERROR: file read failed\n";
-    return(1);
-  } else if(reachedeof==-2) {
-    cerr << "Warning: file possibly corrupted\n";
-    return(2);
-  } else return(reachedeof);
+  return(comma_num);
 }
 
+
 // read_hldet_file: February 15, 2025:
-// Exactly like read_pairdet_file, but assumes there is no header:
-// hence, does not skip the first line.
-int read_hldet_file(string pairdetfile, vector <hldet> &detvec, int verbose)
+// Read a csv file containing detections of type hldet, such as is produced by make_tracklets.
+// Optionally skip headerlines lines at the beginning of the file. For files output by
+// make_tracklets, headerlines==1. In other cases, we will frequently want headerlines=0.
+int read_hldet_file(string hldetfile, vector <hldet> &detvec, int headerlines, int verbose)
 {
   double MJD, RA, Dec;
   MJD = RA = Dec = 0.0l;
   float mag, trail_len, trail_PA, sigmag, sig_across, sig_along;
   mag =  trail_len = trail_PA = sigmag = sig_across = sig_along = 0.0;
+  float sig_RA, sig_Dec, radec_covar;
+  sig_RA = sig_Dec = radec_covar = 0.0;
   int image = 0;
   char idstring[SHORTSTRINGLEN];
   char band[MINSTRINGLEN];
@@ -22130,155 +22030,201 @@ int read_hldet_file(string pairdetfile, vector <hldet> &detvec, int verbose)
   stringncopy01(band,"V",MINSTRINGLEN);
   long known_obj, det_qual, index;
   known_obj = det_qual = index = 0;
-  hldet o1 = hldet(MJD, RA, Dec, mag, trail_len, trail_PA, sigmag, sig_across, sig_along, image, idstring, band, obscode, known_obj, det_qual, index);
+  hldet o1 = hldet(MJD, RA, Dec, mag, trail_len, trail_PA, sigmag, sig_across, sig_along, sig_RA, sig_Dec, radec_covar, image, idstring, band, obscode, known_obj, det_qual, index);
   ifstream instream1;
   string lnfromfile,stest;
   int badread=0;
   int reachedeof=0;
   int startpoint=0;
   int endpoint=0;
+  int headerct=0;
+  int comma_num=0;
 
   detvec={};
   
-  instream1.open(pairdetfile);
+  instream1.open(hldetfile);
   if(!instream1) {
-    cerr << "can't open input file " << pairdetfile << "\n";
+    cerr << "can't open input file " << hldetfile << "\n";
     return(1);
   }
   reachedeof = 0;
+  // Skip header lines, if any
+  for(headerct=0;headerct<headerlines;headerct++) {
+    if(!instream1.eof() && !instream1.fail() && !instream1.bad()) getline(instream1,lnfromfile);
+    else if(instream1.eof()) reachedeof=1;
+  }
   while(reachedeof==0) {
     getline(instream1,lnfromfile);
     if(!instream1.eof() && !instream1.fail() && !instream1.bad()) {
-      // Read on.
-      // Read the MJD
-      startpoint=0;
-      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
-      if(endpoint>0) {
-	try { MJD = stod(stest); }
-	catch(...) { cerr << "ERROR: cannot read MJD string " << stest << " from line " << lnfromfile << "\n";
-	  badread = 1; }
-      }
-      else badread=1;
-      // Read the RA
-      startpoint = endpoint+1;
-      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
-      if(endpoint>0) {
-	try { RA = stod(stest); }
-	catch(...) { cerr << "ERROR: cannot read RA string " << stest << " from line " << lnfromfile << "\n";
-	  badread = 1; }
-      } else badread=1;
-      // Read the Dec
-      startpoint = endpoint+1;
-      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
-      if(endpoint>0) {
-	try { Dec = stod(stest); }
-	catch(...) { cerr << "ERROR: cannot read Dec string " << stest << " from line " << lnfromfile << "\n";
-	  badread = 1; }
-      } else badread=1;
-      // Read the mag
-      startpoint = endpoint+1;
-      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
-      if(endpoint>0) {
-	try { mag = stof(stest); }
-	catch(...) { cerr << "ERROR: cannot read mag string " << stest << " from line " << lnfromfile << "\n";
-	  badread = 1; }
-      } else badread=1;
-      // Read the trail_len
-      startpoint = endpoint+1;
-      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
-      if(endpoint>0) {
-	try { trail_len = stof(stest); }
-      catch(...) { cerr << "ERROR: cannot read trail_len string " << stest << " from line " << lnfromfile << "\n";
-	badread = 1; }
-      } else badread=1;
-      // Read the trail_PA
-      startpoint = endpoint+1;
-      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
-      if(endpoint>0) {
-	try { trail_PA = stof(stest); }
-	catch(...) { cerr << "ERROR: cannot read trail_PA string " << stest << " from line " << lnfromfile << "\n";
-	  badread = 1; }
-      }
-      // Read the sigmag
-      startpoint = endpoint+1;
-      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
-      if(endpoint>0) {
-	try { sigmag = stof(stest); }
-	catch(...) { cerr << "ERROR: cannot read sigmag string " << stest << " from line " << lnfromfile << "\n";
-	  badread = 1; }
-      } else badread=1;
-      // Read the sig_across
-      startpoint = endpoint+1;
-      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
-      if(endpoint>0) {
-	try { sig_across = stof(stest); }
-	catch(...) { cerr << "ERROR: cannot read sig_across string " << stest << " from line " << lnfromfile << "\n";
-	  badread = 1; }
-      }
-      // Read the sig_along
-      startpoint = endpoint+1;
-      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
-      if(endpoint>0) {
-	try { sig_along = stof(stest); }
-	catch(...) { cerr << "ERROR: cannot read sig_along string " << stest << " from line " << lnfromfile << "\n";
-	  badread = 1; }
-      } else badread=1;
-      // Read the image
-      startpoint = endpoint+1;
-      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
-      if(endpoint>0) {
-	try { image = stoi(stest); }
-	catch(...) { cerr << "ERROR: cannot read image string " << stest << " from line " << lnfromfile << "\n";
-	  badread = 1; }
-      } else badread=1;
-      // Read the idstring
-      startpoint = endpoint+1;
-      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
-      if(endpoint>0) stringncopy01(idstring,stest,SHORTSTRINGLEN);
-      else badread=1;
-      // Read the band
-      startpoint = endpoint+1;
-      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
-      if(endpoint>0) stringncopy01(band,stest,MINSTRINGLEN);
-      else badread=1;
-      // Read the obscode
-      startpoint = endpoint+1;
-      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
-      if(endpoint>0) 	stringncopy01(obscode,stest,MINSTRINGLEN);
-      else badread=1;
-      // Read the known_obj
-      startpoint = endpoint+1;
-      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
-      if(endpoint>0) {
-	try { known_obj = stol(stest); }
-	catch(...) { cerr << "ERROR: cannot read known_obj string " << stest << " from line " << lnfromfile << "\n";
-	  badread = 1; }
-      } else badread=1;
-      // Read the det_qual
-      startpoint = endpoint+1;
-      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
-      if(endpoint>0) {
-	try { det_qual = stol(stest); }
-	catch(...) { cerr << "ERROR: cannot read det_qual string " << stest << " from line " << lnfromfile << "\n";
-	  badread = 1; }
-      } else badread=1;
-      // Read the index
-      startpoint = endpoint+1;
-      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
-      if(endpoint>0) {
-	try { index = stol(stest); }
-	catch(...) { cerr << "ERROR: cannot read origindex string " << stest << " from line " << lnfromfile << "\n";
-	  badread = 1; }
-      } else badread=1;
-      if(badread==0) {
-	o1 = hldet(MJD, RA, Dec, mag, trail_len, trail_PA, sigmag, sig_across, sig_along, image, idstring, band, obscode, known_obj, det_qual, index);
-	detvec.push_back(o1);
+      // count the number of commas in this line.
+      comma_num = comma_count(lnfromfile);
+      if(comma_num==HLDET_SIZE-1 || comma_num==HLDET_SIZE_OLD-1) {
+	// Line seems OK. Read on.
+	// Read the MJD
+	startpoint=0;
+	if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
+	if(endpoint>0) {
+	  try { MJD = stod(stest); }
+	  catch(...) { cerr << "ERROR: cannot read MJD string " << stest << " from line " << lnfromfile << "\n";
+	    badread = 1; }
+	}
+	else badread=1;
+	// Read the RA
+	startpoint = endpoint+1;
+	if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
+	if(endpoint>0) {
+	  try { RA = stod(stest); }
+	  catch(...) { cerr << "ERROR: cannot read RA string " << stest << " from line " << lnfromfile << "\n";
+	    badread = 1; }
+	} else badread=1;
+	// Read the Dec
+	startpoint = endpoint+1;
+	if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
+	if(endpoint>0) {
+	  try { Dec = stod(stest); }
+	  catch(...) { cerr << "ERROR: cannot read Dec string " << stest << " from line " << lnfromfile << "\n";
+	    badread = 1; }
+	} else badread=1;
+	// Read the mag
+	startpoint = endpoint+1;
+	if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
+	if(endpoint>0) {
+	  try { mag = stof(stest); }
+	  catch(...) { cerr << "ERROR: cannot read mag string " << stest << " from line " << lnfromfile << "\n";
+	    badread = 1; }
+	} else badread=1;
+	// Read the trail_len
+	startpoint = endpoint+1;
+	if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
+	if(endpoint>0) {
+	  try { trail_len = stof(stest); }
+	  catch(...) { cerr << "ERROR: cannot read trail_len string " << stest << " from line " << lnfromfile << "\n";
+	    badread = 1; }
+	} else badread=1;
+	// Read the trail_PA
+	startpoint = endpoint+1;
+	if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
+	if(endpoint>0) {
+	  try { trail_PA = stof(stest); }
+	  catch(...) { cerr << "ERROR: cannot read trail_PA string " << stest << " from line " << lnfromfile << "\n";
+	    badread = 1; }
+	}
+	// Read the sigmag
+	startpoint = endpoint+1;
+	if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
+	if(endpoint>0) {
+	  try { sigmag = stof(stest); }
+	  catch(...) { cerr << "ERROR: cannot read sigmag string " << stest << " from line " << lnfromfile << "\n";
+	    badread = 1; }
+	} else badread=1;
+	// Read the sig_across
+	startpoint = endpoint+1;
+	if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
+	if(endpoint>0) {
+	  try { sig_across = stof(stest); }
+	  catch(...) { cerr << "ERROR: cannot read sig_across string " << stest << " from line " << lnfromfile << "\n";
+	    badread = 1; }
+	}
+	// Read the sig_along
+	startpoint = endpoint+1;
+	if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
+	if(endpoint>0) {
+	  try { sig_along = stof(stest); }
+	  catch(...) { cerr << "ERROR: cannot read sig_along string " << stest << " from line " << lnfromfile << "\n";
+	    badread = 1; }
+	} else badread=1;
+	if(comma_num==HLDET_SIZE-1) {
+	  // Read the sig_RA
+	  startpoint = endpoint+1;
+	  if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
+	  if(endpoint>0) {
+	    try { sig_RA = stof(stest); }
+	    catch(...) { cerr << "ERROR: cannot read sig_RA string " << stest << " from line " << lnfromfile << "\n";
+	      badread = 1; }
+	  } else badread=1;
+	  // Read the sig_Dec
+	  startpoint = endpoint+1;
+	  if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
+	  if(endpoint>0) {
+	    try { sig_Dec = stof(stest); }
+	    catch(...) { cerr << "ERROR: cannot read sig_Dec string " << stest << " from line " << lnfromfile << "\n";
+	      badread = 1; }
+	  } else badread=1;
+	  // read the radec_covar
+	  startpoint = endpoint+1;
+	  if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
+	  if(endpoint>0) {
+	    try { radec_covar = stof(stest); }
+	    catch(...) { cerr << "ERROR: cannot read radec_covar string " << stest << " from line " << lnfromfile << "\n";
+	      badread = 1; }
+	  } else badread=1;
+	} else if(comma_num==HLDET_SIZE_OLD-1) {
+	  // The input file does not contain columns for sig_RA, sig_Dec, or radec_covar.
+	  // Set sig_RA = sig_along, sig_Dec = sig_across, and radec_covar = 0.0;
+	  sig_RA = sig_along;
+	  sig_Dec = sig_across;
+	  radec_covar = 0.0;
+	}
+	// Read the image
+	startpoint = endpoint+1;
+	if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
+	if(endpoint>0) {
+	  try { image = stoi(stest); }
+	  catch(...) { cerr << "ERROR: cannot read image string " << stest << " from line " << lnfromfile << "\n";
+	    badread = 1; }
+	} else badread=1;
+	// Read the idstring
+	startpoint = endpoint+1;
+	if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
+	if(endpoint>0) stringncopy01(idstring,stest,SHORTSTRINGLEN);
+	else badread=1;
+	// Read the band
+	startpoint = endpoint+1;
+	if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
+	if(endpoint>0) stringncopy01(band,stest,MINSTRINGLEN);
+	else badread=1;
+	// Read the obscode
+	startpoint = endpoint+1;
+	if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
+	if(endpoint>0) 	stringncopy01(obscode,stest,MINSTRINGLEN);
+	else badread=1;
+	// Read the known_obj
+	startpoint = endpoint+1;
+	if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
+	if(endpoint>0) {
+	  try { known_obj = stol(stest); }
+	  catch(...) { cerr << "ERROR: cannot read known_obj string " << stest << " from line " << lnfromfile << "\n";
+	    badread = 1; }
+	} else badread=1;
+	// Read the det_qual
+	startpoint = endpoint+1;
+	if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
+	if(endpoint>0) {
+	  try { det_qual = stol(stest); }
+	  catch(...) { cerr << "ERROR: cannot read det_qual string " << stest << " from line " << lnfromfile << "\n";
+	    badread = 1; }
+	} else badread=1;
+	// Read the index
+	startpoint = endpoint+1;
+	if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
+	if(endpoint>0) {
+	  try { index = stol(stest); }
+	  catch(...) { cerr << "ERROR: cannot read origindex string " << stest << " from line " << lnfromfile << "\n";
+	    badread = 1; }
+	} else badread=1;
+	if(badread==0) {
+	  o1 = hldet(MJD, RA, Dec, mag, trail_len, trail_PA, sigmag, sig_across, sig_along, sig_RA, sig_Dec, radec_covar, image, idstring, band, obscode, known_obj, det_qual, index);
+	  detvec.push_back(o1);
+	}
+      } else {
+	badread=1;
+	cerr << "ERROR: read_hldet finds " << comma_num+1 << " fields, but only " << HLDET_SIZE << " or " << HLDET_SIZE_OLD << " fields are permitted\n";
       }
     } else if(instream1.eof()) reachedeof=1; //End of file, fine.
     else if(instream1.fail()) reachedeof=-1; //Something wrong, warn
     else if(instream1.bad()) reachedeof=-2; //Worse problem, warn
     if(badread!=0) {
-      cerr << "ERROR reading paired detection file " << pairdetfile << "\n";
+      cerr << "ERROR reading hldet file " << hldetfile << "\n";
       cerr << "Last point was " << detvec.size() << "; last file line was " << lnfromfile << "\n";
       return(badread);
     }
@@ -22286,14 +22232,14 @@ int read_hldet_file(string pairdetfile, vector <hldet> &detvec, int verbose)
   instream1.close();
 
   if(badread!=0) {
-    cerr << "ERROR reading paired detection file " << pairdetfile << "\n";
+    cerr << "ERROR reading hldet file " << hldetfile << "\n";
     return(badread);
   } 
   if(reachedeof==1) { 
-    if(verbose>=1) cout << "Input file " << pairdetfile << " read successfully to the end.\n";
+    if(verbose>=1) cout << "Input file " << hldetfile << " read successfully to the end.\n";
     return(0);
   } else if(reachedeof==0) {
-    cerr << "ERROR: Stopped reading file " << pairdetfile << " before the end\n";
+    cerr << "ERROR: Stopped reading file " << hldetfile << " before the end\n";
     return(1);
   } else if(reachedeof==-1) {
     cerr << "ERROR: file read failed\n";
@@ -22441,6 +22387,195 @@ int read_tracklet_file(string trackletfile, vector <tracklet> &tracklets, int ve
   } else return(reachedeof);
 }
 
+// uint_RAconv: September 07, 2026
+// Convert an input double-precision RA value into
+// an unsigned integer with seven decimal places of precision.
+// The calling function is responsible to ensure the
+// input RA value is in the range [0,360).
+unsigned int uint_RAconv(double RAdub)
+{
+  long templong=0;
+  templong = RAdub*10000000.0 + 0.5;
+  return(unsigned(templong));
+}
+
+// Overloaded function that reverses the conversion above.
+// This doesn't need to be a function, but I'm making it one
+// because it will keep the 10000000.0 factor nicely in one place.
+double uint_RAconv(unsigned int RA)
+{
+  return(double(RA*0.0000001));
+}
+
+// int_Decconv: September 07, 2026
+// Convert an input double-precision Dec value into
+// a signed integer with seven decimal places of precision.
+// The calling function is responsible to ensure the
+// input Dec value is in the range (-90,90).
+int int_Decconv(double Decdub)
+{
+  long templong=0;
+  if(Decdub<0.0) templong = Decdub*10000000.0 - 0.5;
+  else templong = Decdub*10000000.0 + 0.5;
+  return(int(templong));
+}
+
+// Overloaded function that reverses the conversion above.
+double int_Decconv(int Dec)
+{
+  return(double(Dec*0.0000001));
+}
+
+// read_tracklet_file_uint: September 07, 2026
+// Read a tracklet file produced by make_tracklets, and store
+// in a memory-efficient vector of type uint_tracklet.
+int read_tracklet_file_uint(string trackletfile, vector <uint_tracklet> &tracklets, int verbose)
+{
+  unsigned int Img1, RA1, Img2, RA2, trk_ID, npts;
+  int Dec1,Dec2,badread,reachedeof,startpoint,endpoint;
+  Img1 = Img2 = RA1 = RA2 = trk_ID = npts = 0;
+  Dec1 = Dec2 = badread = reachedeof = startpoint = endpoint = 0;
+  uint_tracklet one_tracklet = uint_tracklet(Img1, RA1, Dec1, Img2, RA2, Dec2, npts, trk_ID);
+  ifstream instream1;
+  string stest,lnfromfile;
+  double RAdub,Decdub;
+  RAdub = Decdub = 0.0;
+
+  if(UINT_MAX < 3600000000) {
+    cerr << "ERROR: cannot store celestial positions as type uint,int\n";
+    cerr << "under this compiler/OS/hardware infrastructure:\n";
+    cerr << "UINT_MAX = " << UINT_MAX << " is less than the required value of 3,600,000,000\n";
+    return(1);
+  }
+  tracklets={};
+  
+  instream1.open(trackletfile);
+  if(!instream1) {
+    cerr << "can't open input file " << trackletfile << "\n";
+    return(1);
+  }
+  // Skip one-line header
+  getline(instream1,lnfromfile);
+  //cout << lnfromfile << "\n";
+  reachedeof = 0;
+  while(reachedeof==0) {
+    getline(instream1,lnfromfile);
+    if(!instream1.eof() && !instream1.fail() && !instream1.bad()) ; // Read on.
+    else if(instream1.eof()) reachedeof=1; //End of file, fine.
+    else if(instream1.fail()) reachedeof=-1; //Something wrong, warn
+    else if(instream1.bad()) reachedeof=-2; //Worse problem, warn
+
+    if(reachedeof == 0) {
+      // Read Img1
+      startpoint=0;
+      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
+      if(endpoint>0) {
+	try { Img1 = stoul(stest); }
+	catch(...) { cerr << "ERROR: cannot read Img1 string " << stest << " from line " << lnfromfile << "\n";
+	  badread = 1; }
+      }
+      else badread=1;
+      // Read RA1
+      startpoint = endpoint+1;
+      RAdub=-999.9;
+      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
+      if(endpoint>0) {
+	try { RAdub = stod(stest); }
+	catch(...) { cerr << "ERROR: cannot read RA1 string " << stest << " from line " << lnfromfile << "\n";
+	  badread = 1; }
+      } else badread=1;
+      if(badread==0 && RAdub>=0.0 && RAdub<360.0) RA1 = uint_RAconv(RAdub);
+      else badread=1;
+      // Read Dec1
+      startpoint = endpoint+1;
+      Decdub=-999.9;
+      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
+      if(endpoint>0) {
+	try { Decdub = stod(stest); }
+	catch(...) { cerr << "ERROR: cannot read Dec1 string " << stest << " from line " << lnfromfile << "\n";
+	  badread = 1; }
+      } else badread=1;
+      if(badread==0 && Decdub>-90.0 && Decdub<90.0) Dec1 = int_Decconv(Decdub);
+      // Read Img2
+      startpoint = endpoint+1;
+      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
+      else badread=1;
+      if(endpoint>0) {
+	try { Img2 = stoul(stest); }
+	catch(...) { cerr << "ERROR: cannot read Img2 string " << stest << " from line " << lnfromfile << "\n";
+	  badread = 1; }
+      }
+      else badread=1;
+      // Read RA2
+      startpoint = endpoint+1;
+      RAdub=-999.9;
+      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
+      if(endpoint>0) {
+	try { RAdub = stod(stest); }
+	catch(...) { cerr << "ERROR: cannot read RA2 string " << stest << " from line " << lnfromfile << "\n";
+	  badread = 1; }
+      } else badread=1;
+      if(badread==0 && RAdub>=0.0 && RAdub<360.0) RA2 = uint_RAconv(RAdub);
+      else badread=1;
+      // Read Dec2
+      startpoint = endpoint+1;
+      Decdub=-999.9;
+      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
+      if(endpoint>0) {
+	try { Decdub = stod(stest); }
+	catch(...) { cerr << "ERROR: cannot read Dec2 string " << stest << " from line " << lnfromfile << "\n";
+	  badread = 1; }
+      } else badread=1;
+      if(badread==0 && Decdub>-90.0 && Decdub<90.0) Dec2 = int_Decconv(Decdub);
+      // Read npts
+      startpoint = endpoint+1;
+      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
+      if(endpoint>0) {
+	try { npts = stoul(stest); }
+	catch(...) { cerr << "ERROR: cannot read npts string " << stest << " from line " << lnfromfile << "\n";
+	  badread = 1; }
+      } else badread=1;
+      // Read trk_ID
+      startpoint = endpoint+1;
+      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
+      if(endpoint>0) {
+	try { trk_ID = stoul(stest); }
+	catch(...) { cerr << "ERROR: cannot read trk_ID string " << stest << " from line " << lnfromfile << "\n";
+	  badread = 1; }
+      } else badread=1;
+      if(badread==0) {
+	one_tracklet = uint_tracklet(Img1, RA1, Dec1, Img2, RA2, Dec2, npts, trk_ID);
+	tracklets.push_back(one_tracklet);
+      }
+      if(!instream1.eof() && !instream1.fail() && !instream1.bad() && badread!=0) {
+	cerr << "ERROR reading tracklet file " << trackletfile << "\n";
+	return(badread);
+      }
+    }
+  }
+  instream1.close();
+
+  if(badread!=0) {
+    cerr << "ERROR reading tracklet file " << trackletfile << "\n";
+    return(badread);
+  } 
+  if(reachedeof==1) { 
+    if(verbose>=1) cout << "Input file " << trackletfile << " read successfully to the end.\n";
+    return(0);
+  } else if(reachedeof==0) {
+    cerr << "ERROR: Stopped reading file " << trackletfile << " before the end\n";
+    return(1);
+  } else if(reachedeof==-1) {
+    cerr << "ERROR: file read failed\n";
+    return(1);
+  } else if(reachedeof==-2) {
+    cerr << "Warning: file possibly corrupted\n";
+    return(2);
+  } else return(reachedeof);
+}
+
+
+
 // read_longpair_file: April 20, 2023:
 // Read a longpair file: e.g. trk2det or clust2det.
 int read_longpair_file(string pairfile, vector <longpair> &pairvec, int verbose)
@@ -22505,6 +22640,104 @@ int read_longpair_file(string pairfile, vector <longpair> &pairvec, int verbose)
 
   if(badread!=0) {
     cerr << "ERROR reading long pair file " << pairfile << "\n";
+    return(badread);
+  } 
+  if(reachedeof==1) { 
+    if(verbose>=1) cout << "Input file " << pairfile << " read successfully to the end.\n";
+    return(0);
+  } else if(reachedeof==0) {
+    cerr << "ERROR: Stopped reading file " << pairfile << " before the end\n";
+    return(1);
+  } else if(reachedeof==-1) {
+    cerr << "ERROR: file read failed\n";
+    return(1);
+  } else if(reachedeof==-2) {
+    cerr << "Warning: file possibly corrupted\n";
+    return(2);
+  } else return(reachedeof);
+}
+
+// read_uint_pair_file: April 20, 2023:
+// Read a file with pairs of integers: e.g. trk2det or clust2det,
+// and save them in a vector of type uint_pair
+int read_uint_pair_file(string pairfile, vector <uint_pair> &pairvec, int verbose)
+{
+  long li1 = 0;
+  long li2 = 0;
+  unsigned int i1 = 0;
+  unsigned int i2 = 0;
+  uint_pair onepair = uint_pair(i1,i2);
+  ifstream instream1;
+  string stest,lnfromfile;
+  int badread=0;
+  int reachedeof=0;
+  int startpoint=0;
+  int endpoint=0;
+  
+  pairvec={};
+  instream1.open(pairfile);
+  if(!instream1) {
+    cerr << "can't open input file " << pairfile << "\n";
+    return(1);
+  }
+  reachedeof = 0;
+  while(reachedeof==0) {
+    getline(instream1,lnfromfile);
+    if(!instream1.eof() && !instream1.fail() && !instream1.bad()) ; // Read on.
+    else if(instream1.eof()) reachedeof=1; //End of file, fine.
+    else if(instream1.fail()) reachedeof=-1; //Something wrong, warn
+    else if(instream1.bad()) reachedeof=-2; //Worse problem, warn
+    if(!isdigit(lnfromfile[0])) {
+      // Non-numerical: cannot be part of long pair.
+      // Skip this possible header or comment line.
+      continue;
+    }
+    if(reachedeof == 0) {
+      // Read i1
+      startpoint=0;
+      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
+      if(endpoint>0) {
+	try { li1 = stol(stest); }
+	catch(...) { cerr << "ERROR: cannot read i1 string " << stest << " from line " << lnfromfile << "\n";
+	  badread = 1; }
+      }
+      else badread=1;
+      if(badread==0) {
+	if(li1>=0 && li1<UINT_MAX) i1=li1;
+	else {
+	  cerr << "ERROR: read_uint_pair_file has out-of-range input " << li1 << "\n";
+	  return(2);
+	}
+      }
+      // Read i2
+      startpoint = endpoint+1;
+      if(badread==0) endpoint = get_csv_string01(lnfromfile,stest,startpoint);
+      if(endpoint>0) {
+	try { li2 = stod(stest); }
+	catch(...) { cerr << "ERROR: cannot read i2 string " << stest << " from line " << lnfromfile << "\n";
+	  badread = 1; }
+      } else badread=1;
+      if(badread==0) {
+	if(li2>=0 && li2<UINT_MAX) i2=li2;
+	else {
+	  cerr << "ERROR: read_uint_pair_file has out-of-range input " << li2 << "\n";
+	  return(2);
+	}
+      }
+      if(badread==0) {
+	onepair = uint_pair(i1,i2);
+	pairvec.push_back(onepair);
+      }
+      if(!instream1.eof() && !instream1.fail() && !instream1.bad() && badread!=0) {
+	cerr << "ERROR reading long pair file " << pairfile << "\n";
+	return(badread);
+      }
+    }
+  }
+  instream1.close();
+
+  if(badread!=0) {
+    cerr << "ERROR reading uint pair file " << pairfile << "\n";
     return(badread);
   } 
   if(reachedeof==1) { 
@@ -25329,7 +25562,7 @@ int find_pairs3(vector <hldet> &detvec, const vector <hlimage> &img_log, vector 
   vector <long> det2trk;
   vector <long> tracklets_min_length;
   vector <vector <long>> tracklet_indexmat;
-  hldet onedet = hldet(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, "null", "V", "500", 0, 0, 0);
+  hldet onedet = hldet(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, "null", "V", "500", 0, 0, 0);
   vector <long> trkdetind;
   vector <long> trkindind;
   vector <long> ivec;
@@ -26145,7 +26378,7 @@ int find_pairs4(vector <hldet> &detvec, const vector <hlimage> &img_log, vector 
   vector <long> det2trk;
   vector <long> tracklets_min_length;
   vector <vector <long>> tracklet_indexmat;
-  hldet onedet = hldet(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, "null", "V", "500", 0, 0, 0);
+  hldet onedet = hldet(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, "null", "V", "500", 0, 0, 0);
   vector <long> trkdetind;
   vector <long> trkindind;
   vector <long> ivec;
@@ -27645,7 +27878,7 @@ int find_pairs5(vector <hldet> &detvec, const vector <hlimage> &img_log, vector 
   vector <long> det2trk;
   vector <long> tracklets_min_length;
   vector <vector <long>> tracklet_indexmat;
-  hldet onedet = hldet(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, "null", "V", "500", 0, 0, 0);
+  hldet onedet = hldet(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, "null", "V", "500", 0, 0, 0);
   vector <long> trkdetind;
   vector <long> trkindind;
   vector <long> ivec;
@@ -31930,7 +32163,7 @@ int record_pairs(vector <hldet> &detvec, vector <hldet> &detvec_fixed, vector <t
   outra1 = outdec1 = outra2 = outdec2 = 0.0l;
   int rp1,rp2,instep;
   rp1=rp2=instep=0;
-  hldet lastdet = hldet(0.0l, 0.0l, 0.0l, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, "null", "w", "500", 0, 0, -1);
+  hldet lastdet = hldet(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, "null", "w", "500", 0, 0, -1);
   vector <hldet> trackdetvec = {};
   long crossindex=0;
   long pdct=0;
@@ -33640,7 +33873,7 @@ int trk2statevec(const vector <hlimage> &image_log, const vector <tracklet> &tra
 }
 
 // trk2statevec_fgfunc: September 05, 2023
-int trk2statevec_fgfunc(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double max_v_inf, int NotKepler)
+int trk2statevec_fgfunc(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double max_v_inf, int NotKepler, int verbose)
 {
   allstatevecs={};
   long imnum = image_log.size();
@@ -33727,7 +33960,7 @@ int trk2statevec_fgfunc(const vector <hlimage> &image_log, const vector <trackle
     point3d endvel = point3d(0l,0l,0l);
     for(imct=0;imct<imnum;imct++) {
       // Integrate the orbit to find the heliocentric distance as a function of time.
-      status1 = Kepler_fg_func_int(GMSUN_KM3_SEC2, mjdref, startpos, startvel, image_log[imct].MJD, endpos, endvel);
+      status1 = Kepler_fg_func_int(GMSUN_KM3_SEC2, mjdref, startpos, startvel, image_log[imct].MJD, endpos, endvel, verbose);
       if(status1!=0) {
 	cerr << "ERROR: Keplerian integration failed for r(t) hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << ", at MJD = " << image_log[imct].MJD << "\n";
 	return(status1);
@@ -33868,7 +34101,7 @@ int trk2statevec_fgfunc(const vector <hlimage> &image_log, const vector <trackle
       
 	  // Integrate orbit to the reference time.
 	  mjdavg = 0.5l*image_log[i1].MJD + 0.5l*image_log[i2].MJD;
-	  status1 = Kepler_fg_func_int(GMSUN_KM3_SEC2,mjdavg,targpos1,targvel1,mjdref,targpos2,targvel2);
+	  status1 = Kepler_fg_func_int(GMSUN_KM3_SEC2,mjdavg,targpos1,targvel1,mjdref,targpos2,targvel2, verbose);
 	  if(status1 == 0 && badpoint==0) {
 	    statevec1 = point6dx2(targpos2.x,targpos2.y,targpos2.z,chartimescale*targvel2.x,chartimescale*targvel2.y,chartimescale*targvel2.z,pairct,0);
 	    // Note that the multiplication by chartimescale converts velocities in km/sec
@@ -33890,7 +34123,7 @@ int trk2statevec_fgfunc(const vector <hlimage> &image_log, const vector <trackle
   return(0);
 }
 
-#define TAN_DEBUG 1
+#define TAN_DEBUG 0
 
 // trk2statevec_fgfunc_TNV: August 21, 2026:
 // Like trk2statevec_fgfunc, but rejects tracklets whose state-vector
@@ -33898,7 +34131,7 @@ int trk2statevec_fgfunc(const vector <hlimage> &image_log, const vector <trackle
 // implied by the hypothesis by more than tanveltol. Note that
 // tanveltol scales linearly with geocentric distance, and is
 // normalized to 1 AU.
-int trk2statevec_fgfunc_TNV(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double max_v_inf, double tanveltol, double veltol_changerad, int NotKepler)
+int trk2statevec_fgfunc_TNV(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double min_obstanvel, double max_v_inf, double tanveltol, double veltol_changerad, int verbose)
 {
   allstatevecs={};
   long imnum = image_log.size();
@@ -33942,62 +34175,58 @@ int trk2statevec_fgfunc_TNV(const vector <hlimage> &image_log, const vector <tra
   meanobsdist = trackletarc = trackletangvel = 0.0;
   double temp_tanveltol;
  
-  // Calculate approximate heliocentric distances from the
-  // input quadratic approximation.
+  // Calculate approximate heliocentric distances from the input hypotheses.
   // Note: heliodist is in km, heliovel is in km/day, and helioacc is in km/day^2
   heliodistvec={};
   heliotanvelvec={};
-  if(NotKepler) {
-    cerr << "ERROR: cannot use non-Keplerian hypotheses with trk2statevec_fgfunc_TNV()\n";
-    return(10);
-  } else {
-    // Use Matt Holman's idea of getting heliocentric distance r(t) from an
-    // actual Keplerian orbit. It turns out that the same parameters (r, r-dot, and r-double-dot)
-    // that specify the old three-term Taylor Series also uniquely determine the Keplerian
-    // r(t) -- that is, they specify enough of the orbit that only one Keplerian solution
-    // for r(t) exists, even though other aspects of the orbit (i.e., orientation) are not
-    // specified.
-    // SOLVE FOR THE SQUARE OF THE TANGENTIAL VELOCITY
-    double localg = GMSUN_KM3_SEC2/DSQUARE(heliodist); // Units are km/sec^2
-    double physacc = helioacc/DSQUARE(SOLARDAY); // Units are km/sec^2
-    double vesc = 2.0*GMSUN_KM3_SEC2/heliodist; // this is the square of the escape velocity in km/sec
-    double tanvel = heliodist*(physacc+localg); // this is the square of the tangential velocity in km/sec
-    // CHECK FOR UNPHYSICAL AND UNBOUND CASES
-    if(tanvel<0.0l) {
-      cerr << fixed << setprecision(6) << "ERROR: hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << " is not possible for any trajectory\n";
-      return(1);
-    }
-    if(vesc < tanvel + LDSQUARE(heliovel/SOLARDAY)) {
-      cerr << fixed << setprecision(6) << "ERROR: hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << " is not possible for a bound orbit\n";
-      cerr << fixed << setprecision(6) << "vesc = " << sqrt(vesc) << ", tanvel = " << sqrt(tanvel) << ", heliovel = " << heliovel/SOLARDAY << ", totvel = " << sqrt(tanvel + LDSQUARE(heliovel/SOLARDAY)) << "\n";
-      return(1);
-    }
-    // If we get here, a sensible bound solution exists. Solve for the true tangential velocity
-    tanvel = sqrt(tanvel);
-    // Construct state vectors producing the required orbit (in the x-y plane, for simplicity).
-    point3d startpos = point3d(heliodist,0l,0l);
-    point3d startvel = point3d(heliovel/SOLARDAY,tanvel,0l);
-    point3d endpos = point3d(0l,0l,0l);
-    point3d endvel = point3d(0l,0l,0l);
-    for(imct=0;imct<imnum;imct++) {
-      // Integrate the orbit to find the heliocentric distance as a function of time.
-      status1 = Kepler_fg_func_int(GMSUN_KM3_SEC2, mjdref, startpos, startvel, image_log[imct].MJD, endpos, endvel);
-      if(status1!=0) {
-	cerr << "ERROR: Keplerian integration failed for r(t) hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << ", at MJD = " << image_log[imct].MJD << "\n";
-	return(status1);
-      }
-      // Calculate heliocentric tangential velocity.
-      double heliorad = vecabs3d(endpos);
-      double radvel = dotprod3d(endpos,endvel)/heliorad;
-      heliotanvel3D.x = endvel.x - radvel*endpos.x/heliorad;
-      heliotanvel3D.y = endvel.y - radvel*endpos.y/heliorad;
-      heliotanvel3D.z = endvel.z - radvel*endpos.z/heliorad;
-      heliotanvel = vecabs3d(heliotanvel3D);
-      // Load calculated Keplerian distance and tangential velocity to the image-based vectors
-      heliodistvec.push_back(heliorad);
-      heliotanvelvec.push_back(heliotanvel);
-    }
+
+  // Use Matt Holman's idea of getting heliocentric distance r(t) from an
+  // actual Keplerian orbit. It turns out that the same parameters (r, r-dot, and r-double-dot)
+  // that specify the old three-term Taylor Series also uniquely determine the Keplerian
+  // r(t) -- that is, they specify enough of the orbit that only one Keplerian solution
+  // for r(t) exists, even though other aspects of the orbit (i.e., orientation) are not
+  // specified.
+  // SOLVE FOR THE SQUARE OF THE TANGENTIAL VELOCITY
+  double localg = GMSUN_KM3_SEC2/DSQUARE(heliodist); // Units are km/sec^2
+  double physacc = helioacc/DSQUARE(SOLARDAY); // Units are km/sec^2
+  double vesc = 2.0*GMSUN_KM3_SEC2/heliodist; // this is the square of the escape velocity in km/sec
+  double tanvel = heliodist*(physacc+localg); // this is the square of the tangential velocity in km/sec
+  // CHECK FOR UNPHYSICAL AND UNBOUND CASES
+  if(tanvel<0.0l) {
+    cerr << fixed << setprecision(6) << "ERROR: hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << " is not possible for any trajectory\n";
+    return(1);
   }
+  if(vesc < tanvel + LDSQUARE(heliovel/SOLARDAY)) {
+    cerr << fixed << setprecision(6) << "ERROR: hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << " is not possible for a bound orbit\n";
+    cerr << fixed << setprecision(6) << "vesc = " << sqrt(vesc) << ", tanvel = " << sqrt(tanvel) << ", heliovel = " << heliovel/SOLARDAY << ", totvel = " << sqrt(tanvel + LDSQUARE(heliovel/SOLARDAY)) << "\n";
+    return(1);
+  }
+  // If we get here, a sensible bound solution exists. Solve for the true tangential velocity
+  tanvel = sqrt(tanvel);
+  // Construct state vectors producing the required orbit (in the x-y plane, for simplicity).
+  point3d startpos = point3d(heliodist,0l,0l);
+  point3d startvel = point3d(heliovel/SOLARDAY,tanvel,0l);
+  point3d endpos = point3d(0l,0l,0l);
+  point3d endvel = point3d(0l,0l,0l);
+  for(imct=0;imct<imnum;imct++) {
+    // Integrate the orbit to find the heliocentric distance as a function of time.
+    status1 = Kepler_fg_func_int(GMSUN_KM3_SEC2, mjdref, startpos, startvel, image_log[imct].MJD, endpos, endvel, verbose);
+    if(status1!=0) {
+      cerr << "ERROR: Keplerian integration failed for r(t) hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << ", at MJD = " << image_log[imct].MJD << "\n";
+      return(status1);
+    }
+    // Calculate heliocentric tangential velocity.
+    double heliorad = vecabs3d(endpos);
+    double radvel = dotprod3d(endpos,endvel)/heliorad;
+    heliotanvel3D.x = endvel.x - radvel*endpos.x/heliorad;
+    heliotanvel3D.y = endvel.y - radvel*endpos.y/heliorad;
+    heliotanvel3D.z = endvel.z - radvel*endpos.z/heliorad;
+    heliotanvel = vecabs3d(heliotanvel3D);
+    // Load calculated Keplerian distance and tangential velocity to the image-based vectors
+    heliodistvec.push_back(heliorad);
+    heliotanvelvec.push_back(heliotanvel);
+  }
+
   if(badpoint==0 && (long(heliodistvec.size())!=imnum || long(heliotanvelvec.size())!=imnum)) {
     cerr << "ERROR: number of heliocentric distance values does\n";
     cerr << "not match the number of input images!\n";
@@ -34028,7 +34257,7 @@ int trk2statevec_fgfunc_TNV(const vector <hlimage> &image_log, const vector <tra
     // interior to the Earth), use the larger solutions.
     meanobsdist = (deltavec1[0] + deltavec2[0])/2.0;
     if(status1==2 && status2==2 &&  deltavec1[1]>deltavec1[0] && deltavec2[1]>deltavec2[0]) meanobsdist = (deltavec1[1] + deltavec2[1])/2.0;
-    if(minimpactpar > 0.0 && minimpactpar < MAXTANVELCUT && meanobsdist < mingeoobs*AU_KM && status1 > 0 && status2 > 0 && badpoint==0) {
+    if(min_obstanvel > 0.0 && meanobsdist < mingeoobs*AU_KM && status1 > 0 && status2 > 0 && badpoint==0) {
       // New check added May 13, 2026: Calculate observer-centric tangential velocity,
       // and reject the point if that is too low. The value of minimpactpar is here
       // interpreted as a tangential velocity in km/sec, since it is nonzero but too small to
@@ -34037,7 +34266,7 @@ int trk2statevec_fgfunc_TNV(const vector <hlimage> &image_log, const vector <tra
       timediff = (image_log[i2].MJD - image_log[i1].MJD)*SOLARDAY; // Time difference in seconds
       trackletangvel = trackletarc/timediff; // radians per second
       obstanvel = trackletangvel*meanobsdist; // km/sec
-      if(obstanvel<minimpactpar) {
+      if(obstanvel<min_obstanvel) {
 	// Tangential velocity relative to the observer is too low
 	badpoint=1;
       }
@@ -34090,7 +34319,7 @@ int trk2statevec_fgfunc_TNV(const vector <hlimage> &image_log, const vector <tra
 	// Scale velocity tolerance linearly with observer distance, normalized at 1AU.
 	temp_tanveltol = tanveltol*(0.5*deltavec1[solnct] + 0.5*deltavec2[solnct])/AU_KM;
 	// Revise upward if below a constant 'floor' values that applies within veltol_changerad AU of Earth.
-	if(temp_tanveltol < tanveltol*veltol_changerad/AU_KM) temp_tanveltol = tanveltol*veltol_changerad/AU_KM;
+	if(temp_tanveltol < tanveltol*veltol_changerad) temp_tanveltol = tanveltol*veltol_changerad;
 
 	if(TAN_DEBUG) {
 	  cout << "Hypothesis radvel, tanvel: " << heliovel/SOLARDAY << " " << hypothesis_tanvel << "\n";
@@ -34166,7 +34395,7 @@ int trk2statevec_fgfunc_TNV(const vector <hlimage> &image_log, const vector <tra
       
 	  // Integrate orbit to the reference time.
 	  mjdavg = 0.5l*image_log[i1].MJD + 0.5l*image_log[i2].MJD;
-	  status1 = Kepler_fg_func_int(GMSUN_KM3_SEC2,mjdavg,targpos1,targvel1,mjdref,targpos2,targvel2);
+	  status1 = Kepler_fg_func_int(GMSUN_KM3_SEC2,mjdavg,targpos1,targvel1,mjdref,targpos2,targvel2, verbose);
 	  if(status1 == 0 && badpoint==0) {
 	    statevec1 = point6dx2(targpos2.x,targpos2.y,targpos2.z,chartimescale*targvel2.x,chartimescale*targvel2.y,chartimescale*targvel2.z,pairct,0);
 	    // Note that the multiplication by chartimescale converts velocities in km/sec
@@ -34188,13 +34417,2822 @@ int trk2statevec_fgfunc_TNV(const vector <hlimage> &image_log, const vector <tra
   return(0);
 }
 
+// trk2statevec_univar_TNV: September 14, 2026
+int trk2statevec_univar_TNV(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double min_obstanvel, double max_v_inf, double tanveltol, double veltol_changerad, int verbose)
+{
+  allstatevecs={};
+  long imnum = image_log.size();
+  long imct=0;
+  long pairnum = tracklets.size();
+  long pairct=0;
+  int badpoint=0;
+  int status1=0;
+  int status2=0;
+  int num_dist_solutions=0;
+  int solnct=0;
+  double mjdavg=0l;
+  vector <double> heliodistvec;
+  vector <double> heliotanvelvec;
+  double heliotanvel;
+  double RA,Dec;
+  long i1,i2;
+  i1=i2=0;
+  point6dx2 statevec1 = point6dx2(0l,0l,0l,0l,0l,0l,0,0);
+  point6ix2 stateveci = point6ix2(0,0,0,0,0,0,0,0);
+  point3d observerpos1 = point3d(0l,0l,0l);
+  point3d observerpos2 = point3d(0l,0l,0l);
+  point3d targpos1 = point3d(0l,0l,0l);
+  point3d targpos2 = point3d(0l,0l,0l);
+  point3d targvel1 = point3d(0l,0l,0l);
+  point3d targvel2 = point3d(0l,0l,0l);
+  point3d unitbary = point3d(0l,0l,0l);
+  point3d heliotanvel3D;
+  vector <point3d> targposvec1;
+  vector <point3d> targposvec2;
+  int glob_warning=0;
+  vector <double> deltavec1;
+  vector <double> deltavec2;
+  double absvelocity=0l;
+  double impactpar=0l;
+  double timediff=0l;
+  double E = 0.0l;
+  double v_inf = 0.0l;
+  double obstanvel = MAXTANVELCUT;
+  double meanobsdist,trackletarc,trackletangvel;
+  meanobsdist = trackletarc = trackletangvel = 0.0;
+  double temp_tanveltol;
+
+  // Calculate approximate heliocentric distances from the input hypotheses.
+  // Note: heliodist is in km, heliovel is in km/day, and helioacc is in km/day^2
+  heliodistvec={};
+  heliotanvelvec={};
+  // Use Matt Holman's idea of getting heliocentric distance r(t) from an
+  // actual Keplerian orbit. It turns out that the same parameters (r, r-dot, and r-double-dot)
+  // that specify the old three-term Taylor Series also uniquely determine the Keplerian
+  // r(t) -- that is, they specify enough of the orbit that only one Keplerian solution
+  // for r(t) exists, even though other aspects of the orbit (i.e., orientation) are not
+  // specified.
+  // SOLVE FOR THE SQUARE OF THE TANGENTIAL VELOCITY
+  double localg = GMSUN_KM3_SEC2/DSQUARE(heliodist); // Units are km/sec^2
+  double physacc = helioacc/DSQUARE(SOLARDAY); // Units are km/sec^2
+  double vesc = 2.0*GMSUN_KM3_SEC2/heliodist; // this is the square of the escape velocity in km/sec
+  double tanvel = heliodist*(physacc+localg); // this is the square of the tangential velocity in km/sec
+  // CHECK FOR UNPHYSICAL AND UNBOUND CASES
+  if(tanvel<0.0l) {
+    cerr << fixed << setprecision(6) << "ERROR: hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << " is not possible for any trajectory\n";
+    return(1);
+  }
+  if(vesc < tanvel + LDSQUARE(heliovel/SOLARDAY)) {
+    cout << fixed << setprecision(6) << "NOTE: hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << " implies an unbound orbit.\n";
+    cout << fixed << setprecision(6) << "vesc = " << sqrt(vesc) << ", tanvel = " << sqrt(tanvel) << ", heliovel = " << heliovel/SOLARDAY << ", totvel = " << sqrt(tanvel + LDSQUARE(heliovel/SOLARDAY)) << "\n";
+    // The fact that the orbit is unbound is not a problem, because this function uses
+    // universal variables and can handle unbound orbits.
+  }
+  // If we get here, a sensible solution (bound or unbound) exists. Solve for the true tangential velocity
+  tanvel = sqrt(tanvel);
+  // Construct state vectors producing the required orbit (in the x-y plane, for simplicity).
+  point3d startpos = point3d(heliodist,0l,0l);
+  point3d startvel = point3d(heliovel/SOLARDAY,tanvel,0l);
+  point3d endpos = point3d(0l,0l,0l);
+  point3d endvel = point3d(0l,0l,0l);
+  for(imct=0;imct<imnum;imct++) {
+    // Integrate the orbit to find the heliocentric distance as a function of time.
+    status1 = Kepler_univ_int(GMSUN_KM3_SEC2, mjdref, startpos, startvel, image_log[imct].MJD, endpos, endvel, verbose);
+    if(status1!=0) {
+      cerr << "ERROR: Keplerian integration failed for r(t) hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << ", at MJD = " << image_log[imct].MJD << "\n";
+      return(status1);
+    }
+    // Calculate heliocentric tangential velocity.
+    double heliorad = vecabs3d(endpos);
+    double radvel = dotprod3d(endpos,endvel)/heliorad;
+    heliotanvel3D.x = endvel.x - radvel*endpos.x/heliorad;
+    heliotanvel3D.y = endvel.y - radvel*endpos.y/heliorad;
+    heliotanvel3D.z = endvel.z - radvel*endpos.z/heliorad;
+    heliotanvel = vecabs3d(heliotanvel3D);
+    // Load calculated Keplerian distance and tangential velocity to the image-based vectors
+    heliodistvec.push_back(heliorad);
+    heliotanvelvec.push_back(heliotanvel);
+  }
+
+  if(badpoint==0 && long(heliodistvec.size())!=imnum) {
+    cerr << "ERROR: number of heliocentric distance values does\n";
+    cerr << "not match the number of input images!\n";
+    return(2);
+  }
+  for(pairct=0; pairct<pairnum; pairct++) {
+    badpoint=0;
+    // Obtain indices to the image_log and heliocentric distance vectors.
+    i1=tracklets[pairct].Img1;
+    i2=tracklets[pairct].Img2;
+    // Project the first point
+    RA = tracklets[pairct].RA1;
+    Dec = tracklets[pairct].Dec1;
+    celestial_to_stateunit(RA,Dec,unitbary);
+    observerpos1 = point3d(image_log[i1].X,image_log[i1].Y,image_log[i1].Z);
+    targposvec1={};
+    deltavec1={};
+    status1 = helioproj02(unitbary,observerpos1, heliodistvec[i1], deltavec1, targposvec1);
+    RA = tracklets[pairct].RA2;
+    Dec = tracklets[pairct].Dec2;
+    celestial_to_stateunit(RA,Dec,unitbary);
+    observerpos2 = point3d(image_log[i2].X,image_log[i2].Y,image_log[i2].Z);
+    targposvec2={};
+    deltavec2={};
+    status2 = helioproj02(unitbary, observerpos2, heliodistvec[i2], deltavec2, targposvec2);
+    // Calculate the mean distance from the observer over the two points in the tracklet.
+    // If the projection equations had two solutions (meaning the hypothesis distance was
+    // interior to the Earth), use the larger solutions.
+    meanobsdist = (deltavec1[0] + deltavec2[0])/2.0;
+    if(status1==2 && status2==2 &&  deltavec1[1]>deltavec1[0] && deltavec2[1]>deltavec2[0]) meanobsdist = (deltavec1[1] + deltavec2[1])/2.0;
+    if(min_obstanvel > 0.0 && meanobsdist < mingeoobs*AU_KM && status1 > 0 && status2 > 0 && badpoint==0) {
+      // New check added May 13, 2026: Calculate observer-centric tangential velocity,
+      // and reject the point if that is too low. The value of minimpactpar is here
+      // interpreted as a tangential velocity in km/sec, since it is nonzero but too small to
+      // make sense as an impact parameter in km.
+      trackletarc = distradec01(tracklets[pairct].RA1, tracklets[pairct].Dec1, tracklets[pairct].RA2, tracklets[pairct].Dec2)/DEGPRAD; // Tracklet arc in radians
+      timediff = (image_log[i2].MJD - image_log[i1].MJD)*SOLARDAY; // Time difference in seconds
+      trackletangvel = trackletarc/timediff; // radians per second
+      obstanvel = trackletangvel*meanobsdist; // km/sec
+      if(obstanvel<min_obstanvel) {
+	// Tangential velocity relative to the observer is too low
+	badpoint=1;
+      }
+    }
+    if(status1 > 0 && status2 > 0 && badpoint==0) {
+      // Calculate time difference between the observations
+      timediff = (image_log[i2].MJD - image_log[i1].MJD)*SOLARDAY;
+      // Did helioproj find two solutions in both cases, or only one?
+      num_dist_solutions = status1;
+      if(num_dist_solutions > status2) num_dist_solutions = status2;
+      // Loop over solutions (num_dist_solutions can only be 1 or 2).
+      for(solnct=0; solnct<num_dist_solutions; solnct++) {
+	// Calculate the object's v_inf relative to the sun.
+	targpos1 = targposvec1[solnct];
+	targpos2 = targposvec2[solnct];
+	  
+	targvel1.x = (targpos2.x - targpos1.x)/timediff;
+	targvel1.y = (targpos2.y - targpos1.y)/timediff;
+	targvel1.z = (targpos2.z - targpos1.z)/timediff;
+
+	targpos1.x = 0.5L*targpos2.x + 0.5L*targpos1.x;
+	targpos1.y = 0.5L*targpos2.y + 0.5L*targpos1.y;
+	targpos1.z = 0.5L*targpos2.z + 0.5L*targpos1.z;
+
+	E = 0.5l*dotprod3d(targvel1,targvel1) - GMSUN_KM3_SEC2/vecabs3d(targpos1);
+	if(E>0.0l) v_inf = sqrt(2.0l*E);
+	else if(!isnormal(E)) v_inf=0.0l;
+	else v_inf = -sqrt(-2.0l*E); // This is a bit weird, but we allow the user to
+	                             // set a negative v_inf, if desired, to rule out
+	                             // objects that are barely bound to the sun.
+	if(v_inf>max_v_inf) continue; // Skip further calculation if v_inf is too high.
+	// Perform calculations to check for consistency with the heliocentric
+	// tangential velocity implied by the hypothesis (Ben Engebreth's "SAD tracket" concept).
+	// Relevant quantities: deltavec1[solnct] and deltavec2[solnct] are the observer-centric
+	// distances at the first and second observations in km, heliotanvelvec[i1] and heliotanvelvec[i2]
+	// are the heliocentric tangential velocities implied by the hypothesis at the first and
+	// second observations, and targpos1 and targvel1 are the tracklet position and velocity
+	// at the midpoint of the tracklet.
+
+	// Calculate the heliocentric tangential velocity implied by the tracklet.
+	double heliorad = vecabs3d(targpos1);
+	double radvel = dotprod3d(targpos1,targvel1)/heliorad;
+	heliotanvel3D.x = targvel1.x - radvel*targpos1.x/heliorad;
+	heliotanvel3D.y = targvel1.y - radvel*targpos1.y/heliorad;
+	heliotanvel3D.z = targvel1.z - radvel*targpos1.z/heliorad;
+	double tracklet_tanvel = vecabs3d(heliotanvel3D);
+	double hypothesis_tanvel = 0.5*heliotanvelvec[i1] + 0.5*heliotanvelvec[i2];
+ 
+	// Scale velocity tolerance linearly with observer distance, normalized at 1AU.
+	temp_tanveltol = tanveltol*(0.5*deltavec1[solnct] + 0.5*deltavec2[solnct])/AU_KM;
+	// Revise upward if below a constant 'floor' values that applies within veltol_changerad AU of Earth.
+	if(temp_tanveltol < tanveltol*veltol_changerad) temp_tanveltol = tanveltol*veltol_changerad;
+
+	if(TAN_DEBUG) {
+	  cout << "Hypothesis radvel, tanvel: " << heliovel/SOLARDAY << " " << hypothesis_tanvel << "\n";
+	  cout << "Tracklet radvel, tanvel: " << radvel << " " << tracklet_tanvel << "\n";
+	  cout << "dist, temp_tanveltol: " << (0.5*deltavec1[solnct] + 0.5*deltavec2[solnct])/AU_KM << " " << temp_tanveltol << "\n";
+	}
+	// Compare tracklet vs. hypothesis tangential velocities
+	if(fabs(tracklet_tanvel - hypothesis_tanvel) > temp_tanveltol) {
+	  if(TAN_DEBUG) cout << "Tracklet is SAD: rejected\n";
+	  continue; // Skip further calculation: this is a 'SAD' (Swept Angle Discrepancy)
+	  // tracklet, meaning its heliocentric tangential velocity is inconsistent with that
+	  // implied by the hypothesis.
+	} else if(TAN_DEBUG) cout << "Not a SAD tracklet: accepted\n";
+      
+	// Begin new stuff added to eliminate 'globs'
+	// These are spurious linkages of unreasonably large numbers (typically tens of thousands)
+	// of detections that arise when the hypothetical heliocentric distance at a time when
+	// many observations are acquired is extremely close to, but slightly greater than,
+	// the heliocentric distance of the observer. Then detections over a large area of sky
+	// wind up with projected 3-D positions in an extremely small volume -- and furthermore,
+	// they all have similar velocities because the very small geocentric distance causes
+	// the inferred velocities to be dominated by the observer's motion and the heliocentric
+	// hypothesis, with only a negligible contribution from the on-sky angular velocity.
+	glob_warning=0;
+	if(deltavec1[solnct]<mingeoobs*AU_KM && deltavec2[solnct]<mingeoobs*AU_KM) {
+	  // New-start
+	  // Load target positions
+	  targpos1 = targposvec1[solnct];
+	  targpos2 = targposvec2[solnct];
+	  // Calculate positions relative to observer
+	  targpos1.x -= observerpos1.x;
+	  targpos1.y -= observerpos1.y;
+	  targpos1.z -= observerpos1.z;
+	    
+	  targpos2.x -= observerpos2.x;
+	  targpos2.y -= observerpos2.y;
+	  targpos2.z -= observerpos2.z;
+	    
+	  // Calculate velocity relative to observer
+	  targvel1.x = (targpos2.x - targpos1.x)/timediff;
+	  targvel1.y = (targpos2.y - targpos1.y)/timediff;
+	  targvel1.z = (targpos2.z - targpos1.z)/timediff;
+   
+	  // Calculate impact parameter (past or future).
+	  absvelocity = vecabs3d(targvel1);
+	  impactpar = dotprod3d(targpos1,targvel1)/absvelocity;
+	  // Effectively, we've projected targpos1 onto the velocity
+	  // vector, and impactpar temporarily holds the magnitude of this projection.
+	  // Subtract off the projection of the distance onto the velocity unit vector
+	  targpos1.x -= impactpar*targvel1.x/absvelocity;
+	  targpos1.y -= impactpar*targvel1.y/absvelocity;
+	  targpos1.z -= impactpar*targvel1.z/absvelocity;
+	  // Now targpos1 is the impact parameter vector at projected closest approach.
+	  impactpar  = vecabs3d(targpos1); // Now impactpar is really the impact parameter
+	  if(impactpar<=minimpactpar) {
+	    // The hypothesis implies the object already passed with minimpactpar km of the Earth
+	    // in the likely case that minimpactpar has been set to imply an actual impact,
+	    // it's not our problem anymore.
+	    glob_warning=1;
+	  }
+	}
+	if(!glob_warning) {
+	  targpos1 = targposvec1[solnct];
+	  targpos2 = targposvec2[solnct];
+	  
+	  targvel1.x = (targpos2.x - targpos1.x)/timediff;
+	  targvel1.y = (targpos2.y - targpos1.y)/timediff;
+	  targvel1.z = (targpos2.z - targpos1.z)/timediff;
+
+	  targpos1.x = 0.5L*targpos2.x + 0.5L*targpos1.x;
+	  targpos1.y = 0.5L*targpos2.y + 0.5L*targpos1.y;
+	  targpos1.z = 0.5L*targpos2.z + 0.5L*targpos1.z;
+      
+	  // Integrate orbit to the reference time.
+	  mjdavg = 0.5l*image_log[i1].MJD + 0.5l*image_log[i2].MJD;
+	  status1 = Kepler_univ_int(GMSUN_KM3_SEC2,mjdavg,targpos1,targvel1,mjdref,targpos2,targvel2,verbose);
+	  if(status1 == 0 && badpoint==0) {
+	    statevec1 = point6dx2(targpos2.x,targpos2.y,targpos2.z,chartimescale*targvel2.x,chartimescale*targvel2.y,chartimescale*targvel2.z,pairct,0);
+	    // Note that the multiplication by chartimescale converts velocities in km/sec
+	    // to units of km, for apples-to-apples comparison with the positions.
+	    stateveci = conv_6d_to_6i(statevec1,INTEGERIZING_SCALEFAC);
+	    allstatevecs.push_back(stateveci);
+	  } else {
+	    // Kepler integration encountered unphysical situation.
+	    continue;
+	  }
+	}
+      }
+    } else {
+      badpoint=1;
+      // Heliocentric projection found no physical solution.
+      continue;
+    }
+  }
+  return(0);
+}
+
+#define UINT_DEBUG 0
+
+// trk2statevec_fgfuncRR_TNV: September 14, 2026
+int trk2statevec_fgfuncRR_TNV(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double min_obstanvel, double max_v_inf, double tanveltol, double veltol_changerad, int verbose)
+{
+  allstatevecs={};
+  long imnum = image_log.size();
+  long imct=0;
+  long pairnum = tracklets.size();
+  long pairct=0;
+  int badpoint=0;
+  int status1=0;
+  int status2=0;
+  int num_dist_solutions=0;
+  int solnct=0;
+  double mjdavg=0l;
+  vector <double> heliodistvec;
+  vector <double> heliotanvelvec;
+  double heliotanvel;
+  double RA,Dec;
+  long i1,i2;
+  i1=i2=0;
+  point6dx2 statevec1 = point6dx2(0l,0l,0l,0l,0l,0l,0,0);
+  point6ix2 stateveci = point6ix2(0,0,0,0,0,0,0,0);
+  point3d observerpos1 = point3d(0l,0l,0l);
+  point3d observerpos2 = point3d(0l,0l,0l);
+  point3d targpos1 = point3d(0l,0l,0l);
+  point3d targvel1 = point3d(0l,0l,0l);
+  point3d targpos2 = point3d(0l,0l,0l);
+  point3d unitbary = point3d(0l,0l,0l);
+  point3d heliotanvel3D;
+  vector <point3d> targposvec1;
+  vector <point3d> targposvec2;
+  int glob_warning=0;
+  vector <double> deltavec1;
+  vector <double> deltavec2;
+  vector <double> mjdvec;
+  double absvelocity=0l;
+  double impactpar=0l;
+  double timediff=0l;
+  double E = 0.0l;
+  double v_inf = 0.0l;
+
+  double obstanvel = MAXTANVELCUT;
+  double meanobsdist,trackletarc,trackletangvel;
+  meanobsdist = trackletarc = trackletangvel = 0.0;
+  double temp_tanveltol;
+  
+  // Load the two reference times into mjdvec
+  mjdvec={};
+  mjdvec.push_back(mjdref-chartimescale/SOLARDAY);
+  mjdvec.push_back(mjdref+chartimescale/SOLARDAY);
+  
+  // Calculate approximate heliocentric distances from the input hypotheses:
+  heliodistvec={};
+  // Use Matt Holman's idea of getting heliocentric distance r(t) from an
+  // actual Keplerian orbit. It turns out that the same parameters (r, r-dot, and r-double-dot)
+  // that specify the old three-term Taylor Series also uniquely determine the Keplerian
+  // r(t) -- that is, they specify enough of the orbit that only one Keplerian solution
+  // for r(t) exists, even though other aspects of the orbit (i.e., orientation) are not
+  // specified.
+  // SOLVE FOR THE SQUARE OF THE TANGENTIAL VELOCITY
+  double localg = GMSUN_KM3_SEC2/DSQUARE(heliodist); // Units are km/sec^2
+  double physacc = helioacc/DSQUARE(SOLARDAY); // Units are km/sec^2
+  double vesc = 2.0*GMSUN_KM3_SEC2/heliodist; // this is the square of the escape velocity in km/sec
+  double tanvel = heliodist*(physacc+localg); // this is the square of the tangential velocity in km/sec
+  // CHECK FOR UNPHYSICAL AND UNBOUND CASES
+  if(tanvel<0.0l) {
+    cerr << fixed << setprecision(6) << "ERROR: hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << " is not possible for any trajectory\n";
+    return(1);
+  }
+  if(vesc < tanvel + LDSQUARE(heliovel/SOLARDAY)) {
+    cerr << fixed << setprecision(6) << "ERROR: hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << " is not possible for a bound orbit\n";
+    cerr << fixed << setprecision(6) << "vesc = " << sqrt(vesc) << ", tanvel = " << sqrt(tanvel) << ", heliovel = " << heliovel/SOLARDAY << ", totvel = " << sqrt(tanvel + LDSQUARE(heliovel/SOLARDAY)) << "\n";
+    return(1);
+  }
+  // If we get here, a sensible bound solution exists. Solve for the true tangential velocity
+  tanvel = sqrt(tanvel);
+  // Construct state vectors producing the required orbit (in the x-y plane, for simplicity).
+  point3d startpos = point3d(heliodist,0l,0l);
+  point3d startvel = point3d(heliovel/SOLARDAY,tanvel,0l);
+  point3d endpos = point3d(0l,0l,0l);
+  point3d endvel = point3d(0l,0l,0l);
+  for(imct=0;imct<imnum;imct++) {
+    // Integrate the orbit to find the heliocentric distance as a function of time.
+    status1 = Kepler_fg_func_int(GMSUN_KM3_SEC2, mjdref, startpos, startvel, image_log[imct].MJD, endpos, endvel, verbose);
+    if(status1!=0) {
+      cerr << "ERROR: Keplerian integration failed for r(t) hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << ", at MJD = " << image_log[imct].MJD << "\n";
+      return(status1);
+    }
+    // Calculate heliocentric tangential velocity.
+    double heliorad = vecabs3d(endpos);
+    double radvel = dotprod3d(endpos,endvel)/heliorad;
+    heliotanvel3D.x = endvel.x - radvel*endpos.x/heliorad;
+    heliotanvel3D.y = endvel.y - radvel*endpos.y/heliorad;
+    heliotanvel3D.z = endvel.z - radvel*endpos.z/heliorad;
+    heliotanvel = vecabs3d(heliotanvel3D);
+    // Load calculated Keplerian distance and tangential velocity to the image-based vectors
+    heliodistvec.push_back(heliorad);
+    heliotanvelvec.push_back(heliotanvel);
+  }
+
+  if(badpoint==0 && long(heliodistvec.size())!=imnum) {
+    cerr << "ERROR: number of heliocentric distance values does\n";
+    cerr << "not match the number of input images!\n";
+    return(2);
+  }
+  for(pairct=0; pairct<pairnum; pairct++) {
+    badpoint=0;
+    // Obtain indices to the image_log and heliocentric distance vectors.
+    i1=tracklets[pairct].Img1;
+    i2=tracklets[pairct].Img2;
+    // Project the first point
+    RA = tracklets[pairct].RA1;
+    Dec = tracklets[pairct].Dec1;
+    celestial_to_stateunit(RA,Dec,unitbary);
+    observerpos1 = point3d(image_log[i1].X,image_log[i1].Y,image_log[i1].Z);
+    targposvec1={};
+    deltavec1={};
+    status1 = helioproj02(unitbary,observerpos1, heliodistvec[i1], deltavec1, targposvec1);
+    RA = tracklets[pairct].RA2;
+    Dec = tracklets[pairct].Dec2;
+    celestial_to_stateunit(RA,Dec,unitbary);
+    observerpos2 = point3d(image_log[i2].X,image_log[i2].Y,image_log[i2].Z);
+    targposvec2={};
+    deltavec2={};
+    status2 = helioproj02(unitbary, observerpos2, heliodistvec[i2], deltavec2, targposvec2);
+    // Calculate the mean distance from the observer over the two points in the tracklet.
+    // If the projection equations had two solutions (meaning the hypothesis distance was
+    // interior to the Earth), use the larger solutions.
+    meanobsdist = (deltavec1[0] + deltavec2[0])/2.0;
+    if(status1==2 && status2==2 &&  deltavec1[1]>deltavec1[0] && deltavec2[1]>deltavec2[0]) meanobsdist = (deltavec1[1] + deltavec2[1])/2.0;
+    if(min_obstanvel > 0.0 && meanobsdist < mingeoobs*AU_KM && status1 > 0 && status2 > 0 && badpoint==0) {
+      // New check added May 13, 2026: Calculate observer-centric tangential velocity,
+      // and reject the point if that is too low. The value of minimpactpar is here
+      // interpreted as a tangential velocity in km/sec, since it is nonzero but too small to
+      // make sense as an impact parameter in km.
+      trackletarc = distradec01(tracklets[pairct].RA1, tracklets[pairct].Dec1, tracklets[pairct].RA2, tracklets[pairct].Dec2)/DEGPRAD; // Tracklet arc in radians
+      timediff = (image_log[i2].MJD - image_log[i1].MJD)*SOLARDAY; // Time difference in seconds
+      trackletangvel = trackletarc/timediff; // radians per second
+      obstanvel = trackletangvel*meanobsdist; // km/sec
+      if(obstanvel<min_obstanvel) {
+	// Tangential velocity relative to the observer is too low
+	badpoint=1;
+      }
+    }
+    if(status1 > 0 && status2 > 0 && badpoint==0) {
+      // Calculate time difference between the observations
+      timediff = (image_log[i2].MJD - image_log[i1].MJD)*SOLARDAY;
+      // Did helioproj find two solutions in both cases, or only one?
+      num_dist_solutions = status1;
+      if(num_dist_solutions > status2) num_dist_solutions = status2;
+      // Loop over solutions (num_dist_solutions can only be 1 or 2).
+      for(solnct=0; solnct<num_dist_solutions; solnct++) {
+	// Calculate the object's v_inf relative to the sun.
+	targpos1 = targposvec1[solnct];
+	targpos2 = targposvec2[solnct];
+	  
+	targvel1.x = (targpos2.x - targpos1.x)/timediff;
+	targvel1.y = (targpos2.y - targpos1.y)/timediff;
+	targvel1.z = (targpos2.z - targpos1.z)/timediff;
+
+	targpos1.x = 0.5L*targpos2.x + 0.5L*targpos1.x;
+	targpos1.y = 0.5L*targpos2.y + 0.5L*targpos1.y;
+	targpos1.z = 0.5L*targpos2.z + 0.5L*targpos1.z;
+
+	E = 0.5l*dotprod3d(targvel1,targvel1) - GMSUN_KM3_SEC2/vecabs3d(targpos1);
+	if(E>0.0l) v_inf = sqrt(2.0l*E);
+	else if(!isnormal(E)) v_inf=0.0l;
+	else v_inf = -sqrt(-2.0l*E); // This is a bit weird, but we allow the user to
+	                             // set a negative v_inf, if desired, to rule out
+	                             // objects that are barely bound to the sun.
+	if(v_inf>max_v_inf) continue; // Skip further calculation if v_inf is too high.
+
+	// Perform calculations to check for consistency with the heliocentric
+	// tangential velocity implied by the hypothesis (Ben Engebreth's "SAD tracket" concept).
+	// Relevant quantities: deltavec1[solnct] and deltavec2[solnct] are the observer-centric
+	// distances at the first and second observations in km, heliotanvelvec[i1] and heliotanvelvec[i2]
+	// are the heliocentric tangential velocities implied by the hypothesis at the first and
+	// second observations, and targpos1 and targvel1 are the tracklet position and velocity
+	// at the midpoint of the tracklet.
+
+	// Calculate the heliocentric tangential velocity implied by the tracklet.
+	double heliorad = vecabs3d(targpos1);
+	double radvel = dotprod3d(targpos1,targvel1)/heliorad;
+	heliotanvel3D.x = targvel1.x - radvel*targpos1.x/heliorad;
+	heliotanvel3D.y = targvel1.y - radvel*targpos1.y/heliorad;
+	heliotanvel3D.z = targvel1.z - radvel*targpos1.z/heliorad;
+	double tracklet_tanvel = vecabs3d(heliotanvel3D);
+	double hypothesis_tanvel = 0.5*heliotanvelvec[i1] + 0.5*heliotanvelvec[i2];
+ 
+	// Scale velocity tolerance linearly with observer distance, normalized at 1AU.
+	temp_tanveltol = tanveltol*(0.5*deltavec1[solnct] + 0.5*deltavec2[solnct])/AU_KM;
+	// Revise upward if below a constant 'floor' values that applies within veltol_changerad AU of Earth.
+	if(temp_tanveltol < tanveltol*veltol_changerad) temp_tanveltol = tanveltol*veltol_changerad;
+
+	if(UINT_DEBUG) {
+	  cout << "Hypothesis radvel, tanvel: " << heliovel/SOLARDAY << " " << hypothesis_tanvel << "\n";
+	  cout << "Tracklet radvel, tanvel: " << radvel << " " << tracklet_tanvel << "\n";
+	  cout << "dist, temp_tanveltol: " << (0.5*deltavec1[solnct] + 0.5*deltavec2[solnct])/AU_KM << " " << temp_tanveltol << "\n";
+	}
+	// Compare tracklet vs. hypothesis tangential velocities
+	if(fabs(tracklet_tanvel - hypothesis_tanvel) > temp_tanveltol) {
+	  if(UINT_DEBUG) cout << "Tracklet is SAD: rejected\n";
+	  continue; // Skip further calculation: this is a 'SAD' (Swept Angle Discrepancy)
+	  // tracklet, meaning its heliocentric tangential velocity is inconsistent with that
+	  // implied by the hypothesis.
+	} else if(UINT_DEBUG) cout << "Not a SAD tracklet: accepted\n";
+	
+	// Begin new stuff added to eliminate 'globs'
+	// These are spurious linkages of unreasonably large numbers (typically tens of thousands)
+	// of detections that arise when the hypothetical heliocentric distance at a time when
+	// many observations are acquired is extremely close to, but slightly greater than,
+	// the heliocentric distance of the observer. Then detections over a large area of sky
+	// wind up with projected 3-D positions in an extremely small volume -- and furthermore,
+	// they all have similar velocities because the very small geocentric distance causes
+	// the inferred velocities to be dominated by the observer's motion and the heliocentric
+	// hypothesis, with only a negligible contribution from the on-sky angular velocity.
+	glob_warning=0;
+	if(deltavec1[solnct]<mingeoobs*AU_KM && deltavec2[solnct]<mingeoobs*AU_KM) {
+	  // New-start
+	  // Load target positions
+	  targpos1 = targposvec1[solnct];
+	  targpos2 = targposvec2[solnct];
+	  // Calculate positions relative to observer
+	  targpos1.x -= observerpos1.x;
+	  targpos1.y -= observerpos1.y;
+	  targpos1.z -= observerpos1.z;
+	    
+	  targpos2.x -= observerpos2.x;
+	  targpos2.y -= observerpos2.y;
+	  targpos2.z -= observerpos2.z;
+	    
+	  // Calculate velocity relative to observer
+	  targvel1.x = (targpos2.x - targpos1.x)/timediff;
+	  targvel1.y = (targpos2.y - targpos1.y)/timediff;
+	  targvel1.z = (targpos2.z - targpos1.z)/timediff;
+   
+	  // Calculate impact parameter (past or future).
+	  absvelocity = vecabs3d(targvel1);
+	  impactpar = dotprod3d(targpos1,targvel1)/absvelocity;
+	  // Effectively, we've projected targpos1 onto the velocity
+	  // vector, and impactpar temporarily holds the magnitude of this projection.
+	  // Subtract off the projection of the distance onto the velocity unit vector
+	  targpos1.x -= impactpar*targvel1.x/absvelocity;
+	  targpos1.y -= impactpar*targvel1.y/absvelocity;
+	  targpos1.z -= impactpar*targvel1.z/absvelocity;
+	  // Now targpos1 is the impact parameter vector at projected closest approach.
+	  impactpar  = vecabs3d(targpos1); // Now impactpar is really the impact parameter
+	  if(impactpar<=minimpactpar) {
+	    // The hypothesis implies the object already passed within minimpactpar km of the Earth
+	    // in the likely case that minimpactpar has been set to imply an actual impact,
+	    // it's not our problem anymore.
+	    glob_warning=1;
+	  }
+	}
+	if(!glob_warning) {
+	  targpos1 = targposvec1[solnct];
+	  targpos2 = targposvec2[solnct];
+	  
+	  targvel1.x = (targpos2.x - targpos1.x)/timediff;
+	  targvel1.y = (targpos2.y - targpos1.y)/timediff;
+	  targvel1.z = (targpos2.z - targpos1.z)/timediff;
+
+	  targpos1.x = 0.5L*targpos2.x + 0.5L*targpos1.x;
+	  targpos1.y = 0.5L*targpos2.y + 0.5L*targpos1.y;
+	  targpos1.z = 0.5L*targpos2.z + 0.5L*targpos1.z;
+      
+	  // Integrate orbit to the reference times.
+	  mjdavg = 0.5l*image_log[i1].MJD + 0.5l*image_log[i2].MJD;
+	  vector <point3d> targposvec;
+	  vector <point3d> targvelvec;
+	  status1 = Kepler_fg_func_vec(GMSUN_KM3_SEC2,mjdavg,targpos1,targvel1,mjdvec,targposvec,targvelvec);
+	  if(status1 == 0 && badpoint==0) {
+	    statevec1 = point6dx2(targposvec[0].x,targposvec[0].y,targposvec[0].z,targposvec[1].x,targposvec[1].y,targposvec[1].z,pairct,0);
+	    stateveci = conv_6d_to_6i(statevec1,INTEGERIZING_SCALEFAC);
+	    allstatevecs.push_back(stateveci);
+	  } else {
+	    // Kepler integration encountered unphysical situation.
+	    continue;
+	  }
+	}
+      }
+    } else {
+      badpoint=1;
+      // Heliocentric projection found no physical solution.
+      continue;
+    }
+  }
+  return(0);
+}
+
+// trk2statevec_univarRR_TNV: September 14, 2026:
+int trk2statevec_univarRR_TNV(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double min_obstanvel, double max_v_inf, double tanveltol, double veltol_changerad, int verbose)
+{
+  allstatevecs={};
+  long imnum = image_log.size();
+  long imct=0;
+  long pairnum = tracklets.size();
+  long pairct=0;
+  int badpoint=0;
+  int status1=0;
+  int status2=0;
+  int num_dist_solutions=0;
+  int solnct=0;
+  double mjdavg=0l;
+  vector <double> heliodistvec;
+  vector <double> heliotanvelvec;
+  double heliotanvel;
+  double RA,Dec;
+  long i1,i2;
+  i1=i2=0;
+  point6dx2 statevec1 = point6dx2(0l,0l,0l,0l,0l,0l,0,0);
+  point6ix2 stateveci = point6ix2(0,0,0,0,0,0,0,0);
+  point3d observerpos1 = point3d(0l,0l,0l);
+  point3d observerpos2 = point3d(0l,0l,0l);
+  point3d targpos1 = point3d(0l,0l,0l);
+  point3d targpos2 = point3d(0l,0l,0l);
+  point3d targvel1 = point3d(0l,0l,0l);
+  point3d unitbary = point3d(0l,0l,0l);
+  point3d heliotanvel3D;
+  vector <point3d> targposvec1;
+  vector <point3d> targposvec2;
+  int glob_warning=0;
+  vector <double> deltavec1;
+  vector <double> deltavec2;
+  vector <double> mjdvec;
+  double absvelocity=0l;
+  double impactpar=0l;
+  double timediff=0l;
+  double E = 0.0l;
+  double v_inf = 0.0l;
+  
+  double obstanvel = MAXTANVELCUT;
+  double meanobsdist,trackletarc,trackletangvel;
+  meanobsdist = trackletarc = trackletangvel = 0.0;
+  double temp_tanveltol;
+  
+  // Load the two reference times into mjdvec
+  mjdvec={};
+  mjdvec.push_back(mjdref-chartimescale/SOLARDAY);
+  mjdvec.push_back(mjdref+chartimescale/SOLARDAY);
+
+  // Calculate approximate heliocentric distances from the hypotheses
+  // Use Matt Holman's idea of getting heliocentric distance r(t) from an
+  // actual Keplerian orbit. It turns out that the same parameters (r, r-dot, and r-double-dot)
+  // that specify the old three-term Taylor Series also uniquely determine the Keplerian
+  // r(t) -- that is, they specify enough of the orbit that only one Keplerian solution
+  // for r(t) exists, even though other aspects of the orbit (i.e., orientation) are not
+  // specified.
+  // SOLVE FOR THE SQUARE OF THE TANGENTIAL VELOCITY
+  double localg = GMSUN_KM3_SEC2/DSQUARE(heliodist); // Units are km/sec^2
+  double physacc = helioacc/DSQUARE(SOLARDAY); // Units are km/sec^2
+  double vesc = 2.0*GMSUN_KM3_SEC2/heliodist; // this is the square of the escape velocity in km/sec
+  double tanvel = heliodist*(physacc+localg); // this is the square of the tangential velocity in km/sec
+  // CHECK FOR UNPHYSICAL AND UNBOUND CASES
+  if(tanvel<0.0l) {
+    cerr << fixed << setprecision(6) << "ERROR: hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << " is not possible for any trajectory\n";
+    return(1);
+  }
+  if(vesc < tanvel + LDSQUARE(heliovel/SOLARDAY)) {
+    cout << fixed << setprecision(6) << "NOTE: hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << " implies an unbound orbit.\n";
+    cout << fixed << setprecision(6) << "vesc = " << sqrt(vesc) << ", tanvel = " << sqrt(tanvel) << ", heliovel = " << heliovel/SOLARDAY << ", totvel = " << sqrt(tanvel + LDSQUARE(heliovel/SOLARDAY)) << "\n";
+    // The fact that the orbit is unbound is not a problem, because this function uses
+    // universal variables and can handle unbound orbits.
+  }
+  // If we get here, a sensible solution (bound or unbound) exists. Solve for the true tangential velocity
+  tanvel = sqrt(tanvel);
+  // Construct state vectors producing the required orbit (in the x-y plane, for simplicity).
+  point3d startpos = point3d(heliodist,0l,0l);
+  point3d startvel = point3d(heliovel/SOLARDAY,tanvel,0l);
+  point3d endpos = point3d(0l,0l,0l);
+  point3d endvel = point3d(0l,0l,0l);
+  for(imct=0;imct<imnum;imct++) {
+    // Integrate the orbit to find the heliocentric distance as a function of time.
+    status1 = Kepler_univ_int(GMSUN_KM3_SEC2, mjdref, startpos, startvel, image_log[imct].MJD, endpos, endvel, verbose);
+    if(status1!=0) {
+      cerr << "ERROR: Keplerian integration failed for r(t) hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << ", at MJD = " << image_log[imct].MJD << "\n";
+      return(status1);
+    }
+    // Calculate heliocentric tangential velocity.
+    double heliorad = vecabs3d(endpos);
+    double radvel = dotprod3d(endpos,endvel)/heliorad;
+    heliotanvel3D.x = endvel.x - radvel*endpos.x/heliorad;
+    heliotanvel3D.y = endvel.y - radvel*endpos.y/heliorad;
+    heliotanvel3D.z = endvel.z - radvel*endpos.z/heliorad;
+    heliotanvel = vecabs3d(heliotanvel3D);
+    // Load calculated Keplerian distance and tangential velocity to the image-based vectors
+    heliodistvec.push_back(heliorad);
+    heliotanvelvec.push_back(heliotanvel);
+  }
+
+  if(badpoint==0 && long(heliodistvec.size())!=imnum) {
+    cerr << "ERROR: number of heliocentric distance values does\n";
+    cerr << "not match the number of input images!\n";
+    return(2);
+  }
+  for(pairct=0; pairct<pairnum; pairct++) {
+    badpoint=0;
+    // Obtain indices to the image_log and heliocentric distance vectors.
+    i1=tracklets[pairct].Img1;
+    i2=tracklets[pairct].Img2;
+    // Project the first point
+    RA = tracklets[pairct].RA1;
+    Dec = tracklets[pairct].Dec1;
+    celestial_to_stateunit(RA,Dec,unitbary);
+    observerpos1 = point3d(image_log[i1].X,image_log[i1].Y,image_log[i1].Z);
+    targposvec1={};
+    deltavec1={};
+    status1 = helioproj02(unitbary,observerpos1, heliodistvec[i1], deltavec1, targposvec1);
+    RA = tracklets[pairct].RA2;
+    Dec = tracklets[pairct].Dec2;
+    celestial_to_stateunit(RA,Dec,unitbary);
+    observerpos2 = point3d(image_log[i2].X,image_log[i2].Y,image_log[i2].Z);
+    targposvec2={};
+    deltavec2={};
+    status2 = helioproj02(unitbary, observerpos2, heliodistvec[i2], deltavec2, targposvec2);
+    // Calculate the mean distance from the observer over the two points in the tracklet.
+    // If the projection equations had two solutions (meaning the hypothesis distance was
+    // interior to the Earth), use the larger solutions.
+    meanobsdist = (deltavec1[0] + deltavec2[0])/2.0;
+    if(status1==2 && status2==2 &&  deltavec1[1]>deltavec1[0] && deltavec2[1]>deltavec2[0]) meanobsdist = (deltavec1[1] + deltavec2[1])/2.0;
+    if(min_obstanvel > 0.0 && meanobsdist < mingeoobs*AU_KM && status1 > 0 && status2 > 0 && badpoint==0) {
+      // New check added May 13, 2026: Calculate observer-centric tangential velocity,
+      // and reject the point if that is too low. The value of minimpactpar is here
+      // interpreted as a tangential velocity in km/sec, since it is nonzero but too small to
+      // make sense as an impact parameter in km.
+      trackletarc = distradec01(tracklets[pairct].RA1, tracklets[pairct].Dec1, tracklets[pairct].RA2, tracklets[pairct].Dec2)/DEGPRAD; // Tracklet arc in radians
+      timediff = (image_log[i2].MJD - image_log[i1].MJD)*SOLARDAY; // Time difference in seconds
+      trackletangvel = trackletarc/timediff; // radians per second
+      obstanvel = trackletangvel*meanobsdist; // km/sec
+      if(obstanvel<min_obstanvel) {
+	// Tangential velocity relative to the observer is too low
+	badpoint=1;
+      }
+    }
+    if(status1 > 0 && status2 > 0 && badpoint==0) {
+      // Calculate time difference between the observations
+      timediff = (image_log[i2].MJD - image_log[i1].MJD)*SOLARDAY;
+      // Did helioproj find two solutions in both cases, or only one?
+      num_dist_solutions = status1;
+      if(num_dist_solutions > status2) num_dist_solutions = status2;
+      // Loop over solutions (num_dist_solutions can only be 1 or 2).
+      for(solnct=0; solnct<num_dist_solutions; solnct++) {
+	// Calculate the object's v_inf relative to the sun.
+	targpos1 = targposvec1[solnct];
+	targpos2 = targposvec2[solnct];
+	  
+	targvel1.x = (targpos2.x - targpos1.x)/timediff;
+	targvel1.y = (targpos2.y - targpos1.y)/timediff;
+	targvel1.z = (targpos2.z - targpos1.z)/timediff;
+
+	targpos1.x = 0.5L*targpos2.x + 0.5L*targpos1.x;
+	targpos1.y = 0.5L*targpos2.y + 0.5L*targpos1.y;
+	targpos1.z = 0.5L*targpos2.z + 0.5L*targpos1.z;
+
+	E = 0.5l*dotprod3d(targvel1,targvel1) - GMSUN_KM3_SEC2/vecabs3d(targpos1);
+	if(E>0.0l) v_inf = sqrt(2.0l*E);
+	else if(!isnormal(E)) v_inf=0.0l;
+	else v_inf = -sqrt(-2.0l*E); // This is a bit weird, but we allow the user to
+	                             // set a negative v_inf, if desired, to rule out
+	                             // objects that are barely bound to the sun.
+	if(v_inf>max_v_inf) continue; // Skip further calculation if v_inf is too high.
+      
+	// Perform calculations to check for consistency with the heliocentric
+	// tangential velocity implied by the hypothesis (Ben Engebreth's "SAD tracket" concept).
+	// Relevant quantities: deltavec1[solnct] and deltavec2[solnct] are the observer-centric
+	// distances at the first and second observations in km, heliotanvelvec[i1] and heliotanvelvec[i2]
+	// are the heliocentric tangential velocities implied by the hypothesis at the first and
+	// second observations, and targpos1 and targvel1 are the tracklet position and velocity
+	// at the midpoint of the tracklet.
+
+	// Calculate the heliocentric tangential velocity implied by the tracklet.
+	double heliorad = vecabs3d(targpos1);
+	double radvel = dotprod3d(targpos1,targvel1)/heliorad;
+	heliotanvel3D.x = targvel1.x - radvel*targpos1.x/heliorad;
+	heliotanvel3D.y = targvel1.y - radvel*targpos1.y/heliorad;
+	heliotanvel3D.z = targvel1.z - radvel*targpos1.z/heliorad;
+	double tracklet_tanvel = vecabs3d(heliotanvel3D);
+	double hypothesis_tanvel = 0.5*heliotanvelvec[i1] + 0.5*heliotanvelvec[i2];
+ 
+	// Scale velocity tolerance linearly with observer distance, normalized at 1AU.
+	temp_tanveltol = tanveltol*(0.5*deltavec1[solnct] + 0.5*deltavec2[solnct])/AU_KM;
+	// Revise upward if below a constant 'floor' values that applies within veltol_changerad AU of Earth.
+	if(temp_tanveltol < tanveltol*veltol_changerad) temp_tanveltol = tanveltol*veltol_changerad;
+
+	if(TAN_DEBUG) {
+	  cout << "Hypothesis radvel, tanvel: " << heliovel/SOLARDAY << " " << hypothesis_tanvel << "\n";
+	  cout << "Tracklet radvel, tanvel: " << radvel << " " << tracklet_tanvel << "\n";
+	  cout << "dist, temp_tanveltol: " << (0.5*deltavec1[solnct] + 0.5*deltavec2[solnct])/AU_KM << " " << temp_tanveltol << "\n";
+	}
+	// Compare tracklet vs. hypothesis tangential velocities
+	if(fabs(tracklet_tanvel - hypothesis_tanvel) > temp_tanveltol) {
+	  if(TAN_DEBUG) cout << "Tracklet is SAD: rejected\n";
+	  continue; // Skip further calculation: this is a 'SAD' (Swept Angle Discrepancy)
+	  // tracklet, meaning its heliocentric tangential velocity is inconsistent with that
+	  // implied by the hypothesis.
+	} else if(TAN_DEBUG) cout << "Not a SAD tracklet: accepted\n";
+	
+	// Begin new stuff added to eliminate 'globs'
+	// These are spurious linkages of unreasonably large numbers (typically tens of thousands)
+	// of detections that arise when the hypothetical heliocentric distance at a time when
+	// many observations are acquired is extremely close to, but slightly greater than,
+	// the heliocentric distance of the observer. Then detections over a large area of sky
+	// wind up with projected 3-D positions in an extremely small volume -- and furthermore,
+	// they all have similar velocities because the very small geocentric distance causes
+	// the inferred velocities to be dominated by the observer's motion and the heliocentric
+	// hypothesis, with only a negligible contribution from the on-sky angular velocity.
+	glob_warning=0;
+	if(deltavec1[solnct]<mingeoobs*AU_KM && deltavec2[solnct]<mingeoobs*AU_KM) {
+	  // New-start
+	  // Load target positions
+	  targpos1 = targposvec1[solnct];
+	  targpos2 = targposvec2[solnct];
+	  // Calculate positions relative to observer
+	  targpos1.x -= observerpos1.x;
+	  targpos1.y -= observerpos1.y;
+	  targpos1.z -= observerpos1.z;
+	    
+	  targpos2.x -= observerpos2.x;
+	  targpos2.y -= observerpos2.y;
+	  targpos2.z -= observerpos2.z;
+	    
+	  // Calculate velocity relative to observer
+	  targvel1.x = (targpos2.x - targpos1.x)/timediff;
+	  targvel1.y = (targpos2.y - targpos1.y)/timediff;
+	  targvel1.z = (targpos2.z - targpos1.z)/timediff;
+   
+	  // Calculate impact parameter (past or future).
+	  absvelocity = vecabs3d(targvel1);
+	  impactpar = dotprod3d(targpos1,targvel1)/absvelocity;
+	  // Effectively, we've projected targpos1 onto the velocity
+	  // vector, and impactpar temporarily holds the magnitude of this projection.
+	  // Subtract off the projection of the distance onto the velocity unit vector
+	  targpos1.x -= impactpar*targvel1.x/absvelocity;
+	  targpos1.y -= impactpar*targvel1.y/absvelocity;
+	  targpos1.z -= impactpar*targvel1.z/absvelocity;
+	  // Now targpos1 is the impact parameter vector at projected closest approach.
+	  impactpar  = vecabs3d(targpos1); // Now impactpar is really the impact parameter
+	  if(impactpar<=minimpactpar) {
+	    // The hypothesis implies the object already passed with minimpactpar km of the Earth
+	    // in the likely case that minimpactpar has been set to imply an actual impact,
+	    // it's not our problem anymore.
+	    glob_warning=1;
+	  }
+	}
+	if(!glob_warning) {
+	  targpos1 = targposvec1[solnct];
+	  targpos2 = targposvec2[solnct];
+	  
+	  targvel1.x = (targpos2.x - targpos1.x)/timediff;
+	  targvel1.y = (targpos2.y - targpos1.y)/timediff;
+	  targvel1.z = (targpos2.z - targpos1.z)/timediff;
+
+	  targpos1.x = 0.5L*targpos2.x + 0.5L*targpos1.x;
+	  targpos1.y = 0.5L*targpos2.y + 0.5L*targpos1.y;
+	  targpos1.z = 0.5L*targpos2.z + 0.5L*targpos1.z;
+      
+	  // Integrate orbit to the two reference times.
+	  mjdavg = 0.5l*image_log[i1].MJD + 0.5l*image_log[i2].MJD;
+	  vector <point3d> targposvec;
+	  vector <point3d> targvelvec;
+	  status1 = Kepler_univ_vec(GMSUN_KM3_SEC2,mjdavg,targpos1,targvel1,mjdvec,targposvec,targvelvec,verbose);
+	  //double semimajor_axis, eccen;
+	  //status1 = Keplerint_multipoint_univar(GMSUN_KM3_SEC2, mjdavg, mjdvec, targpos1,targvel1, targposvec,targvelvec,&semimajor_axis, &eccen);
+
+	  if(status1 == 0 && badpoint==0) {
+	    statevec1 = point6dx2(targposvec[0].x,targposvec[0].y,targposvec[0].z,targposvec[1].x,targposvec[1].y,targposvec[1].z,pairct,0);
+	    stateveci = conv_6d_to_6i(statevec1,INTEGERIZING_SCALEFAC);
+	    allstatevecs.push_back(stateveci);
+	  } else {
+	    // Kepler integration encountered unphysical situation.
+	    continue;
+	  }
+	}
+      }
+    } else {
+      badpoint=1;
+      // Heliocentric projection found no physical solution.
+      continue;
+    }
+  }
+  return(0);
+}
+
+
+// trk2statevec_fgfunc_TNV_uint: September 08, 2026:
+// Like trk2statevec_fgfunc, but rejects tracklets whose state-vector
+// tangential velocities differ from the tangential velocity
+// implied by the hypothesis by more than tanveltol. Note that
+// tanveltol scales linearly with geocentric distance, and is
+// normalized to 1 AU. ALSO uses more memory-efficient 'uint' types
+// for the tracklets and trk2det arrays.
+int trk2statevec_fgfunc_TNV_uint(const vector <hlimage> &image_log, const vector <uint_tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double min_obstanvel, double max_v_inf, double tanveltol, double veltol_changerad, int verbose)
+{
+  allstatevecs={};
+  long imnum = image_log.size();
+  long imct=0;
+  long pairnum = tracklets.size();
+  if(pairnum>=UINT_MAX) {
+    cerr << "ERROR: too many tracklets (" << pairnum << " > " << UINT_MAX << ") to index with unsigned integers!\n";
+    cerr << "Re-run using a non-uint version of heliolinc!\n";
+    return(1);
+  }
+  long pairct=0;
+  int badpoint=0;
+  int status1=0;
+  int status2=0;
+  int num_dist_solutions=0;
+  int solnct=0;
+  double mjdavg=0l;
+  vector <double> heliodistvec;
+  vector <double> heliotanvelvec;
+  double heliotanvel;
+  double RA,Dec;
+  long i1,i2;
+  i1=i2=0;
+  point6dx2 statevec1 = point6dx2(0l,0l,0l,0l,0l,0l,0,0);
+  point6ix2 stateveci = point6ix2(0,0,0,0,0,0,0,0);
+  point3d observerpos1 = point3d(0l,0l,0l);
+  point3d observerpos2 = point3d(0l,0l,0l);
+  point3d targpos1 = point3d(0l,0l,0l);
+  point3d targpos2 = point3d(0l,0l,0l);
+  point3d targvel1 = point3d(0l,0l,0l);
+  point3d targvel2 = point3d(0l,0l,0l);
+  point3d unitbary = point3d(0l,0l,0l);
+  point3d heliotanvel3D;
+  vector <point3d> targposvec1;
+  vector <point3d> targposvec2;
+  int glob_warning=0;
+  vector <double> deltavec1;
+  vector <double> deltavec2;
+  double absvelocity=0l;
+  double impactpar=0l;
+  double timediff=0l;
+  double E = 0.0l;
+  double v_inf = 0.0l;
+  double obstanvel = MAXTANVELCUT;
+  double meanobsdist,trackletarc,trackletangvel;
+  meanobsdist = trackletarc = trackletangvel = 0.0;
+  double temp_tanveltol;
+ 
+  // Calculate approximate heliocentric distances from the input hypotheses.
+  // Note: heliodist is in km, heliovel is in km/day, and helioacc is in km/day^2
+  heliodistvec={};
+  heliotanvelvec={};
+  // Use Matt Holman's idea of getting heliocentric distance r(t) from an
+  // actual Keplerian orbit. It turns out that the same parameters (r, r-dot, and r-double-dot)
+  // that specify the old three-term Taylor Series also uniquely determine the Keplerian
+  // r(t) -- that is, they specify enough of the orbit that only one Keplerian solution
+  // for r(t) exists, even though other aspects of the orbit (i.e., orientation) are not
+  // specified.
+  // SOLVE FOR THE SQUARE OF THE TANGENTIAL VELOCITY
+  double localg = GMSUN_KM3_SEC2/DSQUARE(heliodist); // Units are km/sec^2
+  double physacc = helioacc/DSQUARE(SOLARDAY); // Units are km/sec^2
+  double vesc = 2.0*GMSUN_KM3_SEC2/heliodist; // this is the square of the escape velocity in km/sec
+  double tanvel = heliodist*(physacc+localg); // this is the square of the tangential velocity in km/sec
+  // CHECK FOR UNPHYSICAL AND UNBOUND CASES
+  if(tanvel<0.0l) {
+    cerr << fixed << setprecision(6) << "ERROR: hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << " is not possible for any trajectory\n";
+    return(1);
+  }
+  if(vesc < tanvel + LDSQUARE(heliovel/SOLARDAY)) {
+    cerr << fixed << setprecision(6) << "ERROR: hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << " is not possible for a bound orbit\n";
+    cerr << fixed << setprecision(6) << "vesc = " << sqrt(vesc) << ", tanvel = " << sqrt(tanvel) << ", heliovel = " << heliovel/SOLARDAY << ", totvel = " << sqrt(tanvel + LDSQUARE(heliovel/SOLARDAY)) << "\n";
+    return(1);
+  }
+  // If we get here, a sensible bound solution exists. Solve for the true tangential velocity
+  tanvel = sqrt(tanvel);
+  // Construct state vectors producing the required orbit (in the x-y plane, for simplicity).
+  point3d startpos = point3d(heliodist,0l,0l);
+  point3d startvel = point3d(heliovel/SOLARDAY,tanvel,0l);
+  point3d endpos = point3d(0l,0l,0l);
+  point3d endvel = point3d(0l,0l,0l);
+  for(imct=0;imct<imnum;imct++) {
+    // Integrate the orbit to find the heliocentric distance as a function of time.
+    status1 = Kepler_fg_func_int(GMSUN_KM3_SEC2, mjdref, startpos, startvel, image_log[imct].MJD, endpos, endvel, verbose);
+    if(status1!=0) {
+      cerr << "ERROR: Keplerian integration failed for r(t) hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << ", at MJD = " << image_log[imct].MJD << "\n";
+      return(status1);
+    }
+    // Calculate heliocentric tangential velocity.
+    double heliorad = vecabs3d(endpos);
+    double radvel = dotprod3d(endpos,endvel)/heliorad;
+    heliotanvel3D.x = endvel.x - radvel*endpos.x/heliorad;
+    heliotanvel3D.y = endvel.y - radvel*endpos.y/heliorad;
+    heliotanvel3D.z = endvel.z - radvel*endpos.z/heliorad;
+    heliotanvel = vecabs3d(heliotanvel3D);
+    // Load calculated Keplerian distance and tangential velocity to the image-based vectors
+    heliodistvec.push_back(heliorad);
+    heliotanvelvec.push_back(heliotanvel);
+  }
+  
+  if(badpoint==0 && (long(heliodistvec.size())!=imnum || long(heliotanvelvec.size())!=imnum)) {
+    cerr << "ERROR: number of heliocentric distance values does\n";
+    cerr << "not match the number of input images!\n";
+    return(2);
+  }
+  for(pairct=0; pairct<pairnum; pairct++) {
+    badpoint=0;
+    // Obtain indices to the image_log and heliocentric distance vectors.
+    i1=tracklets[pairct].Img1;
+    i2=tracklets[pairct].Img2;
+    // Project the first point
+    RA = uint_RAconv(tracklets[pairct].RA1);
+    Dec = int_Decconv(tracklets[pairct].Dec1);
+    if(UINT_DEBUG) cout << "Converted pairct=" << pairct << " RA, Dec " << tracklets[pairct].RA1 << " " << tracklets[pairct].Dec1 << " to " << RA << " " << Dec << "\n";
+    celestial_to_stateunit(RA,Dec,unitbary);
+    observerpos1 = point3d(image_log[i1].X,image_log[i1].Y,image_log[i1].Z);
+    targposvec1={};
+    deltavec1={};
+    status1 = helioproj02(unitbary,observerpos1, heliodistvec[i1], deltavec1, targposvec1);
+    RA = uint_RAconv(tracklets[pairct].RA2);
+    Dec = int_Decconv(tracklets[pairct].Dec2);
+    if(UINT_DEBUG) cout << "Converted pairct=" << pairct << " RA, Dec " << tracklets[pairct].RA2 << " " << tracklets[pairct].Dec2 << " to " << RA << " " << Dec << "\n";
+    celestial_to_stateunit(RA,Dec,unitbary);
+    observerpos2 = point3d(image_log[i2].X,image_log[i2].Y,image_log[i2].Z);
+    targposvec2={};
+    deltavec2={};
+    status2 = helioproj02(unitbary, observerpos2, heliodistvec[i2], deltavec2, targposvec2);
+    // Calculate the mean distance from the observer over the two points in the tracklet.
+    // If the projection equations had two solutions (meaning the hypothesis distance was
+    // interior to the Earth), use the larger solutions.
+    meanobsdist = (deltavec1[0] + deltavec2[0])/2.0;
+    if(UINT_DEBUG) cout << "Projected distances from observer: " << deltavec1[0]/AU_KM << " " << deltavec2[0]/AU_KM << "\n";
+    if(status1==2 && status2==2 &&  deltavec1[1]>deltavec1[0] && deltavec2[1]>deltavec2[0]) meanobsdist = (deltavec1[1] + deltavec2[1])/2.0;
+    if(min_obstanvel > 0.0 && meanobsdist < mingeoobs*AU_KM && status1 > 0 && status2 > 0 && badpoint==0) {
+      // New check added May 13, 2026: Calculate observer-centric tangential velocity,
+      // and reject the point if that is too low. The value of minimpactpar is here
+      // interpreted as a tangential velocity in km/sec, since it is nonzero but too small to
+      // make sense as an impact parameter in km.
+      trackletarc = distradec01_uint(tracklets[pairct].RA1, tracklets[pairct].Dec1, tracklets[pairct].RA2, tracklets[pairct].Dec2)/DEGPRAD; // Tracklet arc in radians
+      timediff = (image_log[i2].MJD - image_log[i1].MJD)*SOLARDAY; // Time difference in seconds
+      trackletangvel = trackletarc/timediff; // radians per second
+      obstanvel = trackletangvel*meanobsdist; // km/sec
+      if(UINT_DEBUG) cout << "tracklet arc = " << trackletarc*ASECPRAD << " arcsec, obstanvel = " << obstanvel << " km/sec\n";
+      if(obstanvel<minimpactpar) {
+	// Tangential velocity relative to the observer is too low
+	badpoint=1;
+      }
+    }
+    if(status1 > 0 && status2 > 0 && badpoint==0) {
+      // Calculate time difference between the observations
+      timediff = (image_log[i2].MJD - image_log[i1].MJD)*SOLARDAY;
+      // Did helioproj find two solutions in both cases, or only one?
+      num_dist_solutions = status1;
+      if(num_dist_solutions > status2) num_dist_solutions = status2;
+      // Loop over solutions (num_dist_solutions can only be 1 or 2).
+      for(solnct=0; solnct<num_dist_solutions; solnct++) {
+	// Calculate the object's v_inf relative to the sun.
+	targpos1 = targposvec1[solnct];
+	targpos2 = targposvec2[solnct];
+	  
+	targvel1.x = (targpos2.x - targpos1.x)/timediff;
+	targvel1.y = (targpos2.y - targpos1.y)/timediff;
+	targvel1.z = (targpos2.z - targpos1.z)/timediff;
+
+	targpos1.x = 0.5L*targpos2.x + 0.5L*targpos1.x;
+	targpos1.y = 0.5L*targpos2.y + 0.5L*targpos1.y;
+	targpos1.z = 0.5L*targpos2.z + 0.5L*targpos1.z;
+
+	if(UINT_DEBUG) cout << "Target position: " << targpos1.x/AU_KM << " " << targpos1.y/AU_KM << " " << targpos1.z/AU_KM << "\n";
+	if(UINT_DEBUG) cout << "Target position: " << targvel1.x << " " << targvel1.y << " " << targvel1.z << "\n";
+	
+	E = 0.5l*dotprod3d(targvel1,targvel1) - GMSUN_KM3_SEC2/vecabs3d(targpos1);
+	if(E>0.0l) v_inf = sqrt(2.0l*E);
+	else if(!isnormal(E)) v_inf=0.0l;
+	else v_inf = -sqrt(-2.0l*E); // This is a bit weird, but we allow the user to
+	                             // set a negative v_inf, if desired, to rule out
+	                             // objects that are barely bound to the sun.
+	if(v_inf>max_v_inf) continue; // Skip further calculation if v_inf is too high.
+	
+	// Perform calculations to check for consistency with the heliocentric
+	// tangential velocity implied by the hypothesis (Ben Engebreth's "SAD tracket" concept).
+	// Relevant quantities: deltavec1[solnct] and deltavec2[solnct] are the observer-centric
+	// distances at the first and second observations in km, heliotanvelvec[i1] and heliotanvelvec[i2]
+	// are the heliocentric tangential velocities implied by the hypothesis at the first and
+	// second observations, and targpos1 and targvel1 are the tracklet position and velocity
+	// at the midpoint of the tracklet.
+
+	// Calculate the heliocentric tangential velocity implied by the tracklet.
+	double heliorad = vecabs3d(targpos1);
+	double radvel = dotprod3d(targpos1,targvel1)/heliorad;
+	heliotanvel3D.x = targvel1.x - radvel*targpos1.x/heliorad;
+	heliotanvel3D.y = targvel1.y - radvel*targpos1.y/heliorad;
+	heliotanvel3D.z = targvel1.z - radvel*targpos1.z/heliorad;
+	double tracklet_tanvel = vecabs3d(heliotanvel3D);
+	double hypothesis_tanvel = 0.5*heliotanvelvec[i1] + 0.5*heliotanvelvec[i2];
+ 
+	// Scale velocity tolerance linearly with observer distance, normalized at 1AU.
+	temp_tanveltol = tanveltol*(0.5*deltavec1[solnct] + 0.5*deltavec2[solnct])/AU_KM;
+	// Revise upward if below a constant 'floor' values that applies within veltol_changerad AU of Earth.
+	if(temp_tanveltol < tanveltol*veltol_changerad) temp_tanveltol = tanveltol*veltol_changerad;
+
+	if(UINT_DEBUG) {
+	  cout << "Hypothesis radvel, tanvel: " << heliovel/SOLARDAY << " " << hypothesis_tanvel << "\n";
+	  cout << "Tracklet radvel, tanvel: " << radvel << " " << tracklet_tanvel << "\n";
+	  cout << "dist, temp_tanveltol: " << (0.5*deltavec1[solnct] + 0.5*deltavec2[solnct])/AU_KM << " " << temp_tanveltol << "\n";
+	}
+	// Compare tracklet vs. hypothesis tangential velocities
+	if(fabs(tracklet_tanvel - hypothesis_tanvel) > temp_tanveltol) {
+	  if(UINT_DEBUG) cout << "Tracklet is SAD: rejected\n";
+	  continue; // Skip further calculation: this is a 'SAD' (Swept Angle Discrepancy)
+	  // tracklet, meaning its heliocentric tangential velocity is inconsistent with that
+	  // implied by the hypothesis.
+	} else if(UINT_DEBUG) cout << "Not a SAD tracklet: accepted\n";
+	
+	// Begin new stuff added to eliminate 'globs'
+	// These are spurious linkages of unreasonably large numbers (typically tens of thousands)
+	// of detections that arise when the hypothetical heliocentric distance at a time when
+	// many observations are acquired is extremely close to, but slightly greater than,
+	// the heliocentric distance of the observer. Then detections over a large area of sky
+	// wind up with projected 3-D positions in an extremely small volume -- and furthermore,
+	// they all have similar velocities because the very small geocentric distance causes
+	// the inferred velocities to be dominated by the observer's motion and the heliocentric
+	// hypothesis, with only a negligible contribution from the on-sky angular velocity.
+	glob_warning=0;
+	if(deltavec1[solnct]<mingeoobs*AU_KM && deltavec2[solnct]<mingeoobs*AU_KM) {
+	  // New-start
+	  // Load target positions
+	  targpos1 = targposvec1[solnct];
+	  targpos2 = targposvec2[solnct];
+	  // Calculate positions relative to observer
+	  targpos1.x -= observerpos1.x;
+	  targpos1.y -= observerpos1.y;
+	  targpos1.z -= observerpos1.z;
+	    
+	  targpos2.x -= observerpos2.x;
+	  targpos2.y -= observerpos2.y;
+	  targpos2.z -= observerpos2.z;
+	    
+	  // Calculate velocity relative to observer
+	  targvel1.x = (targpos2.x - targpos1.x)/timediff;
+	  targvel1.y = (targpos2.y - targpos1.y)/timediff;
+	  targvel1.z = (targpos2.z - targpos1.z)/timediff;
+   
+	  // Calculate impact parameter (past or future).
+	  absvelocity = vecabs3d(targvel1);
+	  impactpar = dotprod3d(targpos1,targvel1)/absvelocity;
+	  // Effectively, we've projected targpos1 onto the velocity
+	  // vector, and impactpar temporarily holds the magnitude of this projection.
+	  // Subtract off the projection of the distance onto the velocity unit vector
+	  targpos1.x -= impactpar*targvel1.x/absvelocity;
+	  targpos1.y -= impactpar*targvel1.y/absvelocity;
+	  targpos1.z -= impactpar*targvel1.z/absvelocity;
+	  // Now targpos1 is the impact parameter vector at projected closest approach.
+	  impactpar  = vecabs3d(targpos1); // Now impactpar is really the impact parameter
+	  if(impactpar<=minimpactpar) {
+	    // The hypothesis implies the object already passed within minimpactpar km of the Earth
+	    // in the likely case that minimpactpar has been set to imply an actual impact,
+	    // it's not our problem anymore.
+	    glob_warning=1;
+	  }
+	}
+	if(!glob_warning) {
+	  targpos1 = targposvec1[solnct];
+	  targpos2 = targposvec2[solnct];
+	  
+	  targvel1.x = (targpos2.x - targpos1.x)/timediff;
+	  targvel1.y = (targpos2.y - targpos1.y)/timediff;
+	  targvel1.z = (targpos2.z - targpos1.z)/timediff;
+
+	  targpos1.x = 0.5L*targpos2.x + 0.5L*targpos1.x;
+	  targpos1.y = 0.5L*targpos2.y + 0.5L*targpos1.y;
+	  targpos1.z = 0.5L*targpos2.z + 0.5L*targpos1.z;
+      
+	  // Integrate orbit to the reference time.
+	  mjdavg = 0.5l*image_log[i1].MJD + 0.5l*image_log[i2].MJD;
+	  status1 = Kepler_fg_func_int(GMSUN_KM3_SEC2,mjdavg,targpos1,targvel1,mjdref,targpos2,targvel2, verbose);
+	  if(status1 == 0 && badpoint==0) {
+	    statevec1 = point6dx2(targpos2.x,targpos2.y,targpos2.z,chartimescale*targvel2.x,chartimescale*targvel2.y,chartimescale*targvel2.z,pairct,0);
+	    // Note that the multiplication by chartimescale converts velocities in km/sec
+	    // to units of km, for apples-to-apples comparison with the positions.
+	    stateveci = conv_6d_to_6i(statevec1,INTEGERIZING_SCALEFAC);
+	    allstatevecs.push_back(stateveci);
+	  } else {
+	    // Kepler integration encountered unphysical situation.
+	    continue;
+	  }
+	}
+      }
+    } else {
+      badpoint=1;
+      // Heliocentric projection found no physical solution.
+      continue;
+    }
+  }
+  return(0);
+}
+
+// trk2statevec_univar_uint: October 17, 2026
+// Derived from trk2statevec_univar_TNV_uint() by removing 'SAD tracklet'
+// rejection. Chronologically after trk2statevec_univar_TNV_uint, but logically
+// before it since the current function lacks a feature that
+// trk2statevec_univar_TNV_uint has.
+// However, since it does not do SAD tracklet rejection, which is
+// intrinsically Keplerian, it does allow the non-Keplerian interpretation
+// of the input hypotheses -- a feature not available in trk2statevec_univar_TNV_uint
+int trk2statevec_univar_uint(const vector <hlimage> &image_log, const vector <uint_tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double max_v_inf, int NotKepler, int verbose)
+{
+  allstatevecs={};
+  long imnum = image_log.size();
+  long imct=0;
+  long pairnum = tracklets.size();
+  if(pairnum>=UINT_MAX) {
+    cerr << "ERROR: too many tracklets (" << pairnum << " > " << UINT_MAX << ") to index with unsigned integers!\n";
+    cerr << "Re-run using a non-uint version of heliolinc!\n";
+    return(1);
+  }
+  long pairct=0;
+  int badpoint=0;
+  int status1=0;
+  int status2=0;
+  int num_dist_solutions=0;
+  int solnct=0;
+  double mjdavg=0l;
+  vector <double> heliodistvec;
+  double RA,Dec;
+  long i1,i2;
+  i1=i2=0;
+  point6dx2 statevec1 = point6dx2(0l,0l,0l,0l,0l,0l,0,0);
+  point6ix2 stateveci = point6ix2(0,0,0,0,0,0,0,0);
+  point3d observerpos1 = point3d(0l,0l,0l);
+  point3d observerpos2 = point3d(0l,0l,0l);
+  point3d targpos1 = point3d(0l,0l,0l);
+  point3d targpos2 = point3d(0l,0l,0l);
+  point3d targvel1 = point3d(0l,0l,0l);
+  point3d targvel2 = point3d(0l,0l,0l);
+  point3d unitbary = point3d(0l,0l,0l);
+  vector <point3d> targposvec1;
+  vector <point3d> targposvec2;
+  int glob_warning=0;
+  vector <double> deltavec1;
+  vector <double> deltavec2;
+  double absvelocity=0l;
+  double impactpar=0l;
+  double timediff=0l;
+  double E = 0.0l;
+  double v_inf = 0.0l;
+  double delta1=0.0;
+  double localg, physacc, vesc, tanvel;
+  localg = physacc = vesc = tanvel = 0.0;
+  point3d startpos = point3d(heliodist,0l,0l);
+  point3d startvel = point3d(heliovel/SOLARDAY,tanvel,0l);
+  point3d endpos = point3d(0l,0l,0l);
+  point3d endvel = point3d(0l,0l,0l);
+
+  // Calculate approximate heliocentric distances from the input hypotheses.
+  // Note: heliodist is in km, heliovel is in km/day, and helioacc is in km/day^2
+  heliodistvec={};
+  if(NotKepler) {
+    for(imct=0;imct<imnum;imct++) {
+      delta1 = image_log[imct].MJD - mjdref;
+      heliodistvec.push_back(heliodist + heliovel*delta1 + 0.5*helioacc*delta1*delta1);
+      if(heliodistvec[imct]<=0.0l) {
+	badpoint=1;
+	return(1);
+      }
+    }
+  } else {
+    // Use Matt Holman's idea of getting heliocentric distance r(t) from an
+    // actual Keplerian orbit. It turns out that the same parameters (r, r-dot, and r-double-dot)
+    // that specify the old three-term Taylor Series also uniquely determine the Keplerian
+    // r(t) -- that is, they specify enough of the orbit that only one Keplerian solution
+    // for r(t) exists, even though other aspects of the orbit (i.e., orientation) are not
+    // specified.
+    // SOLVE FOR THE SQUARE OF THE TANGENTIAL VELOCITY
+    localg = GMSUN_KM3_SEC2/DSQUARE(heliodist); // Units are km/sec^2
+    physacc = helioacc/DSQUARE(SOLARDAY); // Units are km/sec^2
+    vesc = 2.0*GMSUN_KM3_SEC2/heliodist; // this is the square of the escape velocity in km/sec
+    tanvel = heliodist*(physacc+localg); // this is the square of the tangential velocity in km/sec
+    // CHECK FOR UNPHYSICAL AND UNBOUND CASES
+    if(tanvel<0.0l) {
+      cerr << fixed << setprecision(6) << "ERROR: hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << " is not possible for any trajectory\n";
+      return(1);
+    }
+    if(vesc < tanvel + LDSQUARE(heliovel/SOLARDAY)) {
+      cout << fixed << setprecision(6) << "NOTE: hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << " implies an unbound orbit.\n";
+      cout << fixed << setprecision(6) << "vesc = " << sqrt(vesc) << ", tanvel = " << sqrt(tanvel) << ", heliovel = " << heliovel/SOLARDAY << ", totvel = " << sqrt(tanvel + LDSQUARE(heliovel/SOLARDAY)) << "\n";
+      // The fact that the orbit is unbound is not a problem, because this function uses
+      // universal variables and can handle unbound orbits.
+    }
+    // If we get here, a sensible solution (bound or unbound) exists. Solve for the true tangential velocity
+    tanvel = sqrt(tanvel);
+    // Construct state vectors producing the required orbit (in the x-y plane, for simplicity).
+    startpos = point3d(heliodist,0l,0l);
+    startvel = point3d(heliovel/SOLARDAY,tanvel,0l);
+    endpos = point3d(0l,0l,0l);
+    endvel = point3d(0l,0l,0l);
+    for(imct=0;imct<imnum;imct++) {
+      // Integrate the orbit to find the heliocentric distance as a function of time.
+      status1 = Kepler_univ_int(GMSUN_KM3_SEC2, mjdref, startpos, startvel, image_log[imct].MJD, endpos, endvel, verbose);
+      if(status1!=0) {
+	cerr << "ERROR: Keplerian integration failed for r(t) hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << ", at MJD = " << image_log[imct].MJD << "\n";
+	return(status1);
+      }
+      heliodistvec.push_back(vecabs3d(endpos));
+    }
+  }
+
+  if(badpoint==0 && long(heliodistvec.size())!=imnum) {
+    cerr << "ERROR: number of heliocentric distance values does\n";
+    cerr << "not match the number of input images!\n";
+    return(2);
+  }
+  for(pairct=0; pairct<pairnum; pairct++) {
+    badpoint=0;
+    // Obtain indices to the image_log and heliocentric distance vectors.
+    i1=tracklets[pairct].Img1;
+    i2=tracklets[pairct].Img2;
+    // Project the first point
+    RA = uint_RAconv(tracklets[pairct].RA1);
+    Dec = int_Decconv(tracklets[pairct].Dec1);
+    celestial_to_stateunit(RA,Dec,unitbary);
+    observerpos1 = point3d(image_log[i1].X,image_log[i1].Y,image_log[i1].Z);
+    targposvec1={};
+    deltavec1={};
+    status1 = helioproj02(unitbary,observerpos1, heliodistvec[i1], deltavec1, targposvec1);
+    RA = uint_RAconv(tracklets[pairct].RA2);
+    Dec = int_Decconv(tracklets[pairct].Dec2);
+    celestial_to_stateunit(RA,Dec,unitbary);
+    observerpos2 = point3d(image_log[i2].X,image_log[i2].Y,image_log[i2].Z);
+    targposvec2={};
+    deltavec2={};
+    status2 = helioproj02(unitbary, observerpos2, heliodistvec[i2], deltavec2, targposvec2);
+    if(status1 > 0 && status2 > 0 && badpoint==0) {
+      // Calculate time difference between the observations
+      timediff = (image_log[i2].MJD - image_log[i1].MJD)*SOLARDAY;
+      // Did helioproj find two solutions in both cases, or only one?
+      num_dist_solutions = status1;
+      if(num_dist_solutions > status2) num_dist_solutions = status2;
+      // Loop over solutions (num_dist_solutions can only be 1 or 2).
+      for(solnct=0; solnct<num_dist_solutions; solnct++) {
+	// Calculate the object's v_inf relative to the sun.
+	targpos1 = targposvec1[solnct];
+	targpos2 = targposvec2[solnct];
+	  
+	targvel1.x = (targpos2.x - targpos1.x)/timediff;
+	targvel1.y = (targpos2.y - targpos1.y)/timediff;
+	targvel1.z = (targpos2.z - targpos1.z)/timediff;
+
+	targpos1.x = 0.5L*targpos2.x + 0.5L*targpos1.x;
+	targpos1.y = 0.5L*targpos2.y + 0.5L*targpos1.y;
+	targpos1.z = 0.5L*targpos2.z + 0.5L*targpos1.z;
+
+	E = 0.5l*dotprod3d(targvel1,targvel1) - GMSUN_KM3_SEC2/vecabs3d(targpos1);
+	if(E>0.0l) v_inf = sqrt(2.0l*E);
+	else if(!isnormal(E)) v_inf=0.0l;
+	else v_inf = -sqrt(-2.0l*E); // This is a bit weird, but we allow the user to
+	                             // set a negative v_inf, if desired, to rule out
+	                             // objects that are barely bound to the sun.
+	if(v_inf>max_v_inf) continue; // Skip further calculation if v_inf is too high.
+      
+	// Begin new stuff added to eliminate 'globs'
+	// These are spurious linkages of unreasonably large numbers (typically tens of thousands)
+	// of detections that arise when the hypothetical heliocentric distance at a time when
+	// many observations are acquired is extremely close to, but slightly greater than,
+	// the heliocentric distance of the observer. Then detections over a large area of sky
+	// wind up with projected 3-D positions in an extremely small volume -- and furthermore,
+	// they all have similar velocities because the very small geocentric distance causes
+	// the inferred velocities to be dominated by the observer's motion and the heliocentric
+	// hypothesis, with only a negligible contribution from the on-sky angular velocity.
+	glob_warning=0;
+	if(deltavec1[solnct]<mingeoobs*AU_KM && deltavec2[solnct]<mingeoobs*AU_KM) {
+	  // New-start
+	  // Load target positions
+	  targpos1 = targposvec1[solnct];
+	  targpos2 = targposvec2[solnct];
+	  // Calculate positions relative to observer
+	  targpos1.x -= observerpos1.x;
+	  targpos1.y -= observerpos1.y;
+	  targpos1.z -= observerpos1.z;
+	    
+	  targpos2.x -= observerpos2.x;
+	  targpos2.y -= observerpos2.y;
+	  targpos2.z -= observerpos2.z;
+	    
+	  // Calculate velocity relative to observer
+	  targvel1.x = (targpos2.x - targpos1.x)/timediff;
+	  targvel1.y = (targpos2.y - targpos1.y)/timediff;
+	  targvel1.z = (targpos2.z - targpos1.z)/timediff;
+   
+	  // Calculate impact parameter (past or future).
+	  absvelocity = vecabs3d(targvel1);
+	  impactpar = dotprod3d(targpos1,targvel1)/absvelocity;
+	  // Effectively, we've projected targpos1 onto the velocity
+	  // vector, and impactpar temporarily holds the magnitude of this projection.
+	  // Subtract off the projection of the distance onto the velocity unit vector
+	  targpos1.x -= impactpar*targvel1.x/absvelocity;
+	  targpos1.y -= impactpar*targvel1.y/absvelocity;
+	  targpos1.z -= impactpar*targvel1.z/absvelocity;
+	  // Now targpos1 is the impact parameter vector at projected closest approach.
+	  impactpar  = vecabs3d(targpos1); // Now impactpar is really the impact parameter
+	  if(impactpar<=minimpactpar) {
+	    // The hypothesis implies the object already passed with minimpactpar km of the Earth
+	    // in the likely case that minimpactpar has been set to imply an actual impact,
+	    // it's not our problem anymore.
+	    glob_warning=1;
+	  }
+	}
+	if(!glob_warning) {
+	  targpos1 = targposvec1[solnct];
+	  targpos2 = targposvec2[solnct];
+	  
+	  targvel1.x = (targpos2.x - targpos1.x)/timediff;
+	  targvel1.y = (targpos2.y - targpos1.y)/timediff;
+	  targvel1.z = (targpos2.z - targpos1.z)/timediff;
+
+	  targpos1.x = 0.5L*targpos2.x + 0.5L*targpos1.x;
+	  targpos1.y = 0.5L*targpos2.y + 0.5L*targpos1.y;
+	  targpos1.z = 0.5L*targpos2.z + 0.5L*targpos1.z;
+      
+	  // Integrate orbit to the reference time.
+	  mjdavg = 0.5l*image_log[i1].MJD + 0.5l*image_log[i2].MJD;
+	  status1 = Kepler_univ_int(GMSUN_KM3_SEC2,mjdavg,targpos1,targvel1,mjdref,targpos2,targvel2,verbose);
+	  if(status1 == 0 && badpoint==0) {
+	    statevec1 = point6dx2(targpos2.x,targpos2.y,targpos2.z,chartimescale*targvel2.x,chartimescale*targvel2.y,chartimescale*targvel2.z,pairct,0);
+	    // Note that the multiplication by chartimescale converts velocities in km/sec
+	    // to units of km, for apples-to-apples comparison with the positions.
+	    stateveci = conv_6d_to_6i(statevec1,INTEGERIZING_SCALEFAC);
+	    allstatevecs.push_back(stateveci);
+	  } else {
+	    // Kepler integration encountered unphysical situation.
+	    continue;
+	  }
+	}
+      }
+    } else {
+      badpoint=1;
+      // Heliocentric projection found no physical solution.
+      continue;
+    }
+  }
+  return(0);
+}
+
+
+// trk2statevec_univar_TNV_uint: September 14, 2026
+int trk2statevec_univar_TNV_uint(const vector <hlimage> &image_log, const vector <uint_tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double min_obstanvel, double max_v_inf, double tanveltol, double veltol_changerad, int verbose)
+{
+  allstatevecs={};
+  long imnum = image_log.size();
+  long imct=0;
+  long pairnum = tracklets.size();
+  if(pairnum>=UINT_MAX) {
+    cerr << "ERROR: too many tracklets (" << pairnum << " > " << UINT_MAX << ") to index with unsigned integers!\n";
+    cerr << "Re-run using a non-uint version of heliolinc!\n";
+    return(1);
+  }
+  long pairct=0;
+  int badpoint=0;
+  int status1=0;
+  int status2=0;
+  int num_dist_solutions=0;
+  int solnct=0;
+  double mjdavg=0l;
+  vector <double> heliodistvec;
+  vector <double> heliotanvelvec;
+  double heliotanvel;
+  double RA,Dec;
+  long i1,i2;
+  i1=i2=0;
+  point6dx2 statevec1 = point6dx2(0l,0l,0l,0l,0l,0l,0,0);
+  point6ix2 stateveci = point6ix2(0,0,0,0,0,0,0,0);
+  point3d observerpos1 = point3d(0l,0l,0l);
+  point3d observerpos2 = point3d(0l,0l,0l);
+  point3d targpos1 = point3d(0l,0l,0l);
+  point3d targpos2 = point3d(0l,0l,0l);
+  point3d targvel1 = point3d(0l,0l,0l);
+  point3d targvel2 = point3d(0l,0l,0l);
+  point3d unitbary = point3d(0l,0l,0l);
+  point3d heliotanvel3D;
+  vector <point3d> targposvec1;
+  vector <point3d> targposvec2;
+  int glob_warning=0;
+  vector <double> deltavec1;
+  vector <double> deltavec2;
+  double absvelocity=0l;
+  double impactpar=0l;
+  double timediff=0l;
+  double E = 0.0l;
+  double v_inf = 0.0l;
+  double obstanvel = MAXTANVELCUT;
+  double meanobsdist,trackletarc,trackletangvel;
+  meanobsdist = trackletarc = trackletangvel = 0.0;
+  double temp_tanveltol;
+
+  // Calculate approximate heliocentric distances from the input hypotheses.
+  // Note: heliodist is in km, heliovel is in km/day, and helioacc is in km/day^2
+  heliodistvec={};
+  heliotanvelvec={};
+  // Use Matt Holman's idea of getting heliocentric distance r(t) from an
+  // actual Keplerian orbit. It turns out that the same parameters (r, r-dot, and r-double-dot)
+  // that specify the old three-term Taylor Series also uniquely determine the Keplerian
+  // r(t) -- that is, they specify enough of the orbit that only one Keplerian solution
+  // for r(t) exists, even though other aspects of the orbit (i.e., orientation) are not
+  // specified.
+  // SOLVE FOR THE SQUARE OF THE TANGENTIAL VELOCITY
+  double localg = GMSUN_KM3_SEC2/DSQUARE(heliodist); // Units are km/sec^2
+  double physacc = helioacc/DSQUARE(SOLARDAY); // Units are km/sec^2
+  double vesc = 2.0*GMSUN_KM3_SEC2/heliodist; // this is the square of the escape velocity in km/sec
+  double tanvel = heliodist*(physacc+localg); // this is the square of the tangential velocity in km/sec
+  // CHECK FOR UNPHYSICAL AND UNBOUND CASES
+  if(tanvel<0.0l) {
+    cerr << fixed << setprecision(6) << "ERROR: hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << " is not possible for any trajectory\n";
+    return(1);
+  }
+  if(vesc < tanvel + LDSQUARE(heliovel/SOLARDAY)) {
+    cout << fixed << setprecision(6) << "NOTE: hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << " implies an unbound orbit.\n";
+    cout << fixed << setprecision(6) << "vesc = " << sqrt(vesc) << ", tanvel = " << sqrt(tanvel) << ", heliovel = " << heliovel/SOLARDAY << ", totvel = " << sqrt(tanvel + LDSQUARE(heliovel/SOLARDAY)) << "\n";
+    // The fact that the orbit is unbound is not a problem, because this function uses
+    // universal variables and can handle unbound orbits.
+  }
+  // If we get here, a sensible solution (bound or unbound) exists. Solve for the true tangential velocity
+  tanvel = sqrt(tanvel);
+  // Construct state vectors producing the required orbit (in the x-y plane, for simplicity).
+  point3d startpos = point3d(heliodist,0l,0l);
+  point3d startvel = point3d(heliovel/SOLARDAY,tanvel,0l);
+  point3d endpos = point3d(0l,0l,0l);
+  point3d endvel = point3d(0l,0l,0l);
+  for(imct=0;imct<imnum;imct++) {
+    // Integrate the orbit to find the heliocentric distance as a function of time.
+    status1 = Kepler_univ_int(GMSUN_KM3_SEC2, mjdref, startpos, startvel, image_log[imct].MJD, endpos, endvel, verbose);
+     if(status1!=0) {
+      cerr << "ERROR: Keplerian integration failed for r(t) hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << ", at MJD = " << image_log[imct].MJD << "\n";
+      return(status1);
+    }
+    // Calculate heliocentric tangential velocity.
+    double heliorad = vecabs3d(endpos);
+    double radvel = dotprod3d(endpos,endvel)/heliorad;
+    heliotanvel3D.x = endvel.x - radvel*endpos.x/heliorad;
+    heliotanvel3D.y = endvel.y - radvel*endpos.y/heliorad;
+    heliotanvel3D.z = endvel.z - radvel*endpos.z/heliorad;
+    heliotanvel = vecabs3d(heliotanvel3D);
+    // Load calculated Keplerian distance and tangential velocity to the image-based vectors
+    heliodistvec.push_back(heliorad);
+    heliotanvelvec.push_back(heliotanvel);
+  }
+
+  if(badpoint==0 && long(heliodistvec.size())!=imnum) {
+    cerr << "ERROR: number of heliocentric distance values does\n";
+    cerr << "not match the number of input images!\n";
+    return(2);
+  }
+  for(pairct=0; pairct<pairnum; pairct++) {
+    badpoint=0;
+    // Obtain indices to the image_log and heliocentric distance vectors.
+    i1=tracklets[pairct].Img1;
+    i2=tracklets[pairct].Img2;
+    // Project the first point
+    RA = uint_RAconv(tracklets[pairct].RA1);
+    Dec = int_Decconv(tracklets[pairct].Dec1);
+    celestial_to_stateunit(RA,Dec,unitbary);
+    observerpos1 = point3d(image_log[i1].X,image_log[i1].Y,image_log[i1].Z);
+    targposvec1={};
+    deltavec1={};
+    status1 = helioproj02(unitbary,observerpos1, heliodistvec[i1], deltavec1, targposvec1);
+    RA = uint_RAconv(tracklets[pairct].RA2);
+    Dec = int_Decconv(tracklets[pairct].Dec2);
+    celestial_to_stateunit(RA,Dec,unitbary);
+    observerpos2 = point3d(image_log[i2].X,image_log[i2].Y,image_log[i2].Z);
+    targposvec2={};
+    deltavec2={};
+    status2 = helioproj02(unitbary, observerpos2, heliodistvec[i2], deltavec2, targposvec2);
+    // Calculate the mean distance from the observer over the two points in the tracklet.
+    // If the projection equations had two solutions (meaning the hypothesis distance was
+    // interior to the Earth), use the larger solutions.
+    meanobsdist = (deltavec1[0] + deltavec2[0])/2.0;
+    if(UINT_DEBUG) cout << "Projected distances from observer: " << deltavec1[0]/AU_KM << " " << deltavec2[0]/AU_KM << "\n";
+    if(status1==2 && status2==2 &&  deltavec1[1]>deltavec1[0] && deltavec2[1]>deltavec2[0]) meanobsdist = (deltavec1[1] + deltavec2[1])/2.0;
+    if(min_obstanvel > 0.0 && meanobsdist < mingeoobs*AU_KM && status1 > 0 && status2 > 0 && badpoint==0) {
+      // New check added May 13, 2026: Calculate observer-centric tangential velocity,
+      // and reject the point if that is too low. The value of minimpactpar is here
+      // interpreted as a tangential velocity in km/sec, since it is nonzero but too small to
+      // make sense as an impact parameter in km.
+      trackletarc = distradec01_uint(tracklets[pairct].RA1, tracklets[pairct].Dec1, tracklets[pairct].RA2, tracklets[pairct].Dec2)/DEGPRAD; // Tracklet arc in radians
+      timediff = (image_log[i2].MJD - image_log[i1].MJD)*SOLARDAY; // Time difference in seconds
+      trackletangvel = trackletarc/timediff; // radians per second
+      obstanvel = trackletangvel*meanobsdist; // km/sec
+      if(UINT_DEBUG) cout << "tracklet arc = " << trackletarc*ASECPRAD << " arcsec, obstanvel = " << obstanvel << " km/sec\n";
+      if(obstanvel<minimpactpar) {
+	// Tangential velocity relative to the observer is too low
+	badpoint=1;
+      }
+    }
+    if(status1 > 0 && status2 > 0 && badpoint==0) {
+      // Calculate time difference between the observations
+      timediff = (image_log[i2].MJD - image_log[i1].MJD)*SOLARDAY;
+      // Did helioproj find two solutions in both cases, or only one?
+      num_dist_solutions = status1;
+      if(num_dist_solutions > status2) num_dist_solutions = status2;
+      // Loop over solutions (num_dist_solutions can only be 1 or 2).
+      for(solnct=0; solnct<num_dist_solutions; solnct++) {
+	// Calculate the object's v_inf relative to the sun.
+	targpos1 = targposvec1[solnct];
+	targpos2 = targposvec2[solnct];
+	  
+	targvel1.x = (targpos2.x - targpos1.x)/timediff;
+	targvel1.y = (targpos2.y - targpos1.y)/timediff;
+	targvel1.z = (targpos2.z - targpos1.z)/timediff;
+
+	targpos1.x = 0.5L*targpos2.x + 0.5L*targpos1.x;
+	targpos1.y = 0.5L*targpos2.y + 0.5L*targpos1.y;
+	targpos1.z = 0.5L*targpos2.z + 0.5L*targpos1.z;
+
+	E = 0.5l*dotprod3d(targvel1,targvel1) - GMSUN_KM3_SEC2/vecabs3d(targpos1);
+	if(E>0.0l) v_inf = sqrt(2.0l*E);
+	else if(!isnormal(E)) v_inf=0.0l;
+	else v_inf = -sqrt(-2.0l*E); // This is a bit weird, but we allow the user to
+	                             // set a negative v_inf, if desired, to rule out
+	                             // objects that are barely bound to the sun.
+	if(v_inf>max_v_inf) continue; // Skip further calculation if v_inf is too high.
+	// Perform calculations to check for consistency with the heliocentric
+	// tangential velocity implied by the hypothesis (Ben Engebreth's "SAD tracket" concept).
+	// Relevant quantities: deltavec1[solnct] and deltavec2[solnct] are the observer-centric
+	// distances at the first and second observations in km, heliotanvelvec[i1] and heliotanvelvec[i2]
+	// are the heliocentric tangential velocities implied by the hypothesis at the first and
+	// second observations, and targpos1 and targvel1 are the tracklet position and velocity
+	// at the midpoint of the tracklet.
+
+	// Calculate the heliocentric tangential velocity implied by the tracklet.
+	double heliorad = vecabs3d(targpos1);
+	double radvel = dotprod3d(targpos1,targvel1)/heliorad;
+	heliotanvel3D.x = targvel1.x - radvel*targpos1.x/heliorad;
+	heliotanvel3D.y = targvel1.y - radvel*targpos1.y/heliorad;
+	heliotanvel3D.z = targvel1.z - radvel*targpos1.z/heliorad;
+	double tracklet_tanvel = vecabs3d(heliotanvel3D);
+	double hypothesis_tanvel = 0.5*heliotanvelvec[i1] + 0.5*heliotanvelvec[i2];
+ 
+	// Scale velocity tolerance linearly with observer distance, normalized at 1AU.
+	temp_tanveltol = tanveltol*(0.5*deltavec1[solnct] + 0.5*deltavec2[solnct])/AU_KM;
+	// Revise upward if below a constant 'floor' values that applies within veltol_changerad AU of Earth.
+	if(temp_tanveltol < tanveltol*veltol_changerad) temp_tanveltol = tanveltol*veltol_changerad;
+
+	if(TAN_DEBUG) {
+	  cout << "Hypothesis radvel, tanvel: " << heliovel/SOLARDAY << " " << hypothesis_tanvel << "\n";
+	  cout << "Tracklet radvel, tanvel: " << radvel << " " << tracklet_tanvel << "\n";
+	  cout << "dist, temp_tanveltol: " << (0.5*deltavec1[solnct] + 0.5*deltavec2[solnct])/AU_KM << " " << temp_tanveltol << "\n";
+	}
+	// Compare tracklet vs. hypothesis tangential velocities
+	if(fabs(tracklet_tanvel - hypothesis_tanvel) > temp_tanveltol) {
+	  if(TAN_DEBUG) cout << "Tracklet is SAD: rejected\n";
+	  continue; // Skip further calculation: this is a 'SAD' (Swept Angle Discrepancy)
+	  // tracklet, meaning its heliocentric tangential velocity is inconsistent with that
+	  // implied by the hypothesis.
+	} else if(TAN_DEBUG) cout << "Not a SAD tracklet: accepted\n";
+      
+	// Begin new stuff added to eliminate 'globs'
+	// These are spurious linkages of unreasonably large numbers (typically tens of thousands)
+	// of detections that arise when the hypothetical heliocentric distance at a time when
+	// many observations are acquired is extremely close to, but slightly greater than,
+	// the heliocentric distance of the observer. Then detections over a large area of sky
+	// wind up with projected 3-D positions in an extremely small volume -- and furthermore,
+	// they all have similar velocities because the very small geocentric distance causes
+	// the inferred velocities to be dominated by the observer's motion and the heliocentric
+	// hypothesis, with only a negligible contribution from the on-sky angular velocity.
+	glob_warning=0;
+	if(deltavec1[solnct]<mingeoobs*AU_KM && deltavec2[solnct]<mingeoobs*AU_KM) {
+	  // New-start
+	  // Load target positions
+	  targpos1 = targposvec1[solnct];
+	  targpos2 = targposvec2[solnct];
+	  // Calculate positions relative to observer
+	  targpos1.x -= observerpos1.x;
+	  targpos1.y -= observerpos1.y;
+	  targpos1.z -= observerpos1.z;
+	    
+	  targpos2.x -= observerpos2.x;
+	  targpos2.y -= observerpos2.y;
+	  targpos2.z -= observerpos2.z;
+	    
+	  // Calculate velocity relative to observer
+	  targvel1.x = (targpos2.x - targpos1.x)/timediff;
+	  targvel1.y = (targpos2.y - targpos1.y)/timediff;
+	  targvel1.z = (targpos2.z - targpos1.z)/timediff;
+   
+	  // Calculate impact parameter (past or future).
+	  absvelocity = vecabs3d(targvel1);
+	  impactpar = dotprod3d(targpos1,targvel1)/absvelocity;
+	  // Effectively, we've projected targpos1 onto the velocity
+	  // vector, and impactpar temporarily holds the magnitude of this projection.
+	  // Subtract off the projection of the distance onto the velocity unit vector
+	  targpos1.x -= impactpar*targvel1.x/absvelocity;
+	  targpos1.y -= impactpar*targvel1.y/absvelocity;
+	  targpos1.z -= impactpar*targvel1.z/absvelocity;
+	  // Now targpos1 is the impact parameter vector at projected closest approach.
+	  impactpar  = vecabs3d(targpos1); // Now impactpar is really the impact parameter
+	  if(impactpar<=minimpactpar) {
+	    // The hypothesis implies the object already passed with minimpactpar km of the Earth
+	    // in the likely case that minimpactpar has been set to imply an actual impact,
+	    // it's not our problem anymore.
+	    glob_warning=1;
+	  }
+	}
+	if(!glob_warning) {
+	  targpos1 = targposvec1[solnct];
+	  targpos2 = targposvec2[solnct];
+	  
+	  targvel1.x = (targpos2.x - targpos1.x)/timediff;
+	  targvel1.y = (targpos2.y - targpos1.y)/timediff;
+	  targvel1.z = (targpos2.z - targpos1.z)/timediff;
+
+	  targpos1.x = 0.5L*targpos2.x + 0.5L*targpos1.x;
+	  targpos1.y = 0.5L*targpos2.y + 0.5L*targpos1.y;
+	  targpos1.z = 0.5L*targpos2.z + 0.5L*targpos1.z;
+      
+	  // Integrate orbit to the reference time.
+	  mjdavg = 0.5l*image_log[i1].MJD + 0.5l*image_log[i2].MJD;
+	  status1 = Kepler_univ_int(GMSUN_KM3_SEC2,mjdavg,targpos1,targvel1,mjdref,targpos2,targvel2,verbose);
+	  if(status1 == 0 && badpoint==0) {
+	    statevec1 = point6dx2(targpos2.x,targpos2.y,targpos2.z,chartimescale*targvel2.x,chartimescale*targvel2.y,chartimescale*targvel2.z,pairct,0);
+	    // Note that the multiplication by chartimescale converts velocities in km/sec
+	    // to units of km, for apples-to-apples comparison with the positions.
+	    stateveci = conv_6d_to_6i(statevec1,INTEGERIZING_SCALEFAC);
+	    allstatevecs.push_back(stateveci);
+	  } else {
+	    // Kepler integration encountered unphysical situation.
+	    continue;
+	  }
+	}
+      }
+    } else {
+      badpoint=1;
+      // Heliocentric projection found no physical solution.
+      continue;
+    }
+  }
+  return(0);
+}
+
+// trk2statevec_fgfuncRR_uint: October 19, 2026
+// Like trk2statevec_fgfuncRR_TNV_uint, but does not do any angular
+// velocity cuts. Written after trk2statevec_fgfuncRR_TNV_uint chronologically,
+// but precedes that function logically, since it lacks the tangential
+// velocity cuts (e.g., SAD tracklet rejection) that trk2statevec_fgfuncRR_TNV_uint
+// has. However, since it does not do SAD tracklet rejection, which is
+// intrinsically Keplerian, it does allow the non-Keplerian interpretation
+// of the input hypotheses -- a feature not available in trk2statevec_fgfuncRR_TNV_uint
+int trk2statevec_fgfuncRR_uint(const vector <hlimage> &image_log, const vector <uint_tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double max_v_inf, int NotKepler, int verbose)
+{
+  allstatevecs={};
+  long imnum = image_log.size();
+  long imct=0;
+  long pairnum = tracklets.size();
+  if(pairnum>=UINT_MAX) {
+    cerr << "ERROR: too many tracklets (" << pairnum << " > " << UINT_MAX << ") to index with unsigned integers!\n";
+    cerr << "Re-run using a non-uint version of heliolinc!\n";
+    return(1);
+  }
+  long pairct=0;
+  int badpoint=0;
+  int status1=0;
+  int status2=0;
+  int num_dist_solutions=0;
+  int solnct=0;
+  double mjdavg=0l;
+  vector <double> heliodistvec;
+  double RA,Dec;
+  long i1,i2;
+  i1=i2=0;
+  point6dx2 statevec1 = point6dx2(0l,0l,0l,0l,0l,0l,0,0);
+  point6ix2 stateveci = point6ix2(0,0,0,0,0,0,0,0);
+  point3d observerpos1 = point3d(0l,0l,0l);
+  point3d observerpos2 = point3d(0l,0l,0l);
+  point3d targpos1 = point3d(0l,0l,0l);
+  point3d targvel1 = point3d(0l,0l,0l);
+  point3d targpos2 = point3d(0l,0l,0l);
+  point3d unitbary = point3d(0l,0l,0l);
+  vector <point3d> targposvec1;
+  vector <point3d> targposvec2;
+  int glob_warning=0;
+  vector <double> deltavec1;
+  vector <double> deltavec2;
+  vector <double> mjdvec;
+  double absvelocity=0l;
+  double impactpar=0l;
+  double timediff=0l;
+  double E = 0.0l;
+  double v_inf = 0.0l;
+  double delta1=0.0;
+  
+  // Load the two reference times into mjdvec
+  mjdvec={};
+  mjdvec.push_back(mjdref-chartimescale/SOLARDAY);
+  mjdvec.push_back(mjdref+chartimescale/SOLARDAY);
+  
+  // Calculate approximate heliocentric distances from the
+  // input quadratic approximation.
+  heliodistvec={};
+  if(NotKepler) {
+    // Use the old-style, three-term Taylor Series approximation of heliocentric distance
+    // as a function of time.
+    for(imct=0;imct<imnum;imct++) {
+      delta1 = image_log[imct].MJD - mjdref;
+      heliodistvec.push_back(heliodist + heliovel*delta1 + 0.5*helioacc*delta1*delta1);
+      if(heliodistvec[imct]<=0.0l) {
+	badpoint=1;
+	return(1);
+      }
+    }
+  } else {
+    // Use Matt Holman's idea of getting heliocentric distance r(t) from an
+    // actual Keplerian orbit. It turns out that the same parameters (r, r-dot, and r-double-dot)
+    // that specify the old three-term Taylor Series also uniquely determine the Keplerian
+    // r(t) -- that is, they specify enough of the orbit that only one Keplerian solution
+    // for r(t) exists, even though other aspects of the orbit (i.e., orientation) are not
+    // specified.
+    // SOLVE FOR THE SQUARE OF THE TANGENTIAL VELOCITY
+    double localg = GMSUN_KM3_SEC2/DSQUARE(heliodist); // Units are km/sec^2
+    double physacc = helioacc/DSQUARE(SOLARDAY); // Units are km/sec^2
+    double vesc = 2.0*GMSUN_KM3_SEC2/heliodist; // this is the square of the escape velocity in km/sec
+    double tanvel = heliodist*(physacc+localg); // this is the square of the tangential velocity in km/sec
+    // CHECK FOR UNPHYSICAL AND UNBOUND CASES
+    if(tanvel<0.0l) {
+      cerr << fixed << setprecision(6) << "ERROR: hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << " is not possible for any trajectory\n";
+      return(1);
+    }
+    if(vesc < tanvel + LDSQUARE(heliovel/SOLARDAY)) {
+      cerr << fixed << setprecision(6) << "ERROR: hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << " is not possible for a bound orbit\n";
+      cerr << fixed << setprecision(6) << "vesc = " << sqrt(vesc) << ", tanvel = " << sqrt(tanvel) << ", heliovel = " << heliovel/SOLARDAY << ", totvel = " << sqrt(tanvel + LDSQUARE(heliovel/SOLARDAY)) << "\n";
+      return(1);
+    }
+    // If we get here, a sensible bound solution exists. Solve for the true tangential velocity
+    tanvel = sqrt(tanvel);
+    // Construct state vectors producing the required orbit (in the x-y plane, for simplicity).
+    point3d startpos = point3d(heliodist,0l,0l);
+    point3d startvel = point3d(heliovel/SOLARDAY,tanvel,0l);
+    point3d endpos = point3d(0l,0l,0l);
+    point3d endvel = point3d(0l,0l,0l);
+    for(imct=0;imct<imnum;imct++) {
+      // Integrate the orbit to find the heliocentric distance as a function of time.
+      status1 = Kepler_fg_func_int(GMSUN_KM3_SEC2, mjdref, startpos, startvel, image_log[imct].MJD, endpos, endvel, verbose);
+      if(status1!=0) {
+	cerr << "ERROR: Keplerian integration failed for r(t) hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << ", at MJD = " << image_log[imct].MJD << "\n";
+	return(status1);
+      }
+      heliodistvec.push_back(vecabs3d(endpos));
+    }
+  }
+  if(badpoint==0 && long(heliodistvec.size())!=imnum) {
+    cerr << "ERROR: number of heliocentric distance values does\n";
+    cerr << "not match the number of input images!\n";
+    return(2);
+  }
+  for(pairct=0; pairct<pairnum; pairct++) {
+    badpoint=0;
+    // Obtain indices to the image_log and heliocentric distance vectors.
+    i1=tracklets[pairct].Img1;
+    i2=tracklets[pairct].Img2;
+    // Project the first point
+    RA = uint_RAconv(tracklets[pairct].RA1);
+    Dec = int_Decconv(tracklets[pairct].Dec1);
+    celestial_to_stateunit(RA,Dec,unitbary);
+    observerpos1 = point3d(image_log[i1].X,image_log[i1].Y,image_log[i1].Z);
+    targposvec1={};
+    deltavec1={};
+    status1 = helioproj02(unitbary,observerpos1, heliodistvec[i1], deltavec1, targposvec1);
+    RA = uint_RAconv(tracklets[pairct].RA2);
+    Dec = int_Decconv(tracklets[pairct].Dec2);
+    celestial_to_stateunit(RA,Dec,unitbary);
+    observerpos2 = point3d(image_log[i2].X,image_log[i2].Y,image_log[i2].Z);
+    targposvec2={};
+    deltavec2={};
+    status2 = helioproj02(unitbary, observerpos2, heliodistvec[i2], deltavec2, targposvec2);
+    if(status1 > 0 && status2 > 0 && badpoint==0) {
+      // Calculate time difference between the observations
+      timediff = (image_log[i2].MJD - image_log[i1].MJD)*SOLARDAY;
+      // Did helioproj find two solutions in both cases, or only one?
+      num_dist_solutions = status1;
+      if(num_dist_solutions > status2) num_dist_solutions = status2;
+      // Loop over solutions (num_dist_solutions can only be 1 or 2).
+      for(solnct=0; solnct<num_dist_solutions; solnct++) {
+	// Calculate the object's v_inf relative to the sun.
+	targpos1 = targposvec1[solnct];
+	targpos2 = targposvec2[solnct];
+	  
+	targvel1.x = (targpos2.x - targpos1.x)/timediff;
+	targvel1.y = (targpos2.y - targpos1.y)/timediff;
+	targvel1.z = (targpos2.z - targpos1.z)/timediff;
+
+	targpos1.x = 0.5L*targpos2.x + 0.5L*targpos1.x;
+	targpos1.y = 0.5L*targpos2.y + 0.5L*targpos1.y;
+	targpos1.z = 0.5L*targpos2.z + 0.5L*targpos1.z;
+
+	E = 0.5l*dotprod3d(targvel1,targvel1) - GMSUN_KM3_SEC2/vecabs3d(targpos1);
+	if(E>0.0l) v_inf = sqrt(2.0l*E);
+	else if(!isnormal(E)) v_inf=0.0l;
+	else v_inf = -sqrt(-2.0l*E); // This is a bit weird, but we allow the user to
+	                             // set a negative v_inf, if desired, to rule out
+	                             // objects that are barely bound to the sun.
+	if(v_inf>max_v_inf) continue; // Skip further calculation if v_inf is too high.
+
+	// Begin new stuff added to eliminate 'globs'
+	// These are spurious linkages of unreasonably large numbers (typically tens of thousands)
+	// of detections that arise when the hypothetical heliocentric distance at a time when
+	// many observations are acquired is extremely close to, but slightly greater than,
+	// the heliocentric distance of the observer. Then detections over a large area of sky
+	// wind up with projected 3-D positions in an extremely small volume -- and furthermore,
+	// they all have similar velocities because the very small geocentric distance causes
+	// the inferred velocities to be dominated by the observer's motion and the heliocentric
+	// hypothesis, with only a negligible contribution from the on-sky angular velocity.
+	glob_warning=0;
+	if(deltavec1[solnct]<mingeoobs*AU_KM && deltavec2[solnct]<mingeoobs*AU_KM) {
+	  // New-start
+	  // Load target positions
+	  targpos1 = targposvec1[solnct];
+	  targpos2 = targposvec2[solnct];
+	  // Calculate positions relative to observer
+	  targpos1.x -= observerpos1.x;
+	  targpos1.y -= observerpos1.y;
+	  targpos1.z -= observerpos1.z;
+	    
+	  targpos2.x -= observerpos2.x;
+	  targpos2.y -= observerpos2.y;
+	  targpos2.z -= observerpos2.z;
+	    
+	  // Calculate velocity relative to observer
+	  targvel1.x = (targpos2.x - targpos1.x)/timediff;
+	  targvel1.y = (targpos2.y - targpos1.y)/timediff;
+	  targvel1.z = (targpos2.z - targpos1.z)/timediff;
+   
+	  // Calculate impact parameter (past or future).
+	  absvelocity = vecabs3d(targvel1);
+	  impactpar = dotprod3d(targpos1,targvel1)/absvelocity;
+	  // Effectively, we've projected targpos1 onto the velocity
+	  // vector, and impactpar temporarily holds the magnitude of this projection.
+	  // Subtract off the projection of the distance onto the velocity unit vector
+	  targpos1.x -= impactpar*targvel1.x/absvelocity;
+	  targpos1.y -= impactpar*targvel1.y/absvelocity;
+	  targpos1.z -= impactpar*targvel1.z/absvelocity;
+	  // Now targpos1 is the impact parameter vector at projected closest approach.
+	  impactpar  = vecabs3d(targpos1); // Now impactpar is really the impact parameter
+	  if(impactpar<=minimpactpar) {
+	    // The hypothesis implies the object already passed within minimpactpar km of the Earth
+	    // in the likely case that minimpactpar has been set to imply an actual impact,
+	    // it's not our problem anymore.
+	    glob_warning=1;
+	  }
+	}
+	if(!glob_warning) {
+	  targpos1 = targposvec1[solnct];
+	  targpos2 = targposvec2[solnct];
+	  
+	  targvel1.x = (targpos2.x - targpos1.x)/timediff;
+	  targvel1.y = (targpos2.y - targpos1.y)/timediff;
+	  targvel1.z = (targpos2.z - targpos1.z)/timediff;
+
+	  targpos1.x = 0.5L*targpos2.x + 0.5L*targpos1.x;
+	  targpos1.y = 0.5L*targpos2.y + 0.5L*targpos1.y;
+	  targpos1.z = 0.5L*targpos2.z + 0.5L*targpos1.z;
+      
+	  // Integrate orbit to the reference times.
+	  mjdavg = 0.5l*image_log[i1].MJD + 0.5l*image_log[i2].MJD;
+	  vector <point3d> targposvec;
+	  vector <point3d> targvelvec;
+	  status1 = Kepler_fg_func_vec(GMSUN_KM3_SEC2,mjdavg,targpos1,targvel1,mjdvec,targposvec,targvelvec);
+	  if(status1 == 0 && badpoint==0) {
+	    statevec1 = point6dx2(targposvec[0].x,targposvec[0].y,targposvec[0].z,targposvec[1].x,targposvec[1].y,targposvec[1].z,pairct,0);
+	    stateveci = conv_6d_to_6i(statevec1,INTEGERIZING_SCALEFAC);
+	    allstatevecs.push_back(stateveci);
+	  } else {
+	    // Kepler integration encountered unphysical situation.
+	    continue;
+	  }
+	}
+      }
+    } else {
+      badpoint=1;
+      // Heliocentric projection found no physical solution.
+      continue;
+    }
+  }
+  return(0);
+}
+
+
+// trk2statevec_fgfuncRR_TNV_uint: September 14, 2026
+int trk2statevec_fgfuncRR_TNV_uint(const vector <hlimage> &image_log, const vector <uint_tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double min_obstanvel, double max_v_inf, double tanveltol, double veltol_changerad, int verbose)
+{
+  allstatevecs={};
+  long imnum = image_log.size();
+  long imct=0;
+  long pairnum = tracklets.size();
+  if(pairnum>=UINT_MAX) {
+    cerr << "ERROR: too many tracklets (" << pairnum << " > " << UINT_MAX << ") to index with unsigned integers!\n";
+    cerr << "Re-run using a non-uint version of heliolinc!\n";
+    return(1);
+  }
+  long pairct=0;
+  int badpoint=0;
+  int status1=0;
+  int status2=0;
+  int num_dist_solutions=0;
+  int solnct=0;
+  double mjdavg=0l;
+  vector <double> heliodistvec;
+  vector <double> heliotanvelvec;
+  double heliotanvel;
+  double RA,Dec;
+  long i1,i2;
+  i1=i2=0;
+  point6dx2 statevec1 = point6dx2(0l,0l,0l,0l,0l,0l,0,0);
+  point6ix2 stateveci = point6ix2(0,0,0,0,0,0,0,0);
+  point3d observerpos1 = point3d(0l,0l,0l);
+  point3d observerpos2 = point3d(0l,0l,0l);
+  point3d targpos1 = point3d(0l,0l,0l);
+  point3d targvel1 = point3d(0l,0l,0l);
+  point3d targpos2 = point3d(0l,0l,0l);
+  point3d unitbary = point3d(0l,0l,0l);
+  point3d heliotanvel3D;
+  vector <point3d> targposvec1;
+  vector <point3d> targposvec2;
+  int glob_warning=0;
+  vector <double> deltavec1;
+  vector <double> deltavec2;
+  vector <double> mjdvec;
+  double absvelocity=0l;
+  double impactpar=0l;
+  double timediff=0l;
+  double E = 0.0l;
+  double v_inf = 0.0l;
+
+  double obstanvel = MAXTANVELCUT;
+  double meanobsdist,trackletarc,trackletangvel;
+  meanobsdist = trackletarc = trackletangvel = 0.0;
+  double temp_tanveltol;
+  
+  // Load the two reference times into mjdvec
+  mjdvec={};
+  mjdvec.push_back(mjdref-chartimescale/SOLARDAY);
+  mjdvec.push_back(mjdref+chartimescale/SOLARDAY);
+  
+  // Calculate approximate heliocentric distances from the input hypotheses:
+  heliodistvec={};
+  // Use Matt Holman's idea of getting heliocentric distance r(t) from an
+  // actual Keplerian orbit. It turns out that the same parameters (r, r-dot, and r-double-dot)
+  // that specify the old three-term Taylor Series also uniquely determine the Keplerian
+  // r(t) -- that is, they specify enough of the orbit that only one Keplerian solution
+  // for r(t) exists, even though other aspects of the orbit (i.e., orientation) are not
+  // specified.
+  // SOLVE FOR THE SQUARE OF THE TANGENTIAL VELOCITY
+  double localg = GMSUN_KM3_SEC2/DSQUARE(heliodist); // Units are km/sec^2
+  double physacc = helioacc/DSQUARE(SOLARDAY); // Units are km/sec^2
+  double vesc = 2.0*GMSUN_KM3_SEC2/heliodist; // this is the square of the escape velocity in km/sec
+  double tanvel = heliodist*(physacc+localg); // this is the square of the tangential velocity in km/sec
+  // CHECK FOR UNPHYSICAL AND UNBOUND CASES
+  if(tanvel<0.0l) {
+    cerr << fixed << setprecision(6) << "ERROR: hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << " is not possible for any trajectory\n";
+    return(1);
+  }
+  if(vesc < tanvel + LDSQUARE(heliovel/SOLARDAY)) {
+    cerr << fixed << setprecision(6) << "ERROR: hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << " is not possible for a bound orbit\n";
+    cerr << fixed << setprecision(6) << "vesc = " << sqrt(vesc) << ", tanvel = " << sqrt(tanvel) << ", heliovel = " << heliovel/SOLARDAY << ", totvel = " << sqrt(tanvel + LDSQUARE(heliovel/SOLARDAY)) << "\n";
+    return(1);
+  }
+  // If we get here, a sensible bound solution exists. Solve for the true tangential velocity
+  tanvel = sqrt(tanvel);
+  // Construct state vectors producing the required orbit (in the x-y plane, for simplicity).
+  point3d startpos = point3d(heliodist,0l,0l);
+  point3d startvel = point3d(heliovel/SOLARDAY,tanvel,0l);
+  point3d endpos = point3d(0l,0l,0l);
+  point3d endvel = point3d(0l,0l,0l);
+  for(imct=0;imct<imnum;imct++) {
+    // Integrate the orbit to find the heliocentric distance as a function of time.
+    status1 = Kepler_fg_func_int(GMSUN_KM3_SEC2, mjdref, startpos, startvel, image_log[imct].MJD, endpos, endvel, verbose);
+    if(status1!=0) {
+      cerr << "ERROR: Keplerian integration failed for r(t) hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << ", at MJD = " << image_log[imct].MJD << "\n";
+      return(status1);
+    }
+    // Calculate heliocentric tangential velocity.
+    double heliorad = vecabs3d(endpos);
+    double radvel = dotprod3d(endpos,endvel)/heliorad;
+    heliotanvel3D.x = endvel.x - radvel*endpos.x/heliorad;
+    heliotanvel3D.y = endvel.y - radvel*endpos.y/heliorad;
+    heliotanvel3D.z = endvel.z - radvel*endpos.z/heliorad;
+    heliotanvel = vecabs3d(heliotanvel3D);
+    // Load calculated Keplerian distance and tangential velocity to the image-based vectors
+    heliodistvec.push_back(heliorad);
+    heliotanvelvec.push_back(heliotanvel);
+  }
+
+  if(badpoint==0 && long(heliodistvec.size())!=imnum) {
+    cerr << "ERROR: number of heliocentric distance values does\n";
+    cerr << "not match the number of input images!\n";
+    return(2);
+  }
+  for(pairct=0; pairct<pairnum; pairct++) {
+    badpoint=0;
+    // Obtain indices to the image_log and heliocentric distance vectors.
+    i1=tracklets[pairct].Img1;
+    i2=tracklets[pairct].Img2;
+    // Project the first point
+    RA = uint_RAconv(tracklets[pairct].RA1);
+    Dec = int_Decconv(tracklets[pairct].Dec1);
+    celestial_to_stateunit(RA,Dec,unitbary);
+    observerpos1 = point3d(image_log[i1].X,image_log[i1].Y,image_log[i1].Z);
+    targposvec1={};
+    deltavec1={};
+    status1 = helioproj02(unitbary,observerpos1, heliodistvec[i1], deltavec1, targposvec1);
+    RA = uint_RAconv(tracklets[pairct].RA2);
+    Dec = int_Decconv(tracklets[pairct].Dec2);
+    celestial_to_stateunit(RA,Dec,unitbary);
+    observerpos2 = point3d(image_log[i2].X,image_log[i2].Y,image_log[i2].Z);
+    targposvec2={};
+    deltavec2={};
+    status2 = helioproj02(unitbary, observerpos2, heliodistvec[i2], deltavec2, targposvec2);
+    // Calculate the mean distance from the observer over the two points in the tracklet.
+    // If the projection equations had two solutions (meaning the hypothesis distance was
+    // interior to the Earth), use the larger solutions.
+    meanobsdist = (deltavec1[0] + deltavec2[0])/2.0;
+    if(UINT_DEBUG) cout << "Projected distances from observer: " << deltavec1[0]/AU_KM << " " << deltavec2[0]/AU_KM << "\n";
+    if(status1==2 && status2==2 &&  deltavec1[1]>deltavec1[0] && deltavec2[1]>deltavec2[0]) meanobsdist = (deltavec1[1] + deltavec2[1])/2.0;
+    if(min_obstanvel > 0.0 && meanobsdist < mingeoobs*AU_KM && status1 > 0 && status2 > 0 && badpoint==0) {
+      // New check added May 13, 2026: Calculate observer-centric tangential velocity,
+      // and reject the point if that is too low. The value of minimpactpar is here
+      // interpreted as a tangential velocity in km/sec, since it is nonzero but too small to
+      // make sense as an impact parameter in km.
+      trackletarc = distradec01_uint(tracklets[pairct].RA1, tracklets[pairct].Dec1, tracklets[pairct].RA2, tracklets[pairct].Dec2)/DEGPRAD; // Tracklet arc in radians
+      timediff = (image_log[i2].MJD - image_log[i1].MJD)*SOLARDAY; // Time difference in seconds
+      trackletangvel = trackletarc/timediff; // radians per second
+      obstanvel = trackletangvel*meanobsdist; // km/sec
+      if(UINT_DEBUG) cout << "tracklet arc = " << trackletarc*ASECPRAD << " arcsec, obstanvel = " << obstanvel << " km/sec\n";
+      if(obstanvel<minimpactpar) {
+	// Tangential velocity relative to the observer is too low
+	badpoint=1;
+      }
+    }
+    if(status1 > 0 && status2 > 0 && badpoint==0) {
+      // Calculate time difference between the observations
+      timediff = (image_log[i2].MJD - image_log[i1].MJD)*SOLARDAY;
+      // Did helioproj find two solutions in both cases, or only one?
+      num_dist_solutions = status1;
+      if(num_dist_solutions > status2) num_dist_solutions = status2;
+      // Loop over solutions (num_dist_solutions can only be 1 or 2).
+      for(solnct=0; solnct<num_dist_solutions; solnct++) {
+	// Calculate the object's v_inf relative to the sun.
+	targpos1 = targposvec1[solnct];
+	targpos2 = targposvec2[solnct];
+	  
+	targvel1.x = (targpos2.x - targpos1.x)/timediff;
+	targvel1.y = (targpos2.y - targpos1.y)/timediff;
+	targvel1.z = (targpos2.z - targpos1.z)/timediff;
+
+	targpos1.x = 0.5L*targpos2.x + 0.5L*targpos1.x;
+	targpos1.y = 0.5L*targpos2.y + 0.5L*targpos1.y;
+	targpos1.z = 0.5L*targpos2.z + 0.5L*targpos1.z;
+
+	E = 0.5l*dotprod3d(targvel1,targvel1) - GMSUN_KM3_SEC2/vecabs3d(targpos1);
+	if(E>0.0l) v_inf = sqrt(2.0l*E);
+	else if(!isnormal(E)) v_inf=0.0l;
+	else v_inf = -sqrt(-2.0l*E); // This is a bit weird, but we allow the user to
+	                             // set a negative v_inf, if desired, to rule out
+	                             // objects that are barely bound to the sun.
+	if(v_inf>max_v_inf) continue; // Skip further calculation if v_inf is too high.
+
+	// Perform calculations to check for consistency with the heliocentric
+	// tangential velocity implied by the hypothesis (Ben Engebreth's "SAD tracket" concept).
+	// Relevant quantities: deltavec1[solnct] and deltavec2[solnct] are the observer-centric
+	// distances at the first and second observations in km, heliotanvelvec[i1] and heliotanvelvec[i2]
+	// are the heliocentric tangential velocities implied by the hypothesis at the first and
+	// second observations, and targpos1 and targvel1 are the tracklet position and velocity
+	// at the midpoint of the tracklet.
+
+	// Calculate the heliocentric tangential velocity implied by the tracklet.
+	double heliorad = vecabs3d(targpos1);
+	double radvel = dotprod3d(targpos1,targvel1)/heliorad;
+	heliotanvel3D.x = targvel1.x - radvel*targpos1.x/heliorad;
+	heliotanvel3D.y = targvel1.y - radvel*targpos1.y/heliorad;
+	heliotanvel3D.z = targvel1.z - radvel*targpos1.z/heliorad;
+	double tracklet_tanvel = vecabs3d(heliotanvel3D);
+	double hypothesis_tanvel = 0.5*heliotanvelvec[i1] + 0.5*heliotanvelvec[i2];
+ 
+	// Scale velocity tolerance linearly with observer distance, normalized at 1AU.
+	temp_tanveltol = tanveltol*(0.5*deltavec1[solnct] + 0.5*deltavec2[solnct])/AU_KM;
+	// Revise upward if below a constant 'floor' values that applies within veltol_changerad AU of Earth.
+	if(temp_tanveltol < tanveltol*veltol_changerad) temp_tanveltol = tanveltol*veltol_changerad;
+
+	if(UINT_DEBUG) {
+	  cout << "Hypothesis radvel, tanvel: " << heliovel/SOLARDAY << " " << hypothesis_tanvel << "\n";
+	  cout << "Tracklet radvel, tanvel: " << radvel << " " << tracklet_tanvel << "\n";
+	  cout << "dist, temp_tanveltol: " << (0.5*deltavec1[solnct] + 0.5*deltavec2[solnct])/AU_KM << " " << temp_tanveltol << "\n";
+	}
+	// Compare tracklet vs. hypothesis tangential velocities
+	if(fabs(tracklet_tanvel - hypothesis_tanvel) > temp_tanveltol) {
+	  if(UINT_DEBUG) cout << "Tracklet is SAD: rejected\n";
+	  continue; // Skip further calculation: this is a 'SAD' (Swept Angle Discrepancy)
+	  // tracklet, meaning its heliocentric tangential velocity is inconsistent with that
+	  // implied by the hypothesis.
+	} else if(UINT_DEBUG) cout << "Not a SAD tracklet: accepted\n";
+	
+	// Begin new stuff added to eliminate 'globs'
+	// These are spurious linkages of unreasonably large numbers (typically tens of thousands)
+	// of detections that arise when the hypothetical heliocentric distance at a time when
+	// many observations are acquired is extremely close to, but slightly greater than,
+	// the heliocentric distance of the observer. Then detections over a large area of sky
+	// wind up with projected 3-D positions in an extremely small volume -- and furthermore,
+	// they all have similar velocities because the very small geocentric distance causes
+	// the inferred velocities to be dominated by the observer's motion and the heliocentric
+	// hypothesis, with only a negligible contribution from the on-sky angular velocity.
+	glob_warning=0;
+	if(deltavec1[solnct]<mingeoobs*AU_KM && deltavec2[solnct]<mingeoobs*AU_KM) {
+	  // New-start
+	  // Load target positions
+	  targpos1 = targposvec1[solnct];
+	  targpos2 = targposvec2[solnct];
+	  // Calculate positions relative to observer
+	  targpos1.x -= observerpos1.x;
+	  targpos1.y -= observerpos1.y;
+	  targpos1.z -= observerpos1.z;
+	    
+	  targpos2.x -= observerpos2.x;
+	  targpos2.y -= observerpos2.y;
+	  targpos2.z -= observerpos2.z;
+	    
+	  // Calculate velocity relative to observer
+	  targvel1.x = (targpos2.x - targpos1.x)/timediff;
+	  targvel1.y = (targpos2.y - targpos1.y)/timediff;
+	  targvel1.z = (targpos2.z - targpos1.z)/timediff;
+   
+	  // Calculate impact parameter (past or future).
+	  absvelocity = vecabs3d(targvel1);
+	  impactpar = dotprod3d(targpos1,targvel1)/absvelocity;
+	  // Effectively, we've projected targpos1 onto the velocity
+	  // vector, and impactpar temporarily holds the magnitude of this projection.
+	  // Subtract off the projection of the distance onto the velocity unit vector
+	  targpos1.x -= impactpar*targvel1.x/absvelocity;
+	  targpos1.y -= impactpar*targvel1.y/absvelocity;
+	  targpos1.z -= impactpar*targvel1.z/absvelocity;
+	  // Now targpos1 is the impact parameter vector at projected closest approach.
+	  impactpar  = vecabs3d(targpos1); // Now impactpar is really the impact parameter
+	  if(impactpar<=minimpactpar) {
+	    // The hypothesis implies the object already passed within minimpactpar km of the Earth
+	    // in the likely case that minimpactpar has been set to imply an actual impact,
+	    // it's not our problem anymore.
+	    glob_warning=1;
+	  }
+	}
+	if(!glob_warning) {
+	  targpos1 = targposvec1[solnct];
+	  targpos2 = targposvec2[solnct];
+	  
+	  targvel1.x = (targpos2.x - targpos1.x)/timediff;
+	  targvel1.y = (targpos2.y - targpos1.y)/timediff;
+	  targvel1.z = (targpos2.z - targpos1.z)/timediff;
+
+	  targpos1.x = 0.5L*targpos2.x + 0.5L*targpos1.x;
+	  targpos1.y = 0.5L*targpos2.y + 0.5L*targpos1.y;
+	  targpos1.z = 0.5L*targpos2.z + 0.5L*targpos1.z;
+      
+	  // Integrate orbit to the reference times.
+	  mjdavg = 0.5l*image_log[i1].MJD + 0.5l*image_log[i2].MJD;
+	  vector <point3d> targposvec;
+	  vector <point3d> targvelvec;
+	  status1 = Kepler_fg_func_vec(GMSUN_KM3_SEC2,mjdavg,targpos1,targvel1,mjdvec,targposvec,targvelvec);
+	  if(status1 == 0 && badpoint==0) {
+	    statevec1 = point6dx2(targposvec[0].x,targposvec[0].y,targposvec[0].z,targposvec[1].x,targposvec[1].y,targposvec[1].z,pairct,0);
+	    stateveci = conv_6d_to_6i(statevec1,INTEGERIZING_SCALEFAC);
+	    allstatevecs.push_back(stateveci);
+	  } else {
+	    // Kepler integration encountered unphysical situation.
+	    continue;
+	  }
+	}
+      }
+    } else {
+      badpoint=1;
+      // Heliocentric projection found no physical solution.
+      continue;
+    }
+  }
+  return(0);
+}
+
+// trk2statevec_univarRR_uint: October 19, 2026:
+// Like trk2statevec_univarRR_TNV_uint, but does not do any angular velocity
+// cuts. Written after trk2statevec_univarRR_TNV_uint chronologically,
+// but precedes that function logically, since it lacks the tangential
+// velocity cuts (e.g., SAD tracklet rejection) that trk2statevec_univarRR_TNV_uint
+// has. However, since it does not do SAD tracklet rejection, which is
+// intrinsically Keplerian, it does allow the non-Keplerian interpretation
+// of the input hypotheses -- a feature not available in trk2statevec_univarRR_TNV_uint
+int trk2statevec_univarRR_uint(const vector <hlimage> &image_log, const vector <uint_tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double max_v_inf, int NotKepler, int verbose)
+{
+  // delta
+  allstatevecs={};
+  long imnum = image_log.size();
+  long imct=0;
+  long pairnum = tracklets.size();
+  if(pairnum>=UINT_MAX) {
+    cerr << "ERROR: too many tracklets (" << pairnum << " > " << UINT_MAX << ") to index with unsigned integers!\n";
+    cerr << "Re-run using a non-uint version of heliolinc!\n";
+    return(1);
+  }
+  long pairct=0;
+  int badpoint=0;
+  int status1=0;
+  int status2=0;
+  int num_dist_solutions=0;
+  int solnct=0;
+  double mjdavg=0l;
+  vector <double> heliodistvec;
+  double delta1 = 0.0l;
+  double RA,Dec;
+  long i1,i2;
+  i1=i2=0;
+  point6dx2 statevec1 = point6dx2(0l,0l,0l,0l,0l,0l,0,0);
+  point6ix2 stateveci = point6ix2(0,0,0,0,0,0,0,0);
+  point3d observerpos1 = point3d(0l,0l,0l);
+  point3d observerpos2 = point3d(0l,0l,0l);
+  point3d targpos1 = point3d(0l,0l,0l);
+  point3d targpos2 = point3d(0l,0l,0l);
+  point3d targvel1 = point3d(0l,0l,0l);
+  point3d unitbary = point3d(0l,0l,0l);
+  vector <point3d> targposvec1;
+  vector <point3d> targposvec2;
+  int glob_warning=0;
+  vector <double> deltavec1;
+  vector <double> deltavec2;
+  vector <double> mjdvec;
+  double absvelocity=0l;
+  double impactpar=0l;
+  double timediff=0l;
+  double E = 0.0l;
+  double v_inf = 0.0l;
+  
+  // Load the two reference times into mjdvec
+  mjdvec={};
+  mjdvec.push_back(mjdref-chartimescale/SOLARDAY);
+  mjdvec.push_back(mjdref+chartimescale/SOLARDAY);
+
+  // Calculate approximate heliocentric distances from the
+  // input quadratic approximation.
+  heliodistvec={};
+  if(NotKepler) {
+    for(imct=0;imct<imnum;imct++) {
+      delta1 = image_log[imct].MJD - mjdref;
+      heliodistvec.push_back(heliodist + heliovel*delta1 + 0.5*helioacc*delta1*delta1);
+      if(heliodistvec[imct]<=0.0l) {
+	badpoint=1;
+	return(1);
+      }
+    }
+  } else {
+    // Use Matt Holman's idea of getting heliocentric distance r(t) from an
+    // actual Keplerian orbit. It turns out that the same parameters (r, r-dot, and r-double-dot)
+    // that specify the old three-term Taylor Series also uniquely determine the Keplerian
+    // r(t) -- that is, they specify enough of the orbit that only one Keplerian solution
+    // for r(t) exists, even though other aspects of the orbit (i.e., orientation) are not
+    // specified.
+    // SOLVE FOR THE SQUARE OF THE TANGENTIAL VELOCITY
+    double localg = GMSUN_KM3_SEC2/DSQUARE(heliodist); // Units are km/sec^2
+    double physacc = helioacc/DSQUARE(SOLARDAY); // Units are km/sec^2
+    double vesc = 2.0*GMSUN_KM3_SEC2/heliodist; // this is the square of the escape velocity in km/sec
+    double tanvel = heliodist*(physacc+localg); // this is the square of the tangential velocity in km/sec
+    // CHECK FOR UNPHYSICAL AND UNBOUND CASES
+    if(tanvel<0.0l) {
+      cerr << fixed << setprecision(6) << "ERROR: hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << " is not possible for any trajectory\n";
+      return(1);
+    }
+    if(vesc < tanvel + LDSQUARE(heliovel/SOLARDAY)) {
+      cout << fixed << setprecision(6) << "NOTE: hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << " implies an unbound orbit.\n";
+      cout << fixed << setprecision(6) << "vesc = " << sqrt(vesc) << ", tanvel = " << sqrt(tanvel) << ", heliovel = " << heliovel/SOLARDAY << ", totvel = " << sqrt(tanvel + LDSQUARE(heliovel/SOLARDAY)) << "\n";
+      // The fact that the orbit is unbound is not a problem, because this function uses
+      // universal variables and can handle unbound orbits.
+    }
+    // If we get here, a sensible solution (bound or unbound) exists. Solve for the true tangential velocity
+    tanvel = sqrt(tanvel);
+    // Construct state vectors producing the required orbit (in the x-y plane, for simplicity).
+    point3d startpos = point3d(heliodist,0l,0l);
+    point3d startvel = point3d(heliovel/SOLARDAY,tanvel,0l);
+    point3d endpos = point3d(0l,0l,0l);
+    point3d endvel = point3d(0l,0l,0l);
+    for(imct=0;imct<imnum;imct++) {
+      // Integrate the orbit to find the heliocentric distance as a function of time.
+      status1 = Kepler_univ_int(GMSUN_KM3_SEC2, mjdref, startpos, startvel, image_log[imct].MJD, endpos, endvel, verbose);
+      if(status1!=0) {
+	cerr << "ERROR: Keplerian integration failed for r(t) hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << ", at MJD = " << image_log[imct].MJD << "\n";
+	return(status1);
+      }
+      heliodistvec.push_back(vecabs3d(endpos));
+    }
+  }
+  if(badpoint==0 && long(heliodistvec.size())!=imnum) {
+    cerr << "ERROR: number of heliocentric distance values does\n";
+    cerr << "not match the number of input images!\n";
+    return(2);
+  }
+  for(pairct=0; pairct<pairnum; pairct++) {
+    badpoint=0;
+    // Obtain indices to the image_log and heliocentric distance vectors.
+    i1=tracklets[pairct].Img1;
+    i2=tracklets[pairct].Img2;
+    // Project the first point
+    RA = uint_RAconv(tracklets[pairct].RA1);
+    Dec = int_Decconv(tracklets[pairct].Dec1);
+    celestial_to_stateunit(RA,Dec,unitbary);
+    observerpos1 = point3d(image_log[i1].X,image_log[i1].Y,image_log[i1].Z);
+    targposvec1={};
+    deltavec1={};
+    status1 = helioproj02(unitbary,observerpos1, heliodistvec[i1], deltavec1, targposvec1);
+    RA = uint_RAconv(tracklets[pairct].RA2);
+    Dec = int_Decconv(tracklets[pairct].Dec2);
+    celestial_to_stateunit(RA,Dec,unitbary);
+    observerpos2 = point3d(image_log[i2].X,image_log[i2].Y,image_log[i2].Z);
+    targposvec2={};
+    deltavec2={};
+    status2 = helioproj02(unitbary, observerpos2, heliodistvec[i2], deltavec2, targposvec2);
+    if(status1 > 0 && status2 > 0 && badpoint==0) {
+      // Calculate time difference between the observations
+      timediff = (image_log[i2].MJD - image_log[i1].MJD)*SOLARDAY;
+      // Did helioproj find two solutions in both cases, or only one?
+      num_dist_solutions = status1;
+      if(num_dist_solutions > status2) num_dist_solutions = status2;
+      // Loop over solutions (num_dist_solutions can only be 1 or 2).
+      for(solnct=0; solnct<num_dist_solutions; solnct++) {
+	// Calculate the object's v_inf relative to the sun.
+	targpos1 = targposvec1[solnct];
+	targpos2 = targposvec2[solnct];
+	  
+	targvel1.x = (targpos2.x - targpos1.x)/timediff;
+	targvel1.y = (targpos2.y - targpos1.y)/timediff;
+	targvel1.z = (targpos2.z - targpos1.z)/timediff;
+
+	targpos1.x = 0.5L*targpos2.x + 0.5L*targpos1.x;
+	targpos1.y = 0.5L*targpos2.y + 0.5L*targpos1.y;
+	targpos1.z = 0.5L*targpos2.z + 0.5L*targpos1.z;
+
+	E = 0.5l*dotprod3d(targvel1,targvel1) - GMSUN_KM3_SEC2/vecabs3d(targpos1);
+	if(E>0.0l) v_inf = sqrt(2.0l*E);
+	else if(!isnormal(E)) v_inf=0.0l;
+	else v_inf = -sqrt(-2.0l*E); // This is a bit weird, but we allow the user to
+	                             // set a negative v_inf, if desired, to rule out
+	                             // objects that are barely bound to the sun.
+	if(v_inf>max_v_inf) continue; // Skip further calculation if v_inf is too high.
+      
+	// Begin new stuff added to eliminate 'globs'
+	// These are spurious linkages of unreasonably large numbers (typically tens of thousands)
+	// of detections that arise when the hypothetical heliocentric distance at a time when
+	// many observations are acquired is extremely close to, but slightly greater than,
+	// the heliocentric distance of the observer. Then detections over a large area of sky
+	// wind up with projected 3-D positions in an extremely small volume -- and furthermore,
+	// they all have similar velocities because the very small geocentric distance causes
+	// the inferred velocities to be dominated by the observer's motion and the heliocentric
+	// hypothesis, with only a negligible contribution from the on-sky angular velocity.
+	glob_warning=0;
+	if(deltavec1[solnct]<mingeoobs*AU_KM && deltavec2[solnct]<mingeoobs*AU_KM) {
+	  // New-start
+	  // Load target positions
+	  targpos1 = targposvec1[solnct];
+	  targpos2 = targposvec2[solnct];
+	  // Calculate positions relative to observer
+	  targpos1.x -= observerpos1.x;
+	  targpos1.y -= observerpos1.y;
+	  targpos1.z -= observerpos1.z;
+	    
+	  targpos2.x -= observerpos2.x;
+	  targpos2.y -= observerpos2.y;
+	  targpos2.z -= observerpos2.z;
+	    
+	  // Calculate velocity relative to observer
+	  targvel1.x = (targpos2.x - targpos1.x)/timediff;
+	  targvel1.y = (targpos2.y - targpos1.y)/timediff;
+	  targvel1.z = (targpos2.z - targpos1.z)/timediff;
+   
+	  // Calculate impact parameter (past or future).
+	  absvelocity = vecabs3d(targvel1);
+	  impactpar = dotprod3d(targpos1,targvel1)/absvelocity;
+	  // Effectively, we've projected targpos1 onto the velocity
+	  // vector, and impactpar temporarily holds the magnitude of this projection.
+	  // Subtract off the projection of the distance onto the velocity unit vector
+	  targpos1.x -= impactpar*targvel1.x/absvelocity;
+	  targpos1.y -= impactpar*targvel1.y/absvelocity;
+	  targpos1.z -= impactpar*targvel1.z/absvelocity;
+	  // Now targpos1 is the impact parameter vector at projected closest approach.
+	  impactpar  = vecabs3d(targpos1); // Now impactpar is really the impact parameter
+	  if(impactpar<=minimpactpar) {
+	    // The hypothesis implies the object already passed with minimpactpar km of the Earth
+	    // in the likely case that minimpactpar has been set to imply an actual impact,
+	    // it's not our problem anymore.
+	    glob_warning=1;
+	  }
+	}
+	if(!glob_warning) {
+	  targpos1 = targposvec1[solnct];
+	  targpos2 = targposvec2[solnct];
+	  
+	  targvel1.x = (targpos2.x - targpos1.x)/timediff;
+	  targvel1.y = (targpos2.y - targpos1.y)/timediff;
+	  targvel1.z = (targpos2.z - targpos1.z)/timediff;
+
+	  targpos1.x = 0.5L*targpos2.x + 0.5L*targpos1.x;
+	  targpos1.y = 0.5L*targpos2.y + 0.5L*targpos1.y;
+	  targpos1.z = 0.5L*targpos2.z + 0.5L*targpos1.z;
+      
+	  // Integrate orbit to the two reference times.
+	  mjdavg = 0.5l*image_log[i1].MJD + 0.5l*image_log[i2].MJD;
+	  vector <point3d> targposvec;
+	  vector <point3d> targvelvec;
+	  status1 = Kepler_univ_vec(GMSUN_KM3_SEC2,mjdavg,targpos1,targvel1,mjdvec,targposvec,targvelvec,verbose);
+	  //double semimajor_axis, eccen;
+	  //status1 = Keplerint_multipoint_univar(GMSUN_KM3_SEC2, mjdavg, mjdvec, targpos1,targvel1, targposvec,targvelvec,&semimajor_axis, &eccen);
+
+	  if(status1 == 0 && badpoint==0) {
+	    statevec1 = point6dx2(targposvec[0].x,targposvec[0].y,targposvec[0].z,targposvec[1].x,targposvec[1].y,targposvec[1].z,pairct,0);
+	    stateveci = conv_6d_to_6i(statevec1,INTEGERIZING_SCALEFAC);
+	    allstatevecs.push_back(stateveci);
+	  } else {
+	    // Kepler integration encountered unphysical situation.
+	    continue;
+	  }
+	}
+      }
+    } else {
+      badpoint=1;
+      // Heliocentric projection found no physical solution.
+      continue;
+    }
+  }
+  return(0);
+}
+
+// trk2statevec_univarRR_TNV_uint: September 14, 2026:
+int trk2statevec_univarRR_TNV_uint(const vector <hlimage> &image_log, const vector <uint_tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double min_obstanvel, double max_v_inf, double tanveltol, double veltol_changerad, int verbose)
+{
+  allstatevecs={};
+  long imnum = image_log.size();
+  long imct=0;
+  long pairnum = tracklets.size();
+  if(pairnum>=UINT_MAX) {
+    cerr << "ERROR: too many tracklets (" << pairnum << " > " << UINT_MAX << ") to index with unsigned integers!\n";
+    cerr << "Re-run using a non-uint version of heliolinc!\n";
+    return(1);
+  }
+  long pairct=0;
+  int badpoint=0;
+  int status1=0;
+  int status2=0;
+  int num_dist_solutions=0;
+  int solnct=0;
+  double mjdavg=0l;
+  vector <double> heliodistvec;
+  vector <double> heliotanvelvec;
+  double heliotanvel;
+  double RA,Dec;
+  long i1,i2;
+  i1=i2=0;
+  point6dx2 statevec1 = point6dx2(0l,0l,0l,0l,0l,0l,0,0);
+  point6ix2 stateveci = point6ix2(0,0,0,0,0,0,0,0);
+  point3d observerpos1 = point3d(0l,0l,0l);
+  point3d observerpos2 = point3d(0l,0l,0l);
+  point3d targpos1 = point3d(0l,0l,0l);
+  point3d targpos2 = point3d(0l,0l,0l);
+  point3d targvel1 = point3d(0l,0l,0l);
+  point3d unitbary = point3d(0l,0l,0l);
+  point3d heliotanvel3D;
+  vector <point3d> targposvec1;
+  vector <point3d> targposvec2;
+  int glob_warning=0;
+  vector <double> deltavec1;
+  vector <double> deltavec2;
+  vector <double> mjdvec;
+  double absvelocity=0l;
+  double impactpar=0l;
+  double timediff=0l;
+  double E = 0.0l;
+  double v_inf = 0.0l;
+  
+  double obstanvel = MAXTANVELCUT;
+  double meanobsdist,trackletarc,trackletangvel;
+  meanobsdist = trackletarc = trackletangvel = 0.0;
+  double temp_tanveltol;
+  
+  // Load the two reference times into mjdvec
+  mjdvec={};
+  mjdvec.push_back(mjdref-chartimescale/SOLARDAY);
+  mjdvec.push_back(mjdref+chartimescale/SOLARDAY);
+
+  // Calculate approximate heliocentric distances from the hypotheses
+  // Use Matt Holman's idea of getting heliocentric distance r(t) from an
+  // actual Keplerian orbit. It turns out that the same parameters (r, r-dot, and r-double-dot)
+  // that specify the old three-term Taylor Series also uniquely determine the Keplerian
+  // r(t) -- that is, they specify enough of the orbit that only one Keplerian solution
+  // for r(t) exists, even though other aspects of the orbit (i.e., orientation) are not
+  // specified.
+  // SOLVE FOR THE SQUARE OF THE TANGENTIAL VELOCITY
+  double localg = GMSUN_KM3_SEC2/DSQUARE(heliodist); // Units are km/sec^2
+  double physacc = helioacc/DSQUARE(SOLARDAY); // Units are km/sec^2
+  double vesc = 2.0*GMSUN_KM3_SEC2/heliodist; // this is the square of the escape velocity in km/sec
+  double tanvel = heliodist*(physacc+localg); // this is the square of the tangential velocity in km/sec
+  // CHECK FOR UNPHYSICAL AND UNBOUND CASES
+  if(tanvel<0.0l) {
+    cerr << fixed << setprecision(6) << "ERROR: hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << " is not possible for any trajectory\n";
+    return(1);
+  }
+  if(vesc < tanvel + LDSQUARE(heliovel/SOLARDAY)) {
+    cout << fixed << setprecision(6) << "NOTE: hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << " implies an unbound orbit.\n";
+    cout << fixed << setprecision(6) << "vesc = " << sqrt(vesc) << ", tanvel = " << sqrt(tanvel) << ", heliovel = " << heliovel/SOLARDAY << ", totvel = " << sqrt(tanvel + LDSQUARE(heliovel/SOLARDAY)) << "\n";
+    // The fact that the orbit is unbound is not a problem, because this function uses
+    // universal variables and can handle unbound orbits.
+  }
+  // If we get here, a sensible solution (bound or unbound) exists. Solve for the true tangential velocity
+  tanvel = sqrt(tanvel);
+  // Construct state vectors producing the required orbit (in the x-y plane, for simplicity).
+  point3d startpos = point3d(heliodist,0l,0l);
+  point3d startvel = point3d(heliovel/SOLARDAY,tanvel,0l);
+  point3d endpos = point3d(0l,0l,0l);
+  point3d endvel = point3d(0l,0l,0l);
+  for(imct=0;imct<imnum;imct++) {
+    // Integrate the orbit to find the heliocentric distance as a function of time.
+    status1 = Kepler_univ_int(GMSUN_KM3_SEC2, mjdref, startpos, startvel, image_log[imct].MJD, endpos, endvel, verbose);
+    if(status1!=0) {
+      cerr << "ERROR: Keplerian integration failed for r(t) hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << ", at MJD = " << image_log[imct].MJD << "\n";
+      return(status1);
+    }
+    // Calculate heliocentric tangential velocity.
+    double heliorad = vecabs3d(endpos);
+    double radvel = dotprod3d(endpos,endvel)/heliorad;
+    heliotanvel3D.x = endvel.x - radvel*endpos.x/heliorad;
+    heliotanvel3D.y = endvel.y - radvel*endpos.y/heliorad;
+    heliotanvel3D.z = endvel.z - radvel*endpos.z/heliorad;
+    heliotanvel = vecabs3d(heliotanvel3D);
+    // Load calculated Keplerian distance and tangential velocity to the image-based vectors
+    heliodistvec.push_back(heliorad);
+    heliotanvelvec.push_back(heliotanvel);
+  }
+
+  if(badpoint==0 && long(heliodistvec.size())!=imnum) {
+    cerr << "ERROR: number of heliocentric distance values does\n";
+    cerr << "not match the number of input images!\n";
+    return(2);
+  }
+  for(pairct=0; pairct<pairnum; pairct++) {
+    badpoint=0;
+    // Obtain indices to the image_log and heliocentric distance vectors.
+    i1=tracklets[pairct].Img1;
+    i2=tracklets[pairct].Img2;
+    // Project the first point
+    RA = uint_RAconv(tracklets[pairct].RA1);
+    Dec = int_Decconv(tracklets[pairct].Dec1);
+    celestial_to_stateunit(RA,Dec,unitbary);
+    observerpos1 = point3d(image_log[i1].X,image_log[i1].Y,image_log[i1].Z);
+    targposvec1={};
+    deltavec1={};
+    status1 = helioproj02(unitbary,observerpos1, heliodistvec[i1], deltavec1, targposvec1);
+    RA = uint_RAconv(tracklets[pairct].RA2);
+    Dec = int_Decconv(tracklets[pairct].Dec2);
+    celestial_to_stateunit(RA,Dec,unitbary);
+    observerpos2 = point3d(image_log[i2].X,image_log[i2].Y,image_log[i2].Z);
+    targposvec2={};
+    deltavec2={};
+    status2 = helioproj02(unitbary, observerpos2, heliodistvec[i2], deltavec2, targposvec2);
+    // Calculate the mean distance from the observer over the two points in the tracklet.
+    // If the projection equations had two solutions (meaning the hypothesis distance was
+    // interior to the Earth), use the larger solutions.
+    meanobsdist = (deltavec1[0] + deltavec2[0])/2.0;
+    if(UINT_DEBUG) cout << "Projected distances from observer: " << deltavec1[0]/AU_KM << " " << deltavec2[0]/AU_KM << "\n";
+    if(status1==2 && status2==2 &&  deltavec1[1]>deltavec1[0] && deltavec2[1]>deltavec2[0]) meanobsdist = (deltavec1[1] + deltavec2[1])/2.0;
+    if(min_obstanvel > 0.0 && meanobsdist < mingeoobs*AU_KM && status1 > 0 && status2 > 0 && badpoint==0) {
+      // New check added May 13, 2026: Calculate observer-centric tangential velocity,
+      // and reject the point if that is too low. The value of minimpactpar is here
+      // interpreted as a tangential velocity in km/sec, since it is nonzero but too small to
+      // make sense as an impact parameter in km.
+      trackletarc = distradec01_uint(tracklets[pairct].RA1, tracklets[pairct].Dec1, tracklets[pairct].RA2, tracklets[pairct].Dec2)/DEGPRAD; // Tracklet arc in radians
+      timediff = (image_log[i2].MJD - image_log[i1].MJD)*SOLARDAY; // Time difference in seconds
+      trackletangvel = trackletarc/timediff; // radians per second
+      obstanvel = trackletangvel*meanobsdist; // km/sec
+      if(UINT_DEBUG) cout << "tracklet arc = " << trackletarc*ASECPRAD << " arcsec, obstanvel = " << obstanvel << " km/sec\n";
+      if(obstanvel<minimpactpar) {
+	// Tangential velocity relative to the observer is too low
+	badpoint=1;
+      }
+    }
+    if(status1 > 0 && status2 > 0 && badpoint==0) {
+      // Calculate time difference between the observations
+      timediff = (image_log[i2].MJD - image_log[i1].MJD)*SOLARDAY;
+      // Did helioproj find two solutions in both cases, or only one?
+      num_dist_solutions = status1;
+      if(num_dist_solutions > status2) num_dist_solutions = status2;
+      // Loop over solutions (num_dist_solutions can only be 1 or 2).
+      for(solnct=0; solnct<num_dist_solutions; solnct++) {
+	// Calculate the object's v_inf relative to the sun.
+	targpos1 = targposvec1[solnct];
+	targpos2 = targposvec2[solnct];
+	  
+	targvel1.x = (targpos2.x - targpos1.x)/timediff;
+	targvel1.y = (targpos2.y - targpos1.y)/timediff;
+	targvel1.z = (targpos2.z - targpos1.z)/timediff;
+
+	targpos1.x = 0.5L*targpos2.x + 0.5L*targpos1.x;
+	targpos1.y = 0.5L*targpos2.y + 0.5L*targpos1.y;
+	targpos1.z = 0.5L*targpos2.z + 0.5L*targpos1.z;
+
+	E = 0.5l*dotprod3d(targvel1,targvel1) - GMSUN_KM3_SEC2/vecabs3d(targpos1);
+	if(E>0.0l) v_inf = sqrt(2.0l*E);
+	else if(!isnormal(E)) v_inf=0.0l;
+	else v_inf = -sqrt(-2.0l*E); // This is a bit weird, but we allow the user to
+	                             // set a negative v_inf, if desired, to rule out
+	                             // objects that are barely bound to the sun.
+	if(v_inf>max_v_inf) continue; // Skip further calculation if v_inf is too high.
+      
+	// Perform calculations to check for consistency with the heliocentric
+	// tangential velocity implied by the hypothesis (Ben Engebreth's "SAD tracket" concept).
+	// Relevant quantities: deltavec1[solnct] and deltavec2[solnct] are the observer-centric
+	// distances at the first and second observations in km, heliotanvelvec[i1] and heliotanvelvec[i2]
+	// are the heliocentric tangential velocities implied by the hypothesis at the first and
+	// second observations, and targpos1 and targvel1 are the tracklet position and velocity
+	// at the midpoint of the tracklet.
+
+	// Calculate the heliocentric tangential velocity implied by the tracklet.
+	double heliorad = vecabs3d(targpos1);
+	double radvel = dotprod3d(targpos1,targvel1)/heliorad;
+	heliotanvel3D.x = targvel1.x - radvel*targpos1.x/heliorad;
+	heliotanvel3D.y = targvel1.y - radvel*targpos1.y/heliorad;
+	heliotanvel3D.z = targvel1.z - radvel*targpos1.z/heliorad;
+	double tracklet_tanvel = vecabs3d(heliotanvel3D);
+	double hypothesis_tanvel = 0.5*heliotanvelvec[i1] + 0.5*heliotanvelvec[i2];
+ 
+	// Scale velocity tolerance linearly with observer distance, normalized at 1AU.
+	temp_tanveltol = tanveltol*(0.5*deltavec1[solnct] + 0.5*deltavec2[solnct])/AU_KM;
+	// Revise upward if below a constant 'floor' values that applies within veltol_changerad AU of Earth.
+	if(temp_tanveltol < tanveltol*veltol_changerad) temp_tanveltol = tanveltol*veltol_changerad;
+
+	if(TAN_DEBUG) {
+	  cout << "Hypothesis radvel, tanvel: " << heliovel/SOLARDAY << " " << hypothesis_tanvel << "\n";
+	  cout << "Tracklet radvel, tanvel: " << radvel << " " << tracklet_tanvel << "\n";
+	  cout << "dist, temp_tanveltol: " << (0.5*deltavec1[solnct] + 0.5*deltavec2[solnct])/AU_KM << " " << temp_tanveltol << "\n";
+	}
+	// Compare tracklet vs. hypothesis tangential velocities
+	if(fabs(tracklet_tanvel - hypothesis_tanvel) > temp_tanveltol) {
+	  if(TAN_DEBUG) cout << "Tracklet is SAD: rejected\n";
+	  continue; // Skip further calculation: this is a 'SAD' (Swept Angle Discrepancy)
+	  // tracklet, meaning its heliocentric tangential velocity is inconsistent with that
+	  // implied by the hypothesis.
+	} else if(TAN_DEBUG) cout << "Not a SAD tracklet: accepted\n";
+	
+	// Begin new stuff added to eliminate 'globs'
+	// These are spurious linkages of unreasonably large numbers (typically tens of thousands)
+	// of detections that arise when the hypothetical heliocentric distance at a time when
+	// many observations are acquired is extremely close to, but slightly greater than,
+	// the heliocentric distance of the observer. Then detections over a large area of sky
+	// wind up with projected 3-D positions in an extremely small volume -- and furthermore,
+	// they all have similar velocities because the very small geocentric distance causes
+	// the inferred velocities to be dominated by the observer's motion and the heliocentric
+	// hypothesis, with only a negligible contribution from the on-sky angular velocity.
+	glob_warning=0;
+	if(deltavec1[solnct]<mingeoobs*AU_KM && deltavec2[solnct]<mingeoobs*AU_KM) {
+	  // New-start
+	  // Load target positions
+	  targpos1 = targposvec1[solnct];
+	  targpos2 = targposvec2[solnct];
+	  // Calculate positions relative to observer
+	  targpos1.x -= observerpos1.x;
+	  targpos1.y -= observerpos1.y;
+	  targpos1.z -= observerpos1.z;
+	    
+	  targpos2.x -= observerpos2.x;
+	  targpos2.y -= observerpos2.y;
+	  targpos2.z -= observerpos2.z;
+	    
+	  // Calculate velocity relative to observer
+	  targvel1.x = (targpos2.x - targpos1.x)/timediff;
+	  targvel1.y = (targpos2.y - targpos1.y)/timediff;
+	  targvel1.z = (targpos2.z - targpos1.z)/timediff;
+   
+	  // Calculate impact parameter (past or future).
+	  absvelocity = vecabs3d(targvel1);
+	  impactpar = dotprod3d(targpos1,targvel1)/absvelocity;
+	  // Effectively, we've projected targpos1 onto the velocity
+	  // vector, and impactpar temporarily holds the magnitude of this projection.
+	  // Subtract off the projection of the distance onto the velocity unit vector
+	  targpos1.x -= impactpar*targvel1.x/absvelocity;
+	  targpos1.y -= impactpar*targvel1.y/absvelocity;
+	  targpos1.z -= impactpar*targvel1.z/absvelocity;
+	  // Now targpos1 is the impact parameter vector at projected closest approach.
+	  impactpar  = vecabs3d(targpos1); // Now impactpar is really the impact parameter
+	  if(impactpar<=minimpactpar) {
+	    // The hypothesis implies the object already passed with minimpactpar km of the Earth
+	    // in the likely case that minimpactpar has been set to imply an actual impact,
+	    // it's not our problem anymore.
+	    glob_warning=1;
+	  }
+	}
+	if(!glob_warning) {
+	  targpos1 = targposvec1[solnct];
+	  targpos2 = targposvec2[solnct];
+	  
+	  targvel1.x = (targpos2.x - targpos1.x)/timediff;
+	  targvel1.y = (targpos2.y - targpos1.y)/timediff;
+	  targvel1.z = (targpos2.z - targpos1.z)/timediff;
+
+	  targpos1.x = 0.5L*targpos2.x + 0.5L*targpos1.x;
+	  targpos1.y = 0.5L*targpos2.y + 0.5L*targpos1.y;
+	  targpos1.z = 0.5L*targpos2.z + 0.5L*targpos1.z;
+      
+	  // Integrate orbit to the two reference times.
+	  mjdavg = 0.5l*image_log[i1].MJD + 0.5l*image_log[i2].MJD;
+	  vector <point3d> targposvec;
+	  vector <point3d> targvelvec;
+	  status1 = Kepler_univ_vec(GMSUN_KM3_SEC2,mjdavg,targpos1,targvel1,mjdvec,targposvec,targvelvec,verbose);
+	  //double semimajor_axis, eccen;
+	  //status1 = Keplerint_multipoint_univar(GMSUN_KM3_SEC2, mjdavg, mjdvec, targpos1,targvel1, targposvec,targvelvec,&semimajor_axis, &eccen);
+
+	  if(status1 == 0 && badpoint==0) {
+	    statevec1 = point6dx2(targposvec[0].x,targposvec[0].y,targposvec[0].z,targposvec[1].x,targposvec[1].y,targposvec[1].z,pairct,0);
+	    stateveci = conv_6d_to_6i(statevec1,INTEGERIZING_SCALEFAC);
+	    allstatevecs.push_back(stateveci);
+	  } else {
+	    // Kepler integration encountered unphysical situation.
+	    continue;
+	  }
+	}
+      }
+    } else {
+      badpoint=1;
+      // Heliocentric projection found no physical solution.
+      continue;
+    }
+  }
+  return(0);
+}
+
+
 #undef TAN_DEBUG
+#undef UINT_DEBUG
 
 
 
 // trk2statevec_fgfuncRR: April 26, 2024:
 // Uses Ben Engebreth's heliolincRR algorithm
-int trk2statevec_fgfuncRR(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double max_v_inf, int NotKepler)
+int trk2statevec_fgfuncRR(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double max_v_inf, int NotKepler, int verbose)
 {
   allstatevecs={};
   long imnum = image_log.size();
@@ -34282,7 +37320,7 @@ int trk2statevec_fgfuncRR(const vector <hlimage> &image_log, const vector <track
     point3d endvel = point3d(0l,0l,0l);
     for(imct=0;imct<imnum;imct++) {
       // Integrate the orbit to find the heliocentric distance as a function of time.
-      status1 = Kepler_fg_func_int(GMSUN_KM3_SEC2, mjdref, startpos, startvel, image_log[imct].MJD, endpos, endvel);
+      status1 = Kepler_fg_func_int(GMSUN_KM3_SEC2, mjdref, startpos, startvel, image_log[imct].MJD, endpos, endvel, verbose);
       if(status1!=0) {
 	cerr << "ERROR: Keplerian integration failed for r(t) hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << ", at MJD = " << image_log[imct].MJD << "\n";
 	return(status1);
@@ -34433,7 +37471,7 @@ int trk2statevec_fgfuncRR(const vector <hlimage> &image_log, const vector <track
 // of cluster properties in clusterprobe.cpp. The properties
 // to be examined relate to the optimal clustering radius
 // and sampling interval for heliocentric hypotheses.
-int trk2statevec_clusterprobe(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6dx2> &allstatevecs, double mjdref)
+int trk2statevec_clusterprobe(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6dx2> &allstatevecs, double mjdref, int verbose)
 {
   allstatevecs={};
   long imnum = image_log.size();
@@ -34530,7 +37568,7 @@ int trk2statevec_clusterprobe(const vector <hlimage> &image_log, const vector <t
       
       // Integrate orbit to the reference time.
       mjdavg = 0.5l*image_log[i1].MJD + 0.5l*image_log[i2].MJD;
-      status1 = Kepler_fg_func_int(GMSUN_KM3_SEC2,mjdavg,targpos1,targvel1,mjdref,targpos2,targvel2);
+      status1 = Kepler_fg_func_int(GMSUN_KM3_SEC2,mjdavg,targpos1,targvel1,mjdref,targpos2,targvel2, verbose);
       if(status1 == 0 && badpoint==0) {
 	statevec1 = point6dx2(targpos2.x,targpos2.y,targpos2.z,chartimescale*targvel2.x,chartimescale*targvel2.y,chartimescale*targvel2.z,pairct,0);
 	// Note that the multiplication by chartimescale converts velocities in km/sec
@@ -34557,7 +37595,7 @@ int trk2statevec_clusterprobe(const vector <hlimage> &image_log, const vector <t
 // of cluster properties in clusterprobe.cpp. The properties
 // to be examined relate to the optimal clustering radius
 // and sampling interval for heliocentric hypotheses.
-int trk2statevec_clusterprobe_innea(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6dx2> &allstatevecs, double mjdref)
+int trk2statevec_clusterprobe_innea(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6dx2> &allstatevecs, double mjdref, int verbose)
 {
   allstatevecs={};
   long imnum = image_log.size();
@@ -34659,7 +37697,7 @@ int trk2statevec_clusterprobe_innea(const vector <hlimage> &image_log, const vec
       
       // Integrate orbit to the reference time.
       mjdavg = 0.5l*image_log[i1].MJD + 0.5l*image_log[i2].MJD;
-      status1 = Kepler_fg_func_int(GMSUN_KM3_SEC2,mjdavg,targpos1,targvel1,mjdref,targpos2,targvel2);
+      status1 = Kepler_fg_func_int(GMSUN_KM3_SEC2,mjdavg,targpos1,targvel1,mjdref,targpos2,targvel2,verbose);
       if(status1 == 0 && badpoint==0) {
 	statevec1 = point6dx2(targpos2.x,targpos2.y,targpos2.z,chartimescale*targvel2.x,chartimescale*targvel2.y,chartimescale*targvel2.z,pairct,0);
 	// Note that the multiplication by chartimescale converts velocities in km/sec
@@ -34683,6 +37721,8 @@ int trk2statevec_clusterprobe_innea(const vector <hlimage> &image_log, const vec
 // trk2statevec_univar: September 05, 2023
 int trk2statevec_univar(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double max_v_inf, int NotKepler, int verbose)
 {
+
+  cout << "In trk2statevec_univar\n";
   allstatevecs={};
   long imnum = image_log.size();
   long imct=0;
@@ -34723,6 +37763,7 @@ int trk2statevec_univar(const vector <hlimage> &image_log, const vector <trackle
   // input quadratic approximation.
   heliodistvec={};
   if(NotKepler) {
+    cout << "Using Taylor Series interpretation of hypotheses\n";
     for(imct=0;imct<imnum;imct++) {
       delta1 = image_log[imct].MJD - mjdref;
       heliodistvec.push_back(heliodist + heliovel*delta1 + 0.5*helioacc*delta1*delta1);
@@ -34732,6 +37773,7 @@ int trk2statevec_univar(const vector <hlimage> &image_log, const vector <trackle
       }
     }
   } else {
+    cout << "Using Keplerian interpretation of hypotheses\n";
     // Use Matt Holman's idea of getting heliocentric distance r(t) from an
     // actual Keplerian orbit. It turns out that the same parameters (r, r-dot, and r-double-dot)
     // that specify the old three-term Taylor Series also uniquely determine the Keplerian
@@ -35160,7 +38202,7 @@ int trk2statevec_univarRR(const vector <hlimage> &image_log, const vector <track
 // because they are better handled by the radial hypotheses
 // of heliolinc. After all, heliovane is a niche solution
 // for the cases where heliolinc fails.
-int trk2statevane_fgfunc(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double lambda0, double lambda_dot, double lambda_ddot, double chartimescale, double minsunelong, double maxsunelong, double min_proj_sine, double maxheliodist, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double max_v_inf)
+int trk2statevane_fgfunc(const vector <hlimage> &image_log, const vector <tracklet> &tracklets, double lambda0, double lambda_dot, double lambda_ddot, double chartimescale, double minsunelong, double maxsunelong, double min_proj_sine, double maxheliodist, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double max_v_inf, int verbose)
 {
   allstatevecs={};
   long imnum = image_log.size();
@@ -35317,7 +38359,7 @@ int trk2statevane_fgfunc(const vector <hlimage> &image_log, const vector <trackl
       if(!glob_warning) {
 	// Integrate orbit to the reference time.
 	mjdavg = 0.5l*image_log[i1].MJD + 0.5l*image_log[i2].MJD;
-	status1 = Kepler_fg_func_int(GMSUN_KM3_SEC2,mjdavg,targposmean,targvel1,mjdref,targpos2,targvel2);
+	status1 = Kepler_fg_func_int(GMSUN_KM3_SEC2,mjdavg,targposmean,targvel1,mjdref,targpos2,targvel2,verbose);
 	if(status1 == 0 && badpoint==0) {
 	  statevec1 = point6dx2(targpos2.x,targpos2.y,targpos2.z,chartimescale*targvel2.x,chartimescale*targvel2.y,chartimescale*targvel2.z,pairct,0);
 	  // Note that the multiplication by chartimescale converts velocities in km/sec
@@ -36115,7 +39157,7 @@ point3d earthpos01(const vector <EarthState> &earthpos, double mjd)
   }
 }
 
-int form_clusters(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, int verbose)
+int form_clusters(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
 {
   int geobinct = 0;
   long detnum = detvec.size();
@@ -36231,7 +39273,8 @@ int form_clusters(const vector <point6ix2> &allstatevecs, const vector <hldet> &
 	for(long i=0; i<9; i++) {
 	  if(DEBUG >= 2) cout << "scaling rmsvec point " << i << " out of " << kdclust[clusterct].rmsvec.size() << "\n";
 	  if(DEBUG >= 2) cout << "RMS = " << kdclust[clusterct].rmsvec[i];
-	  kdclust[clusterct].rmsvec[i] *= REF_GEODIST/georadcen;
+	  if(georadcen >= clustchangerad) kdclust[clusterct].rmsvec[i] *= REF_GEODIST/georadcen;
+	  else kdclust[clusterct].rmsvec[i] *= REF_GEODIST/clustchangerad;
 	  if(DEBUG >= 2) cout << ", scales to " << kdclust[clusterct].rmsvec[i] << "\n";
 	}
 	// Note that RMS is scaled down for more distant clusters, to
@@ -36244,7 +39287,6 @@ int form_clusters(const vector <point6ix2> &allstatevecs, const vector <hldet> &
 	pointind = {};
 	for(long i=0; i<kdclust[clusterct].numpoints; i++) {
 	  pairct=kdvec[kdclust[clusterct].clustind[i]].point.i1;
-	  if(DEBUG >= 2) cout << "Looking up tracklet " << pairct << " out of " << tracklets.size() << "\n";
 	  pointjunk = {};
 	  pointjunk = tracklet_lookup(trk2det, pairct);
 	  if(pointjunk.size()<=0) {
@@ -36288,7 +39330,7 @@ int form_clusters(const vector <point6ix2> &allstatevecs, const vector <hldet> &
 	// Count steps large enough to suggest a daytime period between nights.
 	daysteps=0;	
 	for(long i=0; i<long(mjdstep.size()); i++) {
-	  if(mjdstep[i]>NIGHTSTEP) daysteps++;
+	  if(mjdstep[i]>nightstep) daysteps++;
 	}
 	obsnights = daysteps+1;
 	// Does cluster pass the criteria for a linked detection?
@@ -36354,7 +39396,7 @@ int form_clusters(const vector <point6ix2> &allstatevecs, const vector <hldet> &
 // form_clusters_lowmem: July 11, 2025:
 // Uses the DBSCAN algorithm, like form_clusters, but
 // with lower memory output.
-int form_clusters_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, int verbose)
+int form_clusters_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
 {
   long detnum = detvec.size();
   if(detnum>=UINT_MAX) {
@@ -36471,7 +39513,8 @@ int form_clusters_lowmem(const vector <point6ix2> &allstatevecs, const vector <h
 	for(i=0; i<9; i++) {
 	  if(DEBUG >= 2) cout << "scaling rmsvec point " << i << " out of " << kdclust[clusterct].rmsvec.size() << "\n";
 	  if(DEBUG >= 2) cout << "RMS = " << kdclust[clusterct].rmsvec[i];
-	  kdclust[clusterct].rmsvec[i] *= REF_GEODIST/georadcen;
+	  if(georadcen >= clustchangerad) kdclust[clusterct].rmsvec[i] *= REF_GEODIST/georadcen;
+	  else kdclust[clusterct].rmsvec[i] *= REF_GEODIST/clustchangerad;
 	  if(DEBUG >= 2) cout << ", scales to " << kdclust[clusterct].rmsvec[i] << "\n";
 	}
 	// Note that RMS is scaled down for more distant clusters, to
@@ -36484,7 +39527,6 @@ int form_clusters_lowmem(const vector <point6ix2> &allstatevecs, const vector <h
 	vector <unsigned int> pointind_ui;
 	for(i=0; i<kdclust[clusterct].numpoints; i++) {
 	  pairct=kdvec[kdclust[clusterct].clustind[i]].point.i1;
-	  if(DEBUG >= 2) cout << "Looking up tracklet " << pairct << " out of " << tracklets.size() << "\n";
 	  vector <long> pointjunk;
 	  pointjunk = tracklet_lookup(trk2det, pairct);
 	  if(pointjunk.size()<=0) {
@@ -36530,7 +39572,7 @@ int form_clusters_lowmem(const vector <point6ix2> &allstatevecs, const vector <h
 	// Count steps large enough to suggest a daytime period between nights.
 	daysteps=0;	
 	for(i=0; i<long(mjdstep.size()); i++) {
-	  if(mjdstep[i]>NIGHTSTEP) daysteps++;
+	  if(mjdstep[i]>nightstep) daysteps++;
 	}
 	obsnights = daysteps+1;
 	// Does cluster pass the criteria for a linked detection?
@@ -36585,11 +39627,475 @@ int form_clusters_lowmem(const vector <point6ix2> &allstatevecs, const vector <h
   return(0);
 }
 
+int form_clusters_uint(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <uint_pair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
+{
+  int geobinct = 0;
+  long detnum = detvec.size();
+  double georadcen = mingeodist*intpowD(geologstep,geobinct);
+  double georadmin=0l;
+  double georadmax=0l;
+  vector <point6ix2> binstatevecs;
+  point6dx2 statevec1 = point6dx2(0l,0l,0l,0l,0l,0l,0,0);
+  point6ix2 stateveci = point6ix2(0,0,0,0,0,0,0,0);
+  double geodist=0l;
+  long kdroot=0;
+  long splitpoint=0;
+  int gridpoint_clusternum=0;
+  KD_point6ix2 kdpoint = KD_point6ix2(stateveci,-1,-1,1,-1);
+  vector <KD_point6ix2> kdvec;
+  vector <KD6i_clust> kdclust;
+  vector <long> pointind;
+  vector <long> pointjunk;
+  vector <double> clustmjd;
+  vector <double> mjdstep;
+  double timespan=0;
+  int daysteps = 0;
+  int obsnights = 0;
+  longpair c2d = longpair(0,0);
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  double posRMS = 0.0l;
+  double velRMS = 0.0l;
+  double totRMS = 0.0l;
+  double astromRMS = 0.0l;
+  int pairnum = 0;
+  int uniquepoints = 0;
+  double posX, posY, posZ, velX, velY, velZ;
+  posX = posY = posZ = velX = velY = velZ = 0.0l;
+  double orbit_a, orbit_e, orbit_incl, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ;
+  orbit_a = orbit_e = orbit_incl = orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
+  long orbit_eval_count = 0;
+  long clusterct=0;
+  double clustmetric=0.0l;
+  string rating;
+  int pairct=0;
+  int j=0;
+  double dgnum;
+  int georadct,georadnum;
+  double clustrad = 0.0l;
+  
+  // Loop over geocentric bins, selecting the subset of state-vectors
+  // in each bin, and running DBSCAN only on those, with clustering radius
+  // adjusted accordingly.
+
+  // Sanity check the logarithmic geocentric distance framework to avoid a
+  // possible infinite loop.
+  dgnum = log(maxgeodist/mingeodist)/log(geologstep);
+  if(!isnormal(dgnum) || dgnum<0.0l) {
+    cerr << "ERROR: geocentric distance parameters led to nonsense:\n";
+    cerr << "mingeodist, maxgeodist, geologstep = " << maxgeodist << ", " << mingeodist << ", " << geologstep << "\n";
+    cerr << "dgnum = " << dgnum << "\n";
+    return(10);
+  } else georadnum = ceil(dgnum)+1;
+
+  georadct = 0;
+  while(georadcen<=maxgeodist && georadct<=georadnum) {
+    georadct++;
+    georadcen = mingeodist*intpowD(geologstep,geobinct);
+    cout << "Geocentric distance step " << georadct << ", bin-center distance is " << georadcen << " AU\n";
+    georadmin = georadcen/geologstep;
+    georadmax = georadcen*geologstep;
+    // Load new array of state vectors, limited to those in the current geocentric bin
+    binstatevecs={};
+    for(long i=0; i<long(allstatevecs.size()); i++) {
+      // Reverse integerization of the state vector.
+      // This is only possible to a crude approximation, of course.
+      statevec1 = conv_6i_to_6d(allstatevecs[i],INTEGERIZING_SCALEFAC);
+      // Calculate geocentric distance in AU
+      geodist = sqrt(DSQUARE(statevec1.x-Earthrefpos.x) + DSQUARE(statevec1.y-Earthrefpos.y) + DSQUARE(statevec1.z-Earthrefpos.z))/AU_KM;
+      if(geodist >= georadmin && geodist <= georadmax) {
+	// This state vector is in the geocentric radius bin we are currently considering.
+	// Add it to binstatevecs.
+	binstatevecs.push_back(allstatevecs[i]);
+      }
+    }
+    if(verbose>=1) cout << "Found " << binstatevecs.size() << " state vectors in geocentric bin from " << georadmin << " to " << georadmax << " AU\n";
+    if(binstatevecs.size()<dbscan_npt) {
+      geobinct++;
+      continue; // No clusters possible, skip to the next step.
+    } else {      
+      kdvec={};
+      kdroot = splitpoint = 0;
+      splitpoint=medind_6ix2(binstatevecs,1);
+      kdpoint = KD_point6ix2(binstatevecs[splitpoint],-1,-1,1,-1);
+      kdvec.push_back(kdpoint);
+      kdtree_6i01(binstatevecs,1,splitpoint,kdroot,kdvec);
+      if(verbose>=1) cout << "Created a KD tree with " << kdvec.size() << " branches\n";
+
+      kdclust={};
+      if(georadcen >= clustchangerad) {
+	// cluster radius scales linearly with geocentric distance.
+	clustrad = cluster_radius*(georadcen/REF_GEODIST);
+      }
+      else {
+	// cluster radius remains fixed at the minimum value,
+	// in order to make sure it does not get excessively small
+	// for very small geocentric radii.
+	clustrad = cluster_radius*(clustchangerad/REF_GEODIST);
+      }
+ 
+      long clusternum = DBSCAN_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, dbscan_npt, INTEGERIZING_SCALEFAC, kdclust, verbose);
+      if(verbose>=1) cout << "DBSCAN_6i01 finished, with " << clusternum << " = " << kdclust.size() << " clusters found\n";
+      if(clusternum<0) return(8);
+      for(clusterct=0; clusterct<long(kdclust.size()); clusterct++) {
+	// Scale cluster RMS down to reference geocentric distance
+	if(DEBUG >= 2) cout << "scaling kdclust rms for cluster " << clusterct << " out of " << kdclust.size() << "\n";
+	fflush(stdout);
+	for(long i=0; i<9; i++) {
+	  if(DEBUG >= 2) cout << "scaling rmsvec point " << i << " out of " << kdclust[clusterct].rmsvec.size() << "\n";
+	  if(DEBUG >= 2) cout << "RMS = " << kdclust[clusterct].rmsvec[i];
+	  if(georadcen >= clustchangerad) kdclust[clusterct].rmsvec[i] *= REF_GEODIST/georadcen;
+	  else kdclust[clusterct].rmsvec[i] *= REF_GEODIST/clustchangerad;
+	  if(DEBUG >= 2) cout << ", scales to " << kdclust[clusterct].rmsvec[i] << "\n";
+	}
+	// Note that RMS is scaled down for more distant clusters, to
+	// avoid bias against them in post-processing.
+	
+	// Map cluster to individual detections.
+	// create vector of unique detection indices.
+	if(DEBUG >= 1) cout << "Loading pointind for " << kdclust[clusterct].numpoints << " of cluster #" << clusterct <<  " out of " << kdclust.size() << "\n";
+	fflush(stdout);
+	vector <unsigned int> pointind;
+	vector <unsigned int> pointjunk;
+	for(long i=0; i<kdclust[clusterct].numpoints; i++) {
+	  pairct=kdvec[kdclust[clusterct].clustind[i]].point.i1;
+	  pointjunk = {};
+	  pointjunk = uint_lookup(trk2det, pairct);
+	  if(pointjunk.size()<=0) {
+	    cerr << "ERROR: no detections found for tracklet " << pairct << "\n";
+	    return(3);
+	  }
+	  if(DEBUG >= 2) cout << "Found " << pointjunk.size() << " detections for tracklet " << pairct << "\n";
+	  for(j=0; j<long(pointjunk.size()); j++) {
+	    pointind.push_back(pointjunk[j]);
+	  }
+	}
+	// Sort vector of detection indices
+	sort(pointind.begin(), pointind.end());
+	// Cull out duplicate entries
+	pointjunk = pointind;
+	pointind={};
+	pointind.push_back(pointjunk[0]);
+	for(long i=1; i<long(pointjunk.size()); i++) {
+	  if(pointjunk[i]!=pointjunk[i-1]) pointind.push_back(pointjunk[i]);
+	}
+	uniquepoints = pointind.size();
+
+	// Load vector of detection MJD's
+	clustmjd = {};
+	for(long i=0; i<long(pointind.size()); i++) {
+	  if(pointind[i]<0 || pointind[i]>=detnum) {
+	    cerr << "ERROR: form_clusters trying to reference point " << pointind[i] << " of detvec! Range is 0 --" << detnum-1 << "\n";
+	    return(1);
+	  }
+	  clustmjd.push_back(detvec[pointind[i]].MJD);
+	}
+
+	// Sort vector of MJD's
+	sort(clustmjd.begin(), clustmjd.end());
+	timespan = clustmjd[clustmjd.size()-1] - clustmjd[0];
+	// Load vector of MJD steps
+	mjdstep={};
+	for(long i=1; i<long(clustmjd.size()); i++) {
+	  mjdstep.push_back(clustmjd[i]-clustmjd[i-1]);
+	}
+	// Count steps large enough to suggest a daytime period between nights.
+	daysteps=0;	
+	for(long i=0; i<long(mjdstep.size()); i++) {
+	  if(mjdstep[i]>nightstep) daysteps++;
+	}
+	obsnights = daysteps+1;
+	// Does cluster pass the criteria for a linked detection?
+	if(timespan >= mintimespan && obsnights >= minobsnights) {
+	  if(verbose >= 1) cout << "Loading good cluster " << realclusternum << " with timespan " << timespan << " and obsnights " << obsnights << "\n";
+	  fflush(stdout);
+	  if(verbose >= 1) cout << "Cluster passes discovery criteria: will be designated as cluster " << realclusternum << "\n";
+	  // Check whether cluster is composed purely of detections from
+	  // a single simulated object (i.e., would be a real discovery) or is a mixture
+	  // of detections from two or more different simulated objects (i.e., spurious).
+	  rating="PURE";
+	  for(long i=1; i<long(pointind.size()); i++) {
+	    if(stringnmatch01(detvec[pointind[i]].idstring,detvec[pointind[i-1]].idstring,SHORTSTRINGLEN)!=0) rating="MIXED";
+	  }
+	  if(DEBUG >= 1) cout << "Rating is found to be " << rating << "\n";
+	  fflush(stdout);
+	  // Write all individual detections in this cluster to the clust2det array
+	  for(long i=0; i<long(pointind.size()); i++) {
+	    c2d = longpair(realclusternum,pointind[i]);
+	    clust2det.push_back(c2d);
+	  }
+
+	  // Calculate values for the statistics in the output array (class hlclust) that have
+	  // not been caculated already.
+	  clustmetric = double(pointind.size())*double(obsnights)*timespan/kdclust[clusterct].rmsvec[8];
+	  // Note contents of rmsvec: [0] xrms, [1] yrms, [2] zrms, [3] vxrms, [4] vyrms, [5] vzrms,
+	  // [6] overall position rms, [7] overall velocity rms, [8] overall rms
+	  posRMS = kdclust[clusterct].rmsvec[6];
+	  velRMS = kdclust[clusterct].rmsvec[7];
+	  totRMS = kdclust[clusterct].rmsvec[8];
+	  pairnum = kdclust[clusterct].numpoints; // This is the original total number of pairs/tracklets assigned
+	                                          // to this cluster, which might have a lot of overlap in terms of 
+	                                          // individual detections (of which the non-overlapping count has
+	                                          // already been saved in 'uniquepoints').
+	  // Now save the values of the mean state vectors at the reference time.
+	  posX = kdclust[clusterct].meanvec[0];
+	  posY = kdclust[clusterct].meanvec[1];
+	  posZ = kdclust[clusterct].meanvec[2];
+	  velX = kdclust[clusterct].meanvec[3]/chartimescale;
+	  velY = kdclust[clusterct].meanvec[4]/chartimescale;
+	  velZ = kdclust[clusterct].meanvec[5]/chartimescale;
+	  // Some of the statistics in the hlclust class relate to orbit-fitting,
+	  // and are meant for later use. For now, set them all to zero.
+	  astromRMS = orbit_a = orbit_e = orbit_incl = 0.0l;
+	  orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
+	  orbit_eval_count = 0;
+	  // Write overall cluster statistics to the outclust array.	
+	  onecluster = hlclust(realclusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, clustmetric, rating, reference_MJD, heliodist/AU_KM, heliovel/SOLARDAY, helioacc*1000.0/SOLARDAY/SOLARDAY, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_incl, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
+	  // cout << "kdload velrms: " << velRMS << " " << kdclust[clusterct].rmsvec[7] << " " << onecluster.velRMS << "\n";
+	  outclust.push_back(onecluster);
+	  realclusternum++;
+	  gridpoint_clusternum++;
+	}
+      }
+    }
+    // Move on to the next bin in geocentric distance
+    geobinct++;
+  }
+  if(verbose>=0) cout << "This hypothesis: " << gridpoint_clusternum << " linkages; total now " << realclusternum << " linkages totalling " << clust2det.size() << " detections.\n";
+  return(0);
+}
+
+// form_clusters_uint_lowmem: September 15, 2026:
+// Uses the DBSCAN algorithm, like form_clusters_uint, but
+// with lower memory output. 
+int form_clusters_uint_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <uint_pair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
+{
+  long detnum = detvec.size();
+  if(detnum>=UINT_MAX) {
+    cerr << "ERROR: form_clusters_lowmem called with too many detections:\n";
+    cerr << "received " << detnum << " detections when the maximum is " << UINT_MAX << "\n";
+    return(1);
+  }
+  
+  int geobinct = 0;
+  double georadcen = mingeodist*intpowD(geologstep,geobinct);
+  double georadmin=0l;
+  double georadmax=0l;
+  vector <point6ix2> binstatevecs;
+  point6dx2 statevec1 = point6dx2(0l,0l,0l,0l,0l,0l,0,0);
+  point6ix2 stateveci = point6ix2(0,0,0,0,0,0,0,0);
+  double geodist=0l;
+  long kdroot=0;
+  long splitpoint=0;
+  int gridpoint_clusternum=0;
+  KD_point6ix2 kdpoint = KD_point6ix2(stateveci,-1,-1,1,-1);
+  vector <KD_point6ix2> kdvec;
+  vector <KD6i_clust> kdclust;
+  vector <double> clustmjd;
+  vector <double> mjdstep;
+  double timespan=0;
+  int daysteps = 0;
+  int obsnights = 0;
+  uint_pair c2d = uint_pair(0,0);
+  shortclust onecluster = shortclust(0, 0.0, 0.0, 0, 0.0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+  float posRMS = 0.0;
+  float totRMS = 0.0;
+  int pairnum = 0;
+  float posX, posY, posZ, velX, velY, velZ;
+  posX = posY = posZ = velX = velY = velZ = 0.0;
+  long clusterct=0;
+  double clustmetric=0.0l;
+  string rating;
+  int pairct=0;
+  long i=0;
+  long j=0;
+  double dgnum;
+  int georadct,georadnum;
+  double clustrad = 0.0l;
+  long uniquepoints=0;
+  vector <unsigned int> pointind;
+
+  // Loop over geocentric bins, selecting the subset of state-vectors
+  // in each bin, and running DBSCAN only on those, with clustering radius
+  // adjusted accordingly.
+
+  // Sanity check the logarithmic geocentric distance framework to avoid a
+  // possible infinite loop.
+  dgnum = log(maxgeodist/mingeodist)/log(geologstep);
+  if(!isnormal(dgnum) || dgnum<0.0l) {
+    cerr << "ERROR: geocentric distance parameters led to nonsense:\n";
+    cerr << "mingeodist, maxgeodist, geologstep = " << maxgeodist << ", " << mingeodist << ", " << geologstep << "\n";
+    cerr << "dgnum = " << dgnum << "\n";
+    return(10);
+  } else georadnum = ceil(dgnum)+1;
+
+  georadct = 0;
+  while(georadcen<=maxgeodist && georadct<=georadnum) {
+    georadct++;
+    georadcen = mingeodist*intpowD(geologstep,geobinct);
+    cout << "Geocentric distance step " << georadct << ", bin-center distance is " << georadcen << " AU\n";
+    georadmin = georadcen/geologstep;
+    georadmax = georadcen*geologstep;
+    // Load new array of state vectors, limited to those in the current geocentric bin
+    binstatevecs={};
+    for(i=0; i<long(allstatevecs.size()); i++) {
+      // Reverse integerization of the state vector.
+      // This is only possible to a crude approximation, of course.
+      statevec1 = conv_6i_to_6d(allstatevecs[i],INTEGERIZING_SCALEFAC);
+      // Calculate geocentric distance in AU
+      geodist = sqrt(DSQUARE(statevec1.x-Earthrefpos.x) + DSQUARE(statevec1.y-Earthrefpos.y) + DSQUARE(statevec1.z-Earthrefpos.z))/AU_KM;
+      if(geodist >= georadmin && geodist <= georadmax) {
+	// This state vector is in the geocentric radius bin we are currently considering.
+	// Add it to binstatevecs.
+	binstatevecs.push_back(allstatevecs[i]);
+      }
+    }
+    if(verbose>=1) cout << "Found " << binstatevecs.size() << " state vectors in geocentric bin from " << georadmin << " to " << georadmax << " AU\n";
+    if(binstatevecs.size()<dbscan_npt) {
+      geobinct++;
+      continue; // No clusters possible, skip to the next step.
+    } else {      
+      kdvec={};
+      kdroot = splitpoint = 0;
+      splitpoint=medind_6ix2(binstatevecs,1);
+      kdpoint = KD_point6ix2(binstatevecs[splitpoint],-1,-1,1,-1);
+      kdvec.push_back(kdpoint);
+      kdtree_6i01(binstatevecs,1,splitpoint,kdroot,kdvec);
+      if(verbose>=1) cout << "Created a KD tree with " << kdvec.size() << " branches\n";
+
+      kdclust={};
+      if(georadcen >= clustchangerad) {
+	// cluster radius scales linearly with geocentric distance.
+	clustrad = cluster_radius*(georadcen/REF_GEODIST);
+      }
+      else {
+	// cluster radius remains fixed at the minimum value,
+	// in order to make sure it does not get excessively small
+	// for very small geocentric radii.
+	clustrad = cluster_radius*(clustchangerad/REF_GEODIST);
+      }
+ 
+      long clusternum = DBSCAN_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, dbscan_npt, INTEGERIZING_SCALEFAC, kdclust, verbose);
+      if(verbose>=1) cout << "DBSCAN_6i01 finished, with " << clusternum << " = " << kdclust.size() << " clusters found\n";
+      if(clusternum<0) return(8);
+      for(clusterct=0; clusterct<long(kdclust.size()); clusterct++) {
+	// Scale cluster RMS down to reference geocentric distance
+	if(DEBUG >= 2) cout << "scaling kdclust rms for cluster " << clusterct << " out of " << kdclust.size() << "\n";
+	fflush(stdout);
+	for(i=0; i<9; i++) {
+	  if(DEBUG >= 2) cout << "scaling rmsvec point " << i << " out of " << kdclust[clusterct].rmsvec.size() << "\n";
+	  if(DEBUG >= 2) cout << "RMS = " << kdclust[clusterct].rmsvec[i];
+	  if(georadcen >= clustchangerad) kdclust[clusterct].rmsvec[i] *= REF_GEODIST/georadcen;
+	  else kdclust[clusterct].rmsvec[i] *= REF_GEODIST/clustchangerad;
+	  if(DEBUG >= 2) cout << ", scales to " << kdclust[clusterct].rmsvec[i] << "\n";
+	}
+	// Note that RMS is scaled down for more distant clusters, to
+	// avoid bias against them in post-processing.
+	
+	// Map cluster to individual detections.
+	// create vector of unique detection indices.
+	if(DEBUG >= 1) cout << "Loading pointind for " << kdclust[clusterct].numpoints << " of cluster #" << clusterct <<  " out of " << kdclust.size() << "\n";
+	fflush(stdout);
+	pointind={};
+	for(i=0; i<kdclust[clusterct].numpoints; i++) {
+	  pairct=kdvec[kdclust[clusterct].clustind[i]].point.i1;
+	  vector <unsigned int> pointjunk;
+	  pointjunk = uint_lookup(trk2det, pairct);
+	  if(pointjunk.size()<=0) {
+	    cerr << "ERROR: no detections found for tracklet " << pairct << "\n";
+	    return(3);
+	  }
+	  if(DEBUG >= 2) cout << "Found " << pointjunk.size() << " detections for tracklet " << pairct << "\n";
+	  for(int j=0; j<long(pointjunk.size()); j++) {
+	    pointind.push_back(pointjunk[j]);
+	  }
+	}
+	// Sort vector of detection indices
+	sort(pointind.begin(), pointind.end());
+	// Cull out duplicate entries in pointind
+	for(i=long(pointind.size()-1); i>0; i--) {
+	  if(pointind[i]==pointind[i-1]) pointind.erase(pointind.begin()+i);
+	}
+	uniquepoints = pointind.size();
+	// Load vector of detection MJD's
+	clustmjd = {};
+	for(i=0; i<uniquepoints; i++) {
+	  if(pointind[i]<0 || pointind[i]>=detnum) {
+	    cerr << "ERROR: form_clusters trying to reference point " << pointind[i] << " of detvec! Range is 0 --" << detnum-1 << "\n";
+	    return(1);
+	  }
+	  clustmjd.push_back(detvec[pointind[i]].MJD);
+	}
+
+	// Sort vector of MJD's
+	sort(clustmjd.begin(), clustmjd.end());
+	timespan = clustmjd[clustmjd.size()-1] - clustmjd[0];
+	// Load vector of MJD steps
+	mjdstep={};
+	for(i=1; i<long(clustmjd.size()); i++) {
+	  mjdstep.push_back(clustmjd[i]-clustmjd[i-1]);
+	}
+	// Count steps large enough to suggest a daytime period between nights.
+	daysteps=0;	
+	for(i=0; i<long(mjdstep.size()); i++) {
+	  if(mjdstep[i]>nightstep) daysteps++;
+	}
+	obsnights = daysteps+1;
+	// Does cluster pass the criteria for a linked detection?
+	if(timespan >= mintimespan && obsnights >= minobsnights) {
+	  if(verbose >= 1) cout << "Loading good cluster " << realclusternum << " with timespan " << timespan << " and obsnights " << obsnights << "\n";
+	  fflush(stdout);
+	  if(verbose >= 1) cout << "Cluster passes discovery criteria: will be designated as cluster " << realclusternum << "\n";
+	  
+	  // Write all individual detections in this cluster to the clust2det array
+	  unsigned int rcn=0;
+	  if(realclusternum>=0 && realclusternum<UINT_MAX) rcn = realclusternum;
+	  else {
+	    cerr << "ERROR in form_clusters_lowmem: out-of-range long to int conversion\n";
+	    cerr << "Attempted to convert long realclusternum = " << realclusternum << " into an unsigned int\n";
+	    return(2);
+	  }
+	  for(j=0; j<long(pointind.size()); j++) {
+	    c2d = uint_pair(rcn,pointind[j]);
+	    clust2det.push_back(c2d);
+	  }
+
+	  // Calculate values for the statistics in the output array (class hlclust) that have
+	  // not been caculated already.
+	  clustmetric = double(pointind.size())*double(obsnights)*timespan/kdclust[clusterct].rmsvec[8];
+	  // Note contents of rmsvec: [0] xrms, [1] yrms, [2] zrms, [3] vxrms, [4] vyrms, [5] vzrms,
+	  // [6] overall position rms, [7] overall velocity rms, [8] overall rms
+	  posRMS = kdclust[clusterct].rmsvec[6];
+	  totRMS = kdclust[clusterct].rmsvec[8];
+	  pairnum = kdclust[clusterct].numpoints; // This is the original total number of pairs/tracklets assigned
+	                                          // to this cluster, which might have a lot of overlap in terms of 
+	                                          // individual detections (of which the non-overlapping count has
+	                                          // already been saved in 'uniquepoints').
+	  // Now save the values of the mean state vectors at the reference time.
+	  posX = kdclust[clusterct].meanvec[0];
+	  posY = kdclust[clusterct].meanvec[1];
+	  posZ = kdclust[clusterct].meanvec[2];
+	  velX = kdclust[clusterct].meanvec[3]/chartimescale;
+	  velY = kdclust[clusterct].meanvec[4]/chartimescale;
+	  velZ = kdclust[clusterct].meanvec[5]/chartimescale;
+	  // Write overall cluster statistics to the outclust2 array.	
+	  onecluster = shortclust(realclusternum, posRMS, totRMS, pairnum, clustmetric, hypindex, posX, posY, posZ, velX, velY, velZ);
+	  outclust.push_back(onecluster);
+	  realclusternum++;
+	  gridpoint_clusternum++;
+	}
+      }
+    }
+    // Move on to the next bin in geocentric distance
+    geobinct++;
+  }
+  if(verbose>=0) cout << "This hypothesis: " << gridpoint_clusternum << " linkages; total now " << realclusternum << " linkages totalling " << clust2det.size() << " detections.\n";
+  return(0);
+}
 
 // form_clusters_kd: December 04, 2023: 
 // Like form_clusters, but uses a simple KD range-query,
 // rather than DBSCAN, to create clusters.
-int form_clusters_kd(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, int verbose)
+int form_clusters_kd(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
 {
   int geobinct = 0;
   long detnum = detvec.size();
@@ -36750,7 +40256,7 @@ int form_clusters_kd(const vector <point6ix2> &allstatevecs, const vector <hldet
 	// Count steps large enough to suggest a daytime period between nights.
 	daysteps=0;	
 	for(long i=0; i<long(mjdstep.size()); i++) {
-	  if(mjdstep[i]>NIGHTSTEP) daysteps++;
+	  if(mjdstep[i]>nightstep) daysteps++;
 	}
 	obsnights = daysteps+1;
 	// Does cluster pass the criteria for a linked detection?
@@ -36921,7 +40427,7 @@ long blend_vector(vector<long> vec)
 // form_clusters_kd2: December 04, 2023: 
 // Like form_clusters_kd, but does filtering
 // to remove exact duplicates.
-int form_clusters_kd2(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, int verbose)
+int form_clusters_kd2(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
 {
   long detnum = detvec.size();
   double georadmin=0l;
@@ -37114,7 +40620,7 @@ int form_clusters_kd2(const vector <point6ix2> &allstatevecs, const vector <hlde
 	// Count steps large enough to suggest a daytime period between nights.
 	daysteps=0;	
 	for(long i=0; i<long(mjdstep.size()); i++) {
-	  if(mjdstep[i]>NIGHTSTEP) daysteps++;
+	  if(mjdstep[i]>nightstep) daysteps++;
 	}
 	obsnights = daysteps+1;
 	// Does cluster pass the criteria for a linked detection?
@@ -37185,7 +40691,7 @@ int form_clusters_kd2(const vector <point6ix2> &allstatevecs, const vector <hlde
 // intelligently than form_clusters_kd2, by not
 // invoking the .insert function, which is evil because
 // it's agonizingly slow for long vectors.
-int form_clusters_kd3(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, int verbose)
+int form_clusters_kd3(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
 {
   long detnum = detvec.size();
   double georadmin=0l;
@@ -37384,7 +40890,7 @@ int form_clusters_kd3(const vector <point6ix2> &allstatevecs, const vector <hlde
 	// Count steps large enough to suggest a daytime period between nights.
 	daysteps=0;	
 	for(long i=0; i<long(mjdstep.size()); i++) {
-	  if(mjdstep[i]>NIGHTSTEP) daysteps++;
+	  if(mjdstep[i]>nightstep) daysteps++;
 	}
 	obsnights = daysteps+1;
 	// Does cluster pass the criteria for a linked detection?
@@ -37464,7 +40970,7 @@ int form_clusters_kd3(const vector <point6ix2> &allstatevecs, const vector <hlde
 // geocentric distance in AU within which the clustering
 // radius will no longer change with geocentric distance.
 // Original behavior is recovered for clustchangerad = 0.0;
-int form_clusters_kd4(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, int verbose)
+int form_clusters_kd4(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
 {
   long detnum = detvec.size();
   double georadmin=0l;
@@ -37474,8 +40980,8 @@ int form_clusters_kd4(const vector <point6ix2> &allstatevecs, const vector <hlde
   double geodist=0l;
   long kdroot=0;
   long splitpoint=0;
-  int gridpoint_clusternum=0;
-  int geobin_clusternum=0;
+  long gridpoint_clusternum=0;
+  long geobin_clusternum=0;
   KD_point6ix2 kdpoint = KD_point6ix2(stateveci,-1,-1,1,-1);
   double timespan=0;
   int daysteps = 0;
@@ -37486,8 +40992,8 @@ int form_clusters_kd4(const vector <point6ix2> &allstatevecs, const vector <hlde
   double velRMS = 0.0l;
   double totRMS = 0.0l;
   double astromRMS = 0.0l;
-  int pairnum = 0;
-  int uniquepoints = 0;
+  long pairnum = 0;
+  long uniquepoints = 0;
   double posX, posY, posZ, velX, velY, velZ;
   posX = posY = posZ = velX = velY = velZ = 0.0l;
   double orbit_a, orbit_e, orbit_incl, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ;
@@ -37497,9 +41003,9 @@ int form_clusters_kd4(const vector <point6ix2> &allstatevecs, const vector <hlde
   long clusterct2=0;
   double clustmetric=0.0l;
   string rating;
-  int pairct=0;
+  long pairct=0;
   double dgnum;
-  int georadct,georadnum;
+  long georadct,georadnum;
   georadct=georadnum=0;
   double georadcen = mingeodist*intpowD(geologstep,georadct);
   vector <hlclust> outclust2;
@@ -37586,7 +41092,6 @@ int form_clusters_kd4(const vector <point6ix2> &allstatevecs, const vector <hlde
 	vector <long> pointind;
 	for(long i=0; i<kdclust[clusterct].numpoints; i++) {
 	  pairct=kdvec[kdclust[clusterct].clustind[i]].point.i1;
-	  if(DEBUG >= 2) cout << "Looking up tracklet " << pairct << " out of " << tracklets.size() << "\n";
 	  vector <long> pointjunk;
 	  pointjunk = tracklet_lookup(trk2det, pairct);
 	  if(pointjunk.size()<=0) {
@@ -37639,7 +41144,6 @@ int form_clusters_kd4(const vector <point6ix2> &allstatevecs, const vector <hlde
 	vector <long> pointind;
 	for(long i=0; i<kdclust[clusterct].numpoints; i++) {
 	  pairct=kdvec[kdclust[clusterct].clustind[i]].point.i1;
-	  if(DEBUG >= 2) cout << "Looking up tracklet " << pairct << " out of " << tracklets.size() << "\n";
 	  vector <long> pointjunk;
 	  pointjunk = tracklet_lookup(trk2det, pairct);
 	  if(pointjunk.size()<=0) {
@@ -37679,7 +41183,7 @@ int form_clusters_kd4(const vector <point6ix2> &allstatevecs, const vector <hlde
 	// Count steps large enough to suggest a daytime period between nights.
 	daysteps=0;	
 	for(long i=0; i<long(mjdstep.size()); i++) {
-	  if(mjdstep[i]>NIGHTSTEP) daysteps++;
+	  if(mjdstep[i]>nightstep) daysteps++;
 	}
 	obsnights = daysteps+1;
 	// Does cluster pass the criteria for a linked detection?
@@ -37758,6 +41262,345 @@ int form_clusters_kd4(const vector <point6ix2> &allstatevecs, const vector <hlde
 	onecluster = outclust2[clustct];
 	onecluster.clusternum = realclusternum;
 	vector <long> pointind = pointind_mat[clustct];
+	if(i==0 || lpdvec[i].lelem != lpdvec[i-1].lelem) {
+	  // This cluster is not a duplicate. Write it to
+	  // the output vectors.
+	  if(verbose >= 1) cout << fixed << setprecision(6) << "Loading good cluster " << realclusternum << " : timespan " << onecluster.timespan << " obsnights " << onecluster.obsnights << " metric " << onecluster.metric << "\n";
+	  outclust.push_back(onecluster);
+	  // Write all individual detections in this cluster to the clust2det array
+	  for(long j=0; j<long(pointind.size()); j++) {
+	    c2d = longpair(realclusternum,pointind[j]);
+	    clust2det.push_back(c2d);
+	  }
+	  realclusternum++;
+	  newclusterct++;
+	}
+      }
+      if(verbose>=0) cout << "This hypothesis: " << newclusterct << " deduplicated linkages; total now " << realclusternum << " linkages totalling " << clust2det.size() << " detections.\n";
+      return(0);
+    } else {
+      cerr << "ERROR: the lengths of the vectors outclust2 and lpvec are not the same!\n";
+      cerr << outclust2.size() << " vs. " << lpdvec.size() << "\n";
+      return(9);
+    }
+  } else {
+    cerr << "ERROR: the lengths of the vectors outclust2 and pointind_mat are not the same!\n";
+    cerr << outclust2.size() << " vs. " << pointind_mat.size() << "\n";
+    return(10);
+  }
+  cerr << "ERROR: form_clusters_kd4 has reached a case that should not be\nreachable under the design logic.\n";
+  return(11);
+}
+
+
+// form_clusters_kd4_uint: September 08, 2026
+// Like form_clusters_kd4, but uses memory-efficient types
+// for the tracklets and trk2det vectors.
+int form_clusters_kd4_uint(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <uint_pair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
+{
+  long ldetnum = detvec.size();
+  if(ldetnum>=UINT_MAX) {
+    cerr << "ERROR: form_clusters_kd4_uint has too man detections:\n";
+    cerr << "(" << ldetnum << " >= " << UINT_MAX << "). Re-run with a non-uint version of heliolinc\n";
+    return(1);
+  }
+  unsigned int detnum=ldetnum;
+  double georadmin=0l;
+  double georadmax=0l;
+  point6dx2 statevec1 = point6dx2(0l,0l,0l,0l,0l,0l,0,0);
+  point6ix2 stateveci = point6ix2(0,0,0,0,0,0,0,0);
+  double geodist=0l;
+  long kdroot=0;
+  long splitpoint=0;
+  int gridpoint_clusternum=0;
+  int geobin_clusternum=0;
+  KD_point6ix2 kdpoint = KD_point6ix2(stateveci,-1,-1,1,-1);
+  double timespan=0;
+  int daysteps = 0;
+  int obsnights = 0;
+  longpair c2d = longpair(0,0);
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  double posRMS = 0.0l;
+  double velRMS = 0.0l;
+  double totRMS = 0.0l;
+  double astromRMS = 0.0l;
+  int pairnum = 0;
+  int uniquepoints = 0;
+  double posX, posY, posZ, velX, velY, velZ;
+  posX = posY = posZ = velX = velY = velZ = 0.0l;
+  double orbit_a, orbit_e, orbit_incl, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ;
+  orbit_a = orbit_e = orbit_incl = orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
+  long orbit_eval_count = 0;
+  long clusterct=0;
+  long clusterct2=0;
+  double clustmetric=0.0l;
+  string rating;
+  unsigned int pairct=0;
+  double dgnum;
+  int georadct,georadnum;
+  georadct=georadnum=0;
+  double georadcen = mingeodist*intpowD(geologstep,georadct);
+  vector <hlclust> outclust2;
+  vector <vector <unsigned int>> pointind_mat;
+  double clustrad=0.0l;
+  vector <long> longpointind;
+  
+  // Loop over geocentric bins, selecting the subset of state-vectors
+  // in each bin, and running the k-d range query only on those, 
+  // with clustering radius adjusted accordingly.
+
+  // Sanity check the logarithmic geocentric distance framework to avoid a
+  // possible infinite loop.
+  dgnum = log(maxgeodist/mingeodist)/log(geologstep);
+  if(!isnormal(dgnum) || dgnum<0.0l) {
+    cerr << "ERROR: geocentric distance parameters led to nonsense:\n";
+    cerr << "mingeodist, maxgeodist, geologstep = " << maxgeodist << ", " << mingeodist << ", " << geologstep << "\n";
+    cerr << "dgnum = " << dgnum << "\n";
+    return(10);
+  } else georadnum = ceil(dgnum)+1;
+
+  georadct = 0;
+  pointind_mat = {};
+  outclust2 = {};
+  while(georadcen<=maxgeodist && georadct<=georadnum) {
+    georadct++;
+    georadcen = mingeodist*intpowD(geologstep,georadct-1);
+    cout  << fixed << setprecision(2) << "Geocentric distance step " << georadct << ", bin-center distance is " << georadcen << " AU\n";
+    georadmin = georadcen/geologstep;
+    georadmax = georadcen*geologstep;
+    // Load new array of state vectors, limited to those in the current geocentric bin
+    vector <point6ix2> binstatevecs;
+    geobin_clusternum=0;
+    for(long i=0; i<long(allstatevecs.size()); i++) {
+      // Reverse integerization of the state vector.
+      // This is only possible to a crude approximation, of course.
+      statevec1 = conv_6i_to_6d(allstatevecs[i],INTEGERIZING_SCALEFAC);
+      // Calculate geocentric distance in AU
+      geodist = sqrt(DSQUARE(statevec1.x-Earthrefpos.x) + DSQUARE(statevec1.y-Earthrefpos.y) + DSQUARE(statevec1.z-Earthrefpos.z))/AU_KM;
+      if(geodist >= georadmin && geodist <= georadmax) {
+	// This state vector is in the geocentric radius bin we are currently considering.
+	// Add it to binstatevecs.
+	binstatevecs.push_back(allstatevecs[i]);
+      }
+    }
+    if(verbose>=1) cout  << fixed << setprecision(2) << "Found " << binstatevecs.size() << " state vectors in geocentric bin from " << georadmin << " to " << georadmax << " AU\n";
+    if(binstatevecs.size()<dbscan_npt) {
+      continue; // No clusters possible, skip to the next step.
+    } else {      
+      vector <KD_point6ix2> kdvec;
+      kdroot = splitpoint = 0;
+      splitpoint=medind_6ix2(binstatevecs,1);
+      kdpoint = KD_point6ix2(binstatevecs[splitpoint],-1,-1,1,-1);
+      kdvec.push_back(kdpoint);
+      kdtree_6i01(binstatevecs,1,splitpoint,kdroot,kdvec);
+      if(verbose>=1) cout << "Created a KD tree with " << kdvec.size() << " branches\n";
+
+      vector <KD6i_clust> kdclust;
+      if(georadcen >= clustchangerad) {
+	// cluster radius scales linearly with geocentric distance.
+	clustrad = cluster_radius*(georadcen/REF_GEODIST);
+	if(verbose>=1) cout << "normal scaling clustrad = " << clustrad << "\n";
+      }
+      else {
+	// cluster radius remains fixed at the minimum value,
+	// in order to make sure it does not get excessively small
+	// for very small geocentric radii.
+	clustrad = cluster_radius*(clustchangerad/REF_GEODIST);
+	if(verbose>=1) cout << "fixed minimum clustrad = " << clustrad << "\n";
+      }
+      long clusternum = KDRclust_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, dbscan_npt, INTEGERIZING_SCALEFAC, kdclust, verbose);
+      cout << "KDRclust_6i01 finished clustering geobin " << georadct << ", with " << clusternum << " = " << kdclust.size() << " clusters found\n";
+      if(clusternum<0) return(8);
+      
+      // FIRST LOOP OVER CLUSTERS: FLAG POINT-BY-POINT DUPLICATES
+      long hashval=0;
+      long_index li01 = long_index(0,0);
+      vector <long_index> hashvec;
+      for(clusterct=0; clusterct<long(kdclust.size()); clusterct++) {
+		
+	// Map cluster to individual detections.
+	// create vector of unique detection indices.
+	if(DEBUG >= 1) cout << "Loading pointind for " << kdclust[clusterct].numpoints << " of cluster #" << clusterct <<  " out of " << kdclust.size() << "\n";
+	fflush(stdout);
+	vector <unsigned int> pointind;
+	for(long i=0; i<kdclust[clusterct].numpoints; i++) {
+	  pairct=kdvec[kdclust[clusterct].clustind[i]].point.i1;
+	  vector <unsigned int> pointjunk;
+	  pointjunk = uint_lookup(trk2det, pairct);
+	  if(pointjunk.size()<=0) {
+	    cerr << "ERROR: no detections found for tracklet " << pairct << "\n";
+	    return(3);
+	  }
+	  if(DEBUG >= 2) cout << "Found " << pointjunk.size() << " detections for tracklet " << pairct << "\n";
+	  for(int j=0; j<long(pointjunk.size()); j++) {
+	    pointind.push_back(pointjunk[j]);
+	  }
+	}	
+	// Sort vector of detection indices
+	sort(pointind.begin(), pointind.end());
+	// Cull out duplicate entries in pointind
+	for(long i=long(pointind.size()-1); i>0; i--) {
+	  if(pointind[i]==pointind[i-1]) pointind.erase(pointind.begin()+i);
+	}
+	// Convert pointind to a vector of type long, for hashing.
+	longpointind={};
+	for(long i=0; i<long(pointind.size()); i++) longpointind.push_back(pointind[i]);
+	hashval=blend_vector(longpointind);
+	li01.lelem = hashval;
+	li01.index = clusterct;
+	hashvec.push_back(li01);
+      }
+      sort(hashvec.begin(), hashvec.end(), lower_long_index());
+
+      // SECOND LOOP OVER CLUSTERS: FULL ANALYSIS
+      for(clusterct2=0; clusterct2<long(kdclust.size()); clusterct2++) {
+	if(clusterct2>0 && hashvec[clusterct2].lelem == hashvec[clusterct2-1].lelem) {
+	  // This cluster is a duplicate of the previous one: skip it
+	  continue;
+	}
+	// If we get here, the cluster is NOT a duplicate, and so we analyze it.
+	clusterct = hashvec[clusterct2].index;
+	// Scale cluster RMS down to reference geocentric distance
+	if(DEBUG >= 2) cout << "scaling kdclust rms for cluster " << clusterct << " out of " << kdclust.size() << "\n";
+	fflush(stdout);
+	for(long i=0; i<9; i++) {
+	  if(DEBUG >= 2) cout << "scaling rmsvec point " << i << " out of " << kdclust[clusterct].rmsvec.size() << "\n";
+	  if(DEBUG >= 2) cout  << fixed << setprecision(6) << "RMS = " << kdclust[clusterct].rmsvec[i];
+	  if(georadcen >= clustchangerad) kdclust[clusterct].rmsvec[i] *= REF_GEODIST/georadcen;
+	  else kdclust[clusterct].rmsvec[i] *= REF_GEODIST/clustchangerad;
+	  if(DEBUG >= 2) cout  << fixed << setprecision(6) << ", scales to " << kdclust[clusterct].rmsvec[i] << "\n";
+	}
+	// Note that RMS is scaled down for more distant clusters, to
+	// avoid bias against them in post-processing.
+	
+	// Map cluster to individual detections.
+	// create vector of unique detection indices.
+	if(DEBUG >= 1) cout << "Loading pointind for " << kdclust[clusterct].numpoints << " of cluster #" << clusterct <<  " out of " << kdclust.size() << "\n";
+	fflush(stdout);
+	vector <unsigned int> pointind;
+	for(long i=0; i<kdclust[clusterct].numpoints; i++) {
+	  pairct=kdvec[kdclust[clusterct].clustind[i]].point.i1;
+	  vector <unsigned int> pointjunk;
+	  pointjunk = uint_lookup(trk2det, pairct);
+	  if(pointjunk.size()<=0) {
+	    cerr << "ERROR: no detections found for tracklet " << pairct << "\n";
+	    return(3);
+	  }
+	  if(DEBUG >= 2) cout << "Found " << pointjunk.size() << " detections for tracklet " << pairct << "\n";
+	  for(int j=0; j<long(pointjunk.size()); j++) {
+	    pointind.push_back(pointjunk[j]);
+	  }
+	}	
+	// Sort vector of detection indices
+	sort(pointind.begin(), pointind.end());
+	// Cull out duplicate entries in pointind
+	for(long i=long(pointind.size()-1); i>0; i--) {
+	  if(pointind[i]==pointind[i-1]) pointind.erase(pointind.begin()+i);
+	}
+	uniquepoints = pointind.size();      
+	// Load vector of detection MJD's
+	vector <double> clustmjd;
+	for(long i=0; i<long(pointind.size()); i++) {
+	  if(pointind[i]<0 || pointind[i]>=detnum) {
+	    cerr << "ERROR: form_clusters trying to reference point " << pointind[i] << " of detvec! Range is 0 --" << detnum-1 << "\n";
+	    return(1);
+	  }
+	  clustmjd.push_back(detvec[pointind[i]].MJD);
+	}
+
+	// Sort vector of MJD's
+	sort(clustmjd.begin(), clustmjd.end());
+	timespan = clustmjd[clustmjd.size()-1] - clustmjd[0];
+	// Load vector of MJD steps
+	vector <double> mjdstep;
+	for(long i=1; i<long(clustmjd.size()); i++) {
+	  mjdstep.push_back(clustmjd[i]-clustmjd[i-1]);
+	}
+	// Count steps large enough to suggest a daytime period between nights.
+	daysteps=0;	
+	for(long i=0; i<long(mjdstep.size()); i++) {
+	  if(mjdstep[i]>nightstep) daysteps++;
+	}
+	obsnights = daysteps+1;
+	// Does cluster pass the criteria for a linked detection?
+	if(timespan >= mintimespan && obsnights >= minobsnights) {
+	  if(verbose >= 1) cout << "Cluster passes discovery criteria\n";
+	  // Check whether cluster is composed purely of detections from
+	  // a single simulated object (i.e., would be a real discovery) or is a mixture
+	  // of detections from two or more different simulated objects (i.e., spurious).
+	  rating="PURE";
+	  for(long i=1; i<long(pointind.size()); i++) {
+	    if(stringnmatch01(detvec[pointind[i]].idstring,detvec[pointind[i-1]].idstring,SHORTSTRINGLEN)!=0) rating="MIXED";
+	  }
+	  if(DEBUG >= 1) cout << "Rating is found to be " << rating << "\n";
+	  fflush(stdout);
+
+	  // Calculate values for the statistics in the output array (class hlclust) that have
+	  // not been caculated already.
+	  clustmetric = double(pointind.size())*double(obsnights)*timespan/kdclust[clusterct].rmsvec[8];
+	  // Note contents of rmsvec: [0] xrms, [1] yrms, [2] zrms, [3] vxrms, [4] vyrms, [5] vzrms,
+	  // [6] overall position rms, [7] overall velocity rms, [8] overall rms
+	  posRMS = kdclust[clusterct].rmsvec[6];
+	  velRMS = kdclust[clusterct].rmsvec[7];
+	  totRMS = kdclust[clusterct].rmsvec[8];
+	  pairnum = kdclust[clusterct].numpoints; // This is the original total number of pairs/tracklets assigned
+	                                          // to this cluster, which might have a lot of overlap in terms of 
+	                                          // individual detections (of which the non-overlapping count has
+	                                          // already been saved in 'uniquepoints').
+	  // Now save the values of the mean state vectors at the reference time.
+	  posX = kdclust[clusterct].meanvec[0];
+	  posY = kdclust[clusterct].meanvec[1];
+	  posZ = kdclust[clusterct].meanvec[2];
+	  velX = kdclust[clusterct].meanvec[3]/chartimescale;
+	  velY = kdclust[clusterct].meanvec[4]/chartimescale;
+	  velZ = kdclust[clusterct].meanvec[5]/chartimescale;
+	  // Some of the statistics in the hlclust class relate to orbit-fitting,
+	  // and are meant for later use. For now, set them all to zero.
+	  astromRMS = orbit_a = orbit_e = orbit_incl = 0.0l;
+	  orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
+	  orbit_eval_count = 0;
+	  // Write overall cluster statistics to the outclust2 array.	
+	  onecluster = hlclust(0, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, clustmetric, rating, reference_MJD, heliodist/AU_KM, heliovel/SOLARDAY, helioacc*1000.0/SOLARDAY/SOLARDAY, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_incl, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
+	  // cout << "kdload velrms: " << velRMS << " " << kdclust[clusterct].rmsvec[7] << " " << onecluster.velRMS << "\n";
+	  outclust2.push_back(onecluster);
+	  pointind_mat.push_back(pointind);
+	  gridpoint_clusternum++;
+	  geobin_clusternum++;
+	}
+      }
+    }
+    // Move on to the next bin in geocentric distance
+    cout << "Final analysis of geobin " << georadct << " identified " << geobin_clusternum << " distinct candidate linkages. Current total is " << gridpoint_clusternum << "\n";
+  }
+  if(verbose>=0) cout << "Across all geobins, identified " << gridpoint_clusternum << " total linkages\n";
+
+  // Final loop over all clusters, to remove duplicates
+  // that were in different geocentric bins.
+  if(outclust2.size()==pointind_mat.size()) {
+    // Vector sizes make sense. Load the new hash vector
+    longpd_index lpi = longpd_index(0,0,0);
+    vector <longpd_index> lpdvec;
+    long hashval=0;
+    for(long i=0; i<long(outclust2.size()); i++) {
+      vector <unsigned int> pointind = pointind_mat[i];
+      lpi.index = i;
+      // Convert vector pointind to type long, for hashing.
+      longpointind={};
+      for(long j=0; j<long(pointind.size()); j++) longpointind.push_back(pointind[j]);
+      hashval=blend_vector(longpointind);
+      lpi.lelem = hashval;
+      lpi.delem = outclust2[i].metric;
+      lpdvec.push_back(lpi);
+    }
+    if(outclust2.size()==lpdvec.size()) {
+      // New vector has the right size. Sort it.
+      sort(lpdvec.begin(), lpdvec.end(), lower_longpd_index());
+      long newclusterct=0;
+      for(long i=0; i<long(outclust2.size()); i++) {
+	long clustct = lpdvec[i].index;
+	onecluster = outclust2[clustct];
+	onecluster.clusternum = realclusternum;
+	vector <unsigned int> pointind = pointind_mat[clustct];
 	if(i==0 || lpdvec[i].lelem != lpdvec[i-1].lelem) {
 	  // This cluster is not a duplicate. Write it to
 	  // the output vectors.
@@ -37967,7 +41810,7 @@ vector <long> uintvec2long(vector <unsigned int> uivec)
 // form_clusters_kd4_lowmem: July 08, 2024: 
 // Like form_clusters_kd4, but tries to minimize
 // heliolinc's memory usage.
-int form_clusters_kd4_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, int verbose)
+int form_clusters_kd4_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
 {
   long detnum = detvec.size();
   if(detnum>=UINT_MAX) {
@@ -38197,7 +42040,7 @@ int form_clusters_kd4_lowmem(const vector <point6ix2> &allstatevecs, const vecto
 	// Count steps large enough to suggest a daytime period between nights.
 	daysteps=0;	
 	for(i=0; i<long(mjdstep.size()); i++) {
-	  if(mjdstep[i]>NIGHTSTEP) daysteps++;
+	  if(mjdstep[i]>nightstep) daysteps++;
 	}
 	obsnights = daysteps+1;
 	// Does cluster pass the criteria for a linked detection?
@@ -38305,15 +42148,17 @@ int form_clusters_kd4_lowmem(const vector <point6ix2> &allstatevecs, const vecto
 }
 
 
-// form_clusters_RR: April 26, 2024: 
-// Like form_clusters_kd4, but assumes the input 6D vectors are actually
-// positions at mjdref-chartimescale and mjdref+chartimescale, rather
-// than position and velocity*chartimescale at mjdref, as in previous
-// form_clusters programs. Uses a simple KD range-query,
-// rather than DBSCAN, to create clusters.
-int form_clusters_RR(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, int verbose)
+// form_clusters_kd4_uint_lowmem: September 15, 2026:
+// Like form_clusters_kd4, but tries to minimize
+// heliolinc's memory usage. 
+int form_clusters_kd4_uint_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <uint_pair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
 {
   long detnum = detvec.size();
+  if(detnum>=UINT_MAX) {
+    cerr << "ERROR: form_clusters_kd4_lowmem called with too many detections:\n";
+    cerr << "received " << detnum << " detections when the maximum is " << UINT_MAX << "\n";
+    return(1);
+  }
   double georadmin=0l;
   double georadmax=0l;
   point6dx2 statevec1 = point6dx2(0l,0l,0l,0l,0l,0l,0,0);
@@ -38327,33 +42172,32 @@ int form_clusters_RR(const vector <point6ix2> &allstatevecs, const vector <hldet
   double timespan=0;
   int daysteps = 0;
   int obsnights = 0;
-  longpair c2d = longpair(0,0);
-  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
-  double posRMS = 0.0l;
-  double velRMS = 0.0l;
-  double totRMS = 0.0l;
-  double astromRMS = 0.0l;
+  uint_pair c2d = uint_pair(0,0);
+  shortclust onecluster = shortclust(0, 0.0, 0.0, 0, 0.0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+  float posRMS = 0.0;
+  float totRMS = 0.0;
   int pairnum = 0;
-  int uniquepoints = 0;
-  double orbit_a, orbit_e, orbit_incl, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ;
-  orbit_a = orbit_e = orbit_incl = orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
-  long orbit_eval_count = 0;
+  float posX, posY, posZ, velX, velY, velZ;
+  posX = posY = posZ = velX = velY = velZ = 0.0;
   long clusterct=0;
   long clusterct2=0;
   double clustmetric=0.0l;
-  string rating;
   int pairct=0;
+  long i=0;
+  long j=0;
   double dgnum;
   int georadct,georadnum;
   georadct=georadnum=0;
   double georadcen = mingeodist*intpowD(geologstep,georadct);
-  vector <hlclust> outclust2;
-  vector <vector <long>> pointind_mat;
+  vector <shortclust> outclust2;
+  vector <vector <unsigned int>> pointind_mat;
+  vector <unsigned int> pointind;
   double clustrad=0.0l;
-  
+  long uniquepoints=0;
+    
   // Loop over geocentric bins, selecting the subset of state-vectors
-  // in each bin, and running DBSCAN only on those, with clustering radius
-  // adjusted accordingly.
+  // in each bin, and running the k-d range query only on those, 
+  // with clustering radius adjusted accordingly.
 
   // Sanity check the logarithmic geocentric distance framework to avoid a
   // possible infinite loop.
@@ -38371,13 +42215,13 @@ int form_clusters_RR(const vector <point6ix2> &allstatevecs, const vector <hldet
   while(georadcen<=maxgeodist && georadct<=georadnum) {
     georadct++;
     georadcen = mingeodist*intpowD(geologstep,georadct-1);
-    cout << "Geocentric distance step " << georadct << ", bin-center distance is " << georadcen << " AU\n";
+    cout  << fixed << setprecision(2) << "Geocentric distance step " << georadct << ", bin-center distance is " << georadcen << " AU\n";
     georadmin = georadcen/geologstep;
     georadmax = georadcen*geologstep;
     // Load new array of state vectors, limited to those in the current geocentric bin
     vector <point6ix2> binstatevecs;
     geobin_clusternum=0;
-    for(long i=0; i<long(allstatevecs.size()); i++) {
+    for(i=0; i<long(allstatevecs.size()); i++) {
       // Reverse integerization of the state vector.
       // This is only possible to a crude approximation, of course.
       statevec1 = conv_6i_to_6d(allstatevecs[i],INTEGERIZING_SCALEFAC);
@@ -38389,7 +42233,7 @@ int form_clusters_RR(const vector <point6ix2> &allstatevecs, const vector <hldet
 	binstatevecs.push_back(allstatevecs[i]);
       }
     }
-    if(verbose>=1) cout << "Found " << binstatevecs.size() << " state vectors in geocentric bin from " << georadmin << " to " << georadmax << " AU\n";
+    if(verbose>=1) cout  << fixed << setprecision(2) << "Found " << binstatevecs.size() << " state vectors in geocentric bin from " << georadmin << " to " << georadmax << " AU\n";
     if(binstatevecs.size()<dbscan_npt) {
       continue; // No clusters possible, skip to the next step.
     } else {      
@@ -38426,10 +42270,337 @@ int form_clusters_RR(const vector <point6ix2> &allstatevecs, const vector <hldet
 	// create vector of unique detection indices.
 	if(DEBUG >= 1) cout << "Loading pointind for " << kdclust[clusterct].numpoints << " of cluster #" << clusterct <<  " out of " << kdclust.size() << "\n";
 	fflush(stdout);
+	pointind={};
+	for(i=0; i<kdclust[clusterct].numpoints; i++) {
+	  pairct=kdvec[kdclust[clusterct].clustind[i]].point.i1;
+	  vector <unsigned int> pointjunk;
+	  pointjunk = uint_lookup(trk2det, pairct);
+	  if(pointjunk.size()<=0) {
+	    cerr << "ERROR: no detections found for tracklet " << pairct << "\n";
+	    return(3);
+	  }
+	  if(DEBUG >= 2) cout << "Found " << pointjunk.size() << " detections for tracklet " << pairct << "\n";
+	  for(int j=0; j<long(pointjunk.size()); j++) {
+	    pointind.push_back(pointjunk[j]);
+	  }
+	}	
+	// Sort vector of detection indices
+	sort(pointind.begin(), pointind.end());
+	// Cull out duplicate entries in pointind
+	for(i=long(pointind.size()-1); i>0; i--) {
+	  if(pointind[i]==pointind[i-1]) pointind.erase(pointind.begin()+i);
+	}
+	// For compatibility with the hashing function blend_vector,
+	// make a temporary copy of pointind that uses longs instead of unsigned ints.
+	vector <long> pointind_long =  uintvec2long(pointind);
+	hashval=blend_vector(pointind_long);
+	li01.lelem = hashval;
+	li01.index = clusterct;
+	hashvec.push_back(li01);
+      }
+      sort(hashvec.begin(), hashvec.end(), lower_long_index());
+
+      // SECOND LOOP OVER CLUSTERS: FULL ANALYSIS
+      for(clusterct2=0; clusterct2<long(kdclust.size()); clusterct2++) {
+	if(clusterct2>0 && hashvec[clusterct2].lelem == hashvec[clusterct2-1].lelem) {
+	  // This cluster is a duplicate of the previous one: skip it
+	  continue;
+	}
+	// If we get here, the cluster is NOT a duplicate, and so we analyze it.
+	clusterct = hashvec[clusterct2].index;
+	// Scale cluster RMS down to reference geocentric distance
+	if(DEBUG >= 2) cout << "scaling kdclust rms for cluster " << clusterct << " out of " << kdclust.size() << "\n";
+	fflush(stdout);
+	for(i=0; i<9; i++) {
+	  if(DEBUG >= 2) cout  << fixed << setprecision(6) << "scaling rmsvec point " << i << " out of " << kdclust[clusterct].rmsvec.size() << "\n";
+	  if(DEBUG >= 2) cout  << fixed << setprecision(6) << "RMS = " << kdclust[clusterct].rmsvec[i];
+	  if(georadcen >= clustchangerad) kdclust[clusterct].rmsvec[i] *= REF_GEODIST/georadcen;
+	  else kdclust[clusterct].rmsvec[i] *= REF_GEODIST/clustchangerad;
+	  if(DEBUG >= 2) cout  << fixed << setprecision(6) << ", scales to " << kdclust[clusterct].rmsvec[i] << "\n";
+	}
+	// Note that RMS is scaled down for more distant clusters, to
+	// avoid bias against them in post-processing.
+	
+	// Map cluster to individual detections.
+	// create vector of unique detection indices.
+	if(DEBUG >= 1) cout << "Loading pointind for " << kdclust[clusterct].numpoints << " of cluster #" << clusterct <<  " out of " << kdclust.size() << "\n";
+	fflush(stdout);
+	pointind={};
+	for(i=0; i<kdclust[clusterct].numpoints; i++) {
+	  pairct=kdvec[kdclust[clusterct].clustind[i]].point.i1;
+	  vector <unsigned int> pointjunk;
+	  pointjunk = uint_lookup(trk2det, pairct);
+	  if(pointjunk.size()<=0) {
+	    cerr << "ERROR: no detections found for tracklet " << pairct << "\n";
+	    return(3);
+	  }
+	  if(DEBUG >= 2) cout << "Found " << pointjunk.size() << " detections for tracklet " << pairct << "\n";
+	  for(int j=0; j<long(pointjunk.size()); j++) {
+	    pointind.push_back(pointjunk[j]);
+	  }
+	}	
+	// Sort vector of detection indices
+	sort(pointind.begin(), pointind.end());
+	// Cull out duplicate entries in pointind
+	for(i=long(pointind.size()-1); i>0; i--) {
+	  if(pointind[i]==pointind[i-1]) pointind.erase(pointind.begin()+i);
+	}
+	uniquepoints = pointind.size();      
+	// Load vector of detection MJD's
+	vector <double> clustmjd;
+	for(i=0; i<uniquepoints; i++) {
+	  if(pointind[i]<0 || pointind[i]>=detnum) {
+	    cerr << "ERROR: form_clusters trying to reference point " << pointind[i] << " of detvec! Range is 0 --" << detnum-1 << "\n";
+	    return(1);
+	  }
+	  clustmjd.push_back(detvec[pointind[i]].MJD);
+	}
+
+	// Sort vector of MJD's
+	sort(clustmjd.begin(), clustmjd.end());
+	timespan = clustmjd[clustmjd.size()-1] - clustmjd[0];
+	// Load vector of MJD steps
+	vector <double> mjdstep;
+	for(i=1; i<long(clustmjd.size()); i++) {
+	  mjdstep.push_back(clustmjd[i]-clustmjd[i-1]);
+	}
+	// Count steps large enough to suggest a daytime period between nights.
+	daysteps=0;	
+	for(i=0; i<long(mjdstep.size()); i++) {
+	  if(mjdstep[i]>nightstep) daysteps++;
+	}
+	obsnights = daysteps+1;
+	// Does cluster pass the criteria for a linked detection?
+	if(timespan >= mintimespan && obsnights >= minobsnights) {
+	  if(verbose >= 1) cout << "Cluster passes discovery criteria\n";
+
+	  // Calculate values for the statistics in the output array (class hlclust) that have
+	  // not been caculated already.
+	  clustmetric = double(uniquepoints)*double(obsnights)*timespan/kdclust[clusterct].rmsvec[8];
+	  // cout << "clustmetric calc: " << uniquepoints << " " <<obsnights  << " " << timespan << " " << kdclust[clusterct].rmsvec[8] << " " << clustmetric << "\n";
+	  // Note contents of rmsvec: [0] xrms, [1] yrms, [2] zrms, [3] vxrms, [4] vyrms, [5] vzrms,
+	  // [6] overall position rms, [7] overall velocity rms, [8] overall rms
+	  posRMS = kdclust[clusterct].rmsvec[6];
+	  totRMS = kdclust[clusterct].rmsvec[8];
+	  pairnum = kdclust[clusterct].numpoints; // This is the original total number of pairs/tracklets assigned
+	                                          // to this cluster, which might have a lot of overlap in terms of 
+	                                          // individual detections (of which the non-overlapping count has
+	                                          // already been saved in 'uniquepoints').
+	  // Now save the values of the mean state vectors at the reference time.
+	  posX = kdclust[clusterct].meanvec[0];
+	  posY = kdclust[clusterct].meanvec[1];
+	  posZ = kdclust[clusterct].meanvec[2];
+	  velX = kdclust[clusterct].meanvec[3]/chartimescale;
+	  velY = kdclust[clusterct].meanvec[4]/chartimescale;
+	  velZ = kdclust[clusterct].meanvec[5]/chartimescale;
+	  // Write overall cluster statistics to the outclust2 array.	
+	  onecluster = shortclust(0, posRMS, totRMS, pairnum, clustmetric, hypindex, posX, posY, posZ, velX, velY, velZ);
+	  outclust2.push_back(onecluster);
+	  pointind_mat.push_back(pointind);
+	  gridpoint_clusternum++;
+	  geobin_clusternum++;
+	}
+      }
+    }
+    // Move on to the next bin in geocentric distance
+    cout << "Final analysis of geobin " << georadct << " identified " << geobin_clusternum << " distinct candidate linkages. Current total is " << gridpoint_clusternum << "\n";
+  }
+  if(verbose>=0) cout << "Across all geobins, identified " << gridpoint_clusternum << " total linkages\n";
+
+  // Final loop over all clusters, to remove duplicates
+  // that were in different geocentric bins.
+  if(outclust2.size()==pointind_mat.size()) {
+    // Vector sizes make sense. Load the new hash vector
+    longpd_index lpi = longpd_index(0,0,0);
+    vector <longpd_index> lpdvec;
+    long hashval=0;
+    for(i=0; i<long(outclust2.size()); i++) {
+      vector <long> pointind_long =  uintvec2long(pointind_mat[i]);
+      lpi.index = i;
+      hashval=blend_vector(pointind_long);
+      lpi.lelem = hashval;
+      lpi.delem = outclust2[i].metric;
+      lpdvec.push_back(lpi);
+    }
+    if(outclust2.size()==lpdvec.size()) {
+      // New vector has the right size. Sort it.
+      sort(lpdvec.begin(), lpdvec.end(), lower_longpd_index());
+      long newclusterct=0;
+      for(i=0; i<long(outclust2.size()); i++) {
+	long clustct = lpdvec[i].index;
+	onecluster = outclust2[clustct];
+	onecluster.clusternum = realclusternum;
+	pointind = pointind_mat[clustct];
+	uniquepoints = pointind.size();
+	if(i==0 || lpdvec[i].lelem != lpdvec[i-1].lelem) {
+	  // This cluster is not a duplicate. Write it to
+	  // the output vectors.
+	  if(verbose >= 1) cout << fixed << setprecision(6) << "Loading good cluster " << realclusternum << " with metric " << onecluster.metric << "\n";
+	  outclust.push_back(onecluster);
+	  // Write all individual detections in this cluster to the clust2det array
+	  for(j=0; j<uniquepoints; j++) {
+	    unsigned int rcn=0;
+	    if(realclusternum>=0 && realclusternum<UINT_MAX) rcn = realclusternum;
+	    else {
+	      cerr << "ERROR in form_clusters_kd4_lowmem: out-of-range long to int conversion\n";
+	      cerr << "Attempted to convert long realclusternum = " << realclusternum << " into an unsigned int\n";
+	      return(2);
+	    }
+	    c2d = uint_pair(rcn,pointind[j]);
+	    clust2det.push_back(c2d);
+	  }
+	  realclusternum++;
+	  newclusterct++;
+	  if(realclusternum>=UINT_MAX) {
+	    cerr << "ERROR: form_clusters_kd4_lowmem finds too many clusters:\n";
+	    cerr << "found " << realclusternum+1 << " clusters when the maximum is " << UINT_MAX << "\n";
+	    return(2);
+	  }
+	}
+      }
+      if(verbose>=0) if(verbose>=0) cout << "This hypothesis: " << newclusterct << " deduplicated linkages; total now " << realclusternum << " linkages totalling " << clust2det.size() << " detections.\n";
+      return(0);
+    } else {
+      cerr << "ERROR: the lengths of the vectors outclust2 and lpvec are not the same!\n";
+      cerr << outclust2.size() << " vs. " << lpdvec.size() << "\n";
+      return(9);
+    }
+  } else {
+    cerr << "ERROR: the lengths of the vectors outclust2 and pointind_mat are not the same!\n";
+    cerr << outclust2.size() << " vs. " << pointind_mat.size() << "\n";
+    return(10);
+  }
+  cerr << "ERROR: form_clusters_kd4_lowmem has reached a case that should not be\nreachable under the design logic.\n";
+  return(11);
+}
+
+
+// form_clusters_RR: April 26, 2024: 
+// Like form_clusters_kd4, but assumes the input 6D vectors are actually
+// positions at mjdref-chartimescale and mjdref+chartimescale, rather
+// than position and velocity*chartimescale at mjdref, as in previous
+// form_clusters programs. Uses a simple KD range-query,
+// rather than DBSCAN, to create clusters.
+int form_clusters_RR(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
+{
+  long detnum = detvec.size();
+  double georadmin=0l;
+  double georadmax=0l;
+  point6dx2 statevec1 = point6dx2(0l,0l,0l,0l,0l,0l,0,0);
+  point6ix2 stateveci = point6ix2(0,0,0,0,0,0,0,0);
+  double geodist=0l;
+  long kdroot=0;
+  long splitpoint=0;
+  long gridpoint_clusternum=0;
+  long geobin_clusternum=0;
+  KD_point6ix2 kdpoint = KD_point6ix2(stateveci,-1,-1,1,-1);
+  double timespan=0;
+  int daysteps = 0;
+  int obsnights = 0;
+  longpair c2d = longpair(0,0);
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  double posRMS = 0.0l;
+  double velRMS = 0.0l;
+  double totRMS = 0.0l;
+  double astromRMS = 0.0l;
+  long pairnum = 0;
+  long uniquepoints = 0;
+  double orbit_a, orbit_e, orbit_incl, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ;
+  orbit_a = orbit_e = orbit_incl = orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
+  long orbit_eval_count = 0;
+  long clusterct=0;
+  long clusterct2=0;
+  double clustmetric=0.0l;
+  string rating;
+  long pairct=0;
+  double dgnum;
+  long georadct,georadnum;
+  georadct=georadnum=0;
+  double georadcen = mingeodist*intpowD(geologstep,georadct);
+  vector <hlclust> outclust2;
+  vector <vector <long>> pointind_mat;
+  double clustrad=0.0l;
+  
+  // Loop over geocentric bins, selecting the subset of state-vectors
+  // in each bin, and running the k-d range query only on those, 
+  // with clustering radius adjusted accordingly.
+
+  // Sanity check the logarithmic geocentric distance framework to avoid a
+  // possible infinite loop.
+  dgnum = log(maxgeodist/mingeodist)/log(geologstep);
+  if(!isnormal(dgnum) || dgnum<0.0l) {
+    cerr << "ERROR: geocentric distance parameters led to nonsense:\n";
+    cerr << "mingeodist, maxgeodist, geologstep = " << maxgeodist << ", " << mingeodist << ", " << geologstep << "\n";
+    cerr << "dgnum = " << dgnum << "\n";
+    return(10);
+  } else georadnum = ceil(dgnum)+1;
+
+  georadct = 0;
+  pointind_mat = {};
+  outclust2 = {};
+  while(georadcen<=maxgeodist && georadct<=georadnum) {
+    georadct++;
+    georadcen = mingeodist*intpowD(geologstep,georadct-1);
+    cout << fixed << setprecision(2) << "Geocentric distance step " << georadct << ", bin-center distance is " << georadcen << " AU\n";
+    georadmin = georadcen/geologstep;
+    georadmax = georadcen*geologstep;
+    // Load new array of state vectors, limited to those in the current geocentric bin
+    vector <point6ix2> binstatevecs;
+    geobin_clusternum=0;
+    for(long i=0; i<long(allstatevecs.size()); i++) {
+      // Reverse integerization of the state vector.
+      // This is only possible to a crude approximation, of course.
+      statevec1 = conv_6i_to_6d(allstatevecs[i],INTEGERIZING_SCALEFAC);
+      // Calculate geocentric distance in AU
+      geodist = sqrt(DSQUARE(statevec1.x-Earthrefpos.x) + DSQUARE(statevec1.y-Earthrefpos.y) + DSQUARE(statevec1.z-Earthrefpos.z))/AU_KM;
+      if(geodist >= georadmin && geodist <= georadmax) {
+	// This state vector is in the geocentric radius bin we are currently considering.
+	// Add it to binstatevecs.
+	binstatevecs.push_back(allstatevecs[i]);
+      }
+    }
+    if(verbose>=1) cout << fixed << setprecision(2) << "Found " << binstatevecs.size() << " state vectors in geocentric bin from " << georadmin << " to " << georadmax << " AU\n";
+    if(binstatevecs.size()<dbscan_npt) {
+      continue; // No clusters possible, skip to the next step.
+    } else {      
+      vector <KD_point6ix2> kdvec;
+      kdroot = splitpoint = 0;
+      splitpoint=medind_6ix2(binstatevecs,1);
+      kdpoint = KD_point6ix2(binstatevecs[splitpoint],-1,-1,1,-1);
+      kdvec.push_back(kdpoint);
+      kdtree_6i01(binstatevecs,1,splitpoint,kdroot,kdvec);
+      if(verbose>=1) cout << "Created a KD tree with " << kdvec.size() << " branches\n";
+
+      vector <KD6i_clust> kdclust;
+      if(georadcen >= clustchangerad) {
+	// cluster radius scales linearly with geocentric distance.
+	clustrad = cluster_radius*(georadcen/REF_GEODIST);
+	if(verbose>=1) cout << "normal scaling clustrad = " << clustrad << "\n";
+      }
+      else {
+	// cluster radius remains fixed at the minimum value,
+	// in order to make sure it does not get excessively small
+	// for very small geocentric radii.
+	clustrad = cluster_radius*(clustchangerad/REF_GEODIST);
+	if(verbose>=1) cout << "fixed minimum clustrad = " << clustrad << "\n";
+      }
+      long clusternum = KDRclust_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, dbscan_npt, INTEGERIZING_SCALEFAC, kdclust, verbose);
+      cout << "KDRclust_6i01 finished clustering geobin " << georadct << ", with " << clusternum << " = " << kdclust.size() << " clusters found\n";
+      if(clusternum<0) return(8);
+      
+      // FIRST LOOP OVER CLUSTERS: FLAG POINT-BY-POINT DUPLICATES
+      long hashval=0;
+      long_index li01 = long_index(0,0);
+      vector <long_index> hashvec;
+      for(clusterct=0; clusterct<long(kdclust.size()); clusterct++) {
+		
+	// Map cluster to individual detections.
+	// create vector of unique detection indices.
+	if(DEBUG >= 1) cout << "Loading pointind for " << kdclust[clusterct].numpoints << " of cluster #" << clusterct <<  " out of " << kdclust.size() << "\n";
+	fflush(stdout);
 	vector <long> pointind;
 	for(long i=0; i<kdclust[clusterct].numpoints; i++) {
 	  pairct=kdvec[kdclust[clusterct].clustind[i]].point.i1;
-	  if(DEBUG >= 2) cout << "Looking up tracklet " << pairct << " out of " << tracklets.size() << "\n";
 	  vector <long> pointjunk;
 	  pointjunk = tracklet_lookup(trk2det, pairct);
 	  if(pointjunk.size()<=0) {
@@ -38467,10 +42638,10 @@ int form_clusters_RR(const vector <point6ix2> &allstatevecs, const vector <hldet
 	fflush(stdout);
 	for(long i=0; i<9; i++) {
 	  if(DEBUG >= 2) cout << "scaling rmsvec point " << i << " out of " << kdclust[clusterct].rmsvec.size() << "\n";
-	  if(DEBUG >= 2) cout << "RMS = " << kdclust[clusterct].rmsvec[i];
+	  if(DEBUG >= 2) cout << fixed << setprecision(6) << "RMS = " << kdclust[clusterct].rmsvec[i];
 	  if(georadcen >= clustchangerad) kdclust[clusterct].rmsvec[i] *= REF_GEODIST/georadcen;
 	  else kdclust[clusterct].rmsvec[i] *= REF_GEODIST/clustchangerad;
-	  if(DEBUG >= 2) cout << ", scales to " << kdclust[clusterct].rmsvec[i] << "\n";
+	  if(DEBUG >= 2) cout << fixed << setprecision(6) << ", scales to " << kdclust[clusterct].rmsvec[i] << "\n";
 	}
 	// Note that RMS is scaled down for more distant clusters, to
 	// avoid bias against them in post-processing.
@@ -38482,7 +42653,6 @@ int form_clusters_RR(const vector <point6ix2> &allstatevecs, const vector <hldet
 	vector <long> pointind;
 	for(long i=0; i<kdclust[clusterct].numpoints; i++) {
 	  pairct=kdvec[kdclust[clusterct].clustind[i]].point.i1;
-	  if(DEBUG >= 2) cout << "Looking up tracklet " << pairct << " out of " << tracklets.size() << "\n";
 	  vector <long> pointjunk;
 	  pointjunk = tracklet_lookup(trk2det, pairct);
 	  if(pointjunk.size()<=0) {
@@ -38522,7 +42692,7 @@ int form_clusters_RR(const vector <point6ix2> &allstatevecs, const vector <hldet
 	// Count steps large enough to suggest a daytime period between nights.
 	daysteps=0;	
 	for(long i=0; i<long(mjdstep.size()); i++) {
-	  if(mjdstep[i]>NIGHTSTEP) daysteps++;
+	  if(mjdstep[i]>nightstep) daysteps++;
 	}
 	obsnights = daysteps+1;
 	// Does cluster pass the criteria for a linked detection?
@@ -38647,7 +42817,7 @@ int form_clusters_RR(const vector <point6ix2> &allstatevecs, const vector <hldet
 // form_clusters_RR_lowmem: July 11, 2025:
 // Like form_clusters_RR, but uses the uint_pair and the
 // shortclust classes to reduce memory usage.
-int form_clusters_RR_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, int verbose)
+int form_clusters_RR_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
 {
   long detnum = detvec.size();
   if(detnum>=UINT_MAX) {
@@ -38878,7 +43048,7 @@ int form_clusters_RR_lowmem(const vector <point6ix2> &allstatevecs, const vector
 	// Count steps large enough to suggest a daytime period between nights.
 	daysteps=0;	
 	for(i=0; i<long(mjdstep.size()); i++) {
-	  if(mjdstep[i]>NIGHTSTEP) daysteps++;
+	  if(mjdstep[i]>nightstep) daysteps++;
 	}
 	obsnights = daysteps+1;
 	// Does cluster pass the criteria for a linked detection?
@@ -39003,12 +43173,1698 @@ int form_clusters_RR_lowmem(const vector <point6ix2> &allstatevecs, const vector
   return(11);
 }
 
+// form_clusters_RR_uint: September 15, 2026
+int form_clusters_RR_uint(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <uint_pair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
+{
+  long detnum = detvec.size();
+  double georadmin=0l;
+  double georadmax=0l;
+  point6dx2 statevec1 = point6dx2(0l,0l,0l,0l,0l,0l,0,0);
+  point6ix2 stateveci = point6ix2(0,0,0,0,0,0,0,0);
+  double geodist=0l;
+  long kdroot=0;
+  long splitpoint=0;
+  int gridpoint_clusternum=0;
+  int geobin_clusternum=0;
+  KD_point6ix2 kdpoint = KD_point6ix2(stateveci,-1,-1,1,-1);
+  double timespan=0;
+  int daysteps = 0;
+  int obsnights = 0;
+  longpair c2d = longpair(0,0);
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  double posRMS = 0.0l;
+  double velRMS = 0.0l;
+  double totRMS = 0.0l;
+  double astromRMS = 0.0l;
+  int pairnum = 0;
+  int uniquepoints = 0;
+  double orbit_a, orbit_e, orbit_incl, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ;
+  orbit_a = orbit_e = orbit_incl = orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
+  long orbit_eval_count = 0;
+  long clusterct=0;
+  long clusterct2=0;
+  double clustmetric=0.0l;
+  string rating;
+  int pairct=0;
+  double dgnum;
+  int georadct,georadnum;
+  georadct=georadnum=0;
+  double georadcen = mingeodist*intpowD(geologstep,georadct);
+  vector <hlclust> outclust2;
+  vector <vector <unsigned int>> pointind_mat;
+  double clustrad=0.0l;
+  vector <long> longpointind;
+  
+  // Loop over geocentric bins, selecting the subset of state-vectors
+  // in each bin, and running DBSCAN only on those, with clustering radius
+  // adjusted accordingly.
+
+  // Sanity check the logarithmic geocentric distance framework to avoid a
+  // possible infinite loop.
+  dgnum = log(maxgeodist/mingeodist)/log(geologstep);
+  if(!isnormal(dgnum) || dgnum<0.0l) {
+    cerr << "ERROR: geocentric distance parameters led to nonsense:\n";
+    cerr << "mingeodist, maxgeodist, geologstep = " << maxgeodist << ", " << mingeodist << ", " << geologstep << "\n";
+    cerr << "dgnum = " << dgnum << "\n";
+    return(10);
+  } else georadnum = ceil(dgnum)+1;
+
+  georadct = 0;
+  pointind_mat = {};
+  outclust2 = {};
+  while(georadcen<=maxgeodist && georadct<=georadnum) {
+    georadct++;
+    georadcen = mingeodist*intpowD(geologstep,georadct-1);
+    cout << "Geocentric distance step " << georadct << ", bin-center distance is " << georadcen << " AU\n";
+    georadmin = georadcen/geologstep;
+    georadmax = georadcen*geologstep;
+    // Load new array of state vectors, limited to those in the current geocentric bin
+    vector <point6ix2> binstatevecs;
+    geobin_clusternum=0;
+    for(long i=0; i<long(allstatevecs.size()); i++) {
+      // Reverse integerization of the state vector.
+      // This is only possible to a crude approximation, of course.
+      statevec1 = conv_6i_to_6d(allstatevecs[i],INTEGERIZING_SCALEFAC);
+      // Calculate geocentric distance in AU
+      geodist = sqrt(DSQUARE(statevec1.x-Earthrefpos.x) + DSQUARE(statevec1.y-Earthrefpos.y) + DSQUARE(statevec1.z-Earthrefpos.z))/AU_KM;
+      if(geodist >= georadmin && geodist <= georadmax) {
+	// This state vector is in the geocentric radius bin we are currently considering.
+	// Add it to binstatevecs.
+	binstatevecs.push_back(allstatevecs[i]);
+      }
+    }
+    if(verbose>=1) cout << "Found " << binstatevecs.size() << " state vectors in geocentric bin from " << georadmin << " to " << georadmax << " AU\n";
+    if(binstatevecs.size()<dbscan_npt) {
+      continue; // No clusters possible, skip to the next step.
+    } else {      
+      vector <KD_point6ix2> kdvec;
+      kdroot = splitpoint = 0;
+      splitpoint=medind_6ix2(binstatevecs,1);
+      kdpoint = KD_point6ix2(binstatevecs[splitpoint],-1,-1,1,-1);
+      kdvec.push_back(kdpoint);
+      kdtree_6i01(binstatevecs,1,splitpoint,kdroot,kdvec);
+      if(verbose>=1) cout << "Created a KD tree with " << kdvec.size() << " branches\n";
+
+      vector <KD6i_clust> kdclust;
+      if(georadcen >= clustchangerad) {
+	// cluster radius scales linearly with geocentric distance.
+	clustrad = cluster_radius*(georadcen/REF_GEODIST);
+      }
+      else {
+	// cluster radius remains fixed at the minimum value,
+	// in order to make sure it does not get excessively small
+	// for very small geocentric radii.
+	clustrad = cluster_radius*(clustchangerad/REF_GEODIST);
+      }
+      long clusternum = KDRclust_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, dbscan_npt, INTEGERIZING_SCALEFAC, kdclust, verbose);
+      cout << "KDRclust_6i01 finished clustering geobin " << georadct << ", with " << clusternum << " = " << kdclust.size() << " clusters found\n";
+      if(clusternum<0) return(8);
+      
+      // FIRST LOOP OVER CLUSTERS: FLAG POINT-BY-POINT DUPLICATES
+      long hashval=0;
+      long_index li01 = long_index(0,0);
+      vector <long_index> hashvec;
+      for(clusterct=0; clusterct<long(kdclust.size()); clusterct++) {
+		
+	// Map cluster to individual detections.
+	// create vector of unique detection indices.
+	if(DEBUG >= 1) cout << "Loading pointind for " << kdclust[clusterct].numpoints << " of cluster #" << clusterct <<  " out of " << kdclust.size() << "\n";
+	fflush(stdout);
+	vector <unsigned int> pointind;
+	for(long i=0; i<kdclust[clusterct].numpoints; i++) {
+	  pairct=kdvec[kdclust[clusterct].clustind[i]].point.i1;
+	  vector <unsigned int> pointjunk;
+	  pointjunk = uint_lookup(trk2det, pairct);
+	  if(pointjunk.size()<=0) {
+	    cerr << "ERROR: no detections found for tracklet " << pairct << "\n";
+	    return(3);
+	  }
+	  if(DEBUG >= 2) cout << "Found " << pointjunk.size() << " detections for tracklet " << pairct << "\n";
+	  for(int j=0; j<long(pointjunk.size()); j++) {
+	    pointind.push_back(pointjunk[j]);
+	  }
+	}	
+	// Sort vector of detection indices
+	sort(pointind.begin(), pointind.end());
+	// Cull out duplicate entries in pointind
+	for(long i=long(pointind.size()-1); i>0; i--) {
+	  if(pointind[i]==pointind[i-1]) pointind.erase(pointind.begin()+i);
+	}
+	// Convert pointind to a vector of type long, for hashing.
+	longpointind={};
+	for(long i=0; i<long(pointind.size()); i++) longpointind.push_back(pointind[i]);
+	hashval=blend_vector(longpointind);
+	li01.lelem = hashval;
+	li01.index = clusterct;
+	hashvec.push_back(li01);
+      }
+      sort(hashvec.begin(), hashvec.end(), lower_long_index());
+
+      // SECOND LOOP OVER CLUSTERS: FULL ANALYSIS
+      for(clusterct2=0; clusterct2<long(kdclust.size()); clusterct2++) {
+	if(clusterct2>0 && hashvec[clusterct2].lelem == hashvec[clusterct2-1].lelem) {
+	  // This cluster is a duplicate of the previous one: skip it
+	  continue;
+	}
+	// If we get here, the cluster is NOT a duplicate, and so we analyze it.
+	clusterct = hashvec[clusterct2].index;
+	// Scale cluster RMS down to reference geocentric distance
+	if(DEBUG >= 2) cout << "scaling kdclust rms for cluster " << clusterct << " out of " << kdclust.size() << "\n";
+	fflush(stdout);
+	for(long i=0; i<9; i++) {
+	  if(DEBUG >= 2) cout << "scaling rmsvec point " << i << " out of " << kdclust[clusterct].rmsvec.size() << "\n";
+	  if(DEBUG >= 2) cout << "RMS = " << kdclust[clusterct].rmsvec[i];
+	  if(georadcen >= clustchangerad) kdclust[clusterct].rmsvec[i] *= REF_GEODIST/georadcen;
+	  else kdclust[clusterct].rmsvec[i] *= REF_GEODIST/clustchangerad;
+	  if(DEBUG >= 2) cout << ", scales to " << kdclust[clusterct].rmsvec[i] << "\n";
+	}
+	// Note that RMS is scaled down for more distant clusters, to
+	// avoid bias against them in post-processing.
+	
+	// Map cluster to individual detections.
+	// create vector of unique detection indices.
+	if(DEBUG >= 1) cout << "Loading pointind for " << kdclust[clusterct].numpoints << " of cluster #" << clusterct <<  " out of " << kdclust.size() << "\n";
+	fflush(stdout);
+	vector <unsigned int> pointind;
+	for(long i=0; i<kdclust[clusterct].numpoints; i++) {
+	  pairct=kdvec[kdclust[clusterct].clustind[i]].point.i1;
+	  vector <unsigned int> pointjunk;
+	  pointjunk = uint_lookup(trk2det, pairct);
+	  if(pointjunk.size()<=0) {
+	    cerr << "ERROR: no detections found for tracklet " << pairct << "\n";
+	    return(3);
+	  }
+	  if(DEBUG >= 2) cout << "Found " << pointjunk.size() << " detections for tracklet " << pairct << "\n";
+	  for(int j=0; j<long(pointjunk.size()); j++) {
+	    pointind.push_back(pointjunk[j]);
+	  }
+	}	
+	// Sort vector of detection indices
+	sort(pointind.begin(), pointind.end());
+	// Cull out duplicate entries in pointind
+	for(long i=long(pointind.size()-1); i>0; i--) {
+	  if(pointind[i]==pointind[i-1]) pointind.erase(pointind.begin()+i);
+	}
+	uniquepoints = pointind.size();      
+	// Load vector of detection MJD's
+	vector <double> clustmjd;
+	for(long i=0; i<long(pointind.size()); i++) {
+	  if(pointind[i]<0 || pointind[i]>=detnum) {
+	    cerr << "ERROR: form_clusters trying to reference point " << pointind[i] << " of detvec! Range is 0 --" << detnum-1 << "\n";
+	    return(1);
+	  }
+	  clustmjd.push_back(detvec[pointind[i]].MJD);
+	}
+
+	// Sort vector of MJD's
+	sort(clustmjd.begin(), clustmjd.end());
+	timespan = clustmjd[clustmjd.size()-1] - clustmjd[0];
+	// Load vector of MJD steps
+	vector <double> mjdstep;
+	for(long i=1; i<long(clustmjd.size()); i++) {
+	  mjdstep.push_back(clustmjd[i]-clustmjd[i-1]);
+	}
+	// Count steps large enough to suggest a daytime period between nights.
+	daysteps=0;	
+	for(long i=0; i<long(mjdstep.size()); i++) {
+	  if(mjdstep[i]>nightstep) daysteps++;
+	}
+	obsnights = daysteps+1;
+	// Does cluster pass the criteria for a linked detection?
+	if(timespan >= mintimespan && obsnights >= minobsnights) {
+	  if(verbose >= 1) cout << "Cluster passes discovery criteria\n";
+	  // Check whether cluster is composed purely of detections from
+	  // a single simulated object (i.e., would be a real discovery) or is a mixture
+	  // of detections from two or more different simulated objects (i.e., spurious).
+	  rating="PURE";
+	  for(long i=1; i<long(pointind.size()); i++) {
+	    if(stringnmatch01(detvec[pointind[i]].idstring,detvec[pointind[i-1]].idstring,SHORTSTRINGLEN)!=0) rating="MIXED";
+	  }
+	  if(DEBUG >= 1) cout << "Rating is found to be " << rating << "\n";
+	  fflush(stdout);
+
+	  // Calculate values for the statistics in the output array (class hlclust) that have
+	  // not been caculated already.
+	  clustmetric = double(pointind.size())*double(obsnights)*timespan/kdclust[clusterct].rmsvec[8];
+	  // Note contents of rmsvec: [0] xrms, [1] yrms, [2] zrms, [3] vxrms, [4] vyrms, [5] vzrms,
+	  // [6] overall position rms, [7] overall velocity rms, [8] overall rms
+	  posRMS = kdclust[clusterct].rmsvec[6];
+	  velRMS = kdclust[clusterct].rmsvec[7];
+	  totRMS = kdclust[clusterct].rmsvec[8];
+	  pairnum = kdclust[clusterct].numpoints; // This is the original total number of pairs/tracklets assigned
+	                                          // to this cluster, which might have a lot of overlap in terms of 
+	                                          // individual detections (of which the non-overlapping count has
+	                                          // already been saved in 'uniquepoints').
+	  // Now calculate the position and velocity at reference_MJD, based on the
+	  // mean positions stored in kdclust[clusterct].meanvec. In the heliolincRR
+	  // algorithm, these are not position and velocity but rather two positions,
+	  // one at reference_MJD-chartimescale/SOLARDAY and one at reference_MJD+chartimescale/SOLARDAY;
+	  point3d startpos = point3d(kdclust[clusterct].meanvec[0],kdclust[clusterct].meanvec[1],kdclust[clusterct].meanvec[2]);
+	  point3d endpos = point3d(kdclust[clusterct].meanvec[3],kdclust[clusterct].meanvec[4],kdclust[clusterct].meanvec[5]);
+	  point3d startvel = point3d(0l,0l,0l);
+	  point3d endvel = point3d(0l,0l,0l);
+	  double deltat = 2.0l*chartimescale/SOLARDAY;
+	  // Calculate the velocity at the first time, which is reference_MJD-chartimescale/SOLARDAY.
+	  Twopoint_Kepler_vstar(GMSUN_KM3_SEC2, startpos, endpos, deltat, startvel, KVSTAR_ITMAX);
+	  // Integrate forward to reference_MJD.
+	  Kepler_univ_int(GMSUN_KM3_SEC2, reference_MJD-chartimescale/SOLARDAY, startpos, startvel, reference_MJD, endpos, endvel, verbose);
+	  // Note: this is less efficient than Ben Engebreth's code, because I am
+	  // trying to preserve the API for the post-processing codes. It would be
+	  // more efficient to redefine the API, feed the mean positions startpos and endpos
+	  // directly to the post-processing codes, and have them solve Lambert's problem, which
+	  // would be analogous to what Ben does.
+
+	  // Some of the statistics in the hlclust class relate to orbit-fitting,
+	  // and are meant for later use. For now, set them all to zero.
+	  astromRMS = orbit_a = orbit_e = orbit_incl = 0.0l;
+	  orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
+	  orbit_eval_count = 0;
+	  // Write overall cluster statistics to the outclust2 array.	
+	  onecluster = hlclust(0, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, clustmetric, rating, reference_MJD, heliodist/AU_KM, heliovel/SOLARDAY, helioacc*1000.0/SOLARDAY/SOLARDAY, endpos.x, endpos.y, endpos.z, endvel.x, endvel.y, endvel.z, orbit_a, orbit_e, orbit_incl, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
+	  // cout << "kdload velrms: " << velRMS << " " << kdclust[clusterct].rmsvec[7] << " " << onecluster.velRMS << "\n";
+	  outclust2.push_back(onecluster);
+	  pointind_mat.push_back(pointind);
+	  gridpoint_clusternum++;
+	  geobin_clusternum++;
+	}
+      }
+    }
+    // Move on to the next bin in geocentric distance
+    cout << "Final analysis of geobin " << georadct << " identified " << geobin_clusternum << " distinct candidate linkages. Current total is " << gridpoint_clusternum << "\n";
+  }
+  if(verbose>=0) cout << "Across all geobins, identified " << gridpoint_clusternum << " total linkages\n";
+
+  // Final loop over all clusters, to remove duplicates
+  // that were in different geocentric bins.
+  if(outclust2.size()==pointind_mat.size()) {
+    // Vector sizes make sense. Load the new hash vector
+    longpd_index lpi = longpd_index(0,0,0);
+    vector <longpd_index> lpdvec;
+    long hashval=0;
+    for(long i=0; i<long(outclust2.size()); i++) {
+      vector <unsigned int> pointind = pointind_mat[i];
+      lpi.index = i;
+      // Convert vector pointind to type long, for hashing.
+      longpointind={};
+      for(long j=0; j<long(pointind.size()); j++) longpointind.push_back(pointind[j]);
+      hashval=blend_vector(longpointind);
+      lpi.lelem = hashval;
+      lpi.delem = outclust2[i].metric;
+      lpdvec.push_back(lpi);
+    }
+    if(outclust2.size()==lpdvec.size()) {
+      // New vector has the right size. Sort it.
+      sort(lpdvec.begin(), lpdvec.end(), lower_longpd_index());
+      long newclusterct=0;
+      for(long i=0; i<long(outclust2.size()); i++) {
+	long clustct = lpdvec[i].index;
+	onecluster = outclust2[clustct];
+	onecluster.clusternum = realclusternum;
+	vector <unsigned int> pointind = pointind_mat[clustct];
+	if(i==0 || lpdvec[i].lelem != lpdvec[i-1].lelem) {
+	  // This cluster is not a duplicate. Write it to
+	  // the output vectors.
+	  if(verbose >= 1) cout << fixed << setprecision(6) << "Loading good cluster " << realclusternum << " : timespan " << onecluster.timespan << " obsnights " << onecluster.obsnights << " metric " << onecluster.metric << "\n";
+	  
+	  outclust.push_back(onecluster);
+	  // Write all individual detections in this cluster to the clust2det array
+	  for(long j=0; j<long(pointind.size()); j++) {
+	    c2d = longpair(realclusternum,pointind[j]);
+	    clust2det.push_back(c2d);
+	  }
+	  realclusternum++;
+	  newclusterct++;
+	}
+      }
+      if(verbose>=0) cout << "This hypothesis: " << newclusterct << " deduplicated linkages; total now " << realclusternum << " linkages totalling " << clust2det.size() << " detections.\n";
+      return(0);
+    } else {
+      cerr << "ERROR: the lengths of the vectors outclust2 and lpvec are not the same!\n";
+      cerr << outclust2.size() << " vs. " << lpdvec.size() << "\n";
+      return(9);
+    }
+  } else {
+    cerr << "ERROR: the lengths of the vectors outclust2 and pointind_mat are not the same!\n";
+    cerr << outclust2.size() << " vs. " << pointind_mat.size() << "\n";
+    return(10);
+  }
+  cerr << "ERROR: form_clusters_RR has reached a case that should not be\nreachable under the design logic.\n";
+  return(11);
+}
+
+// form_clusters_RR_uint_lowmem: September 25, 2026
+// Like form_clusters_RR, but uses the uint_pair and the
+// shortclust classes to reduce memory usage. 
+int form_clusters_RR_uint_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <uint_pair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
+{
+  long detnum = detvec.size();
+  if(detnum>=UINT_MAX) {
+    cerr << "ERROR: form_clusters_RR_lowmem called with too many detections:\n";
+    cerr << "received " << detnum << " detections when the maximum is " << UINT_MAX << "\n";
+    return(1);
+  }
+  double georadmin=0l;
+  double georadmax=0l;
+  point6dx2 statevec1 = point6dx2(0l,0l,0l,0l,0l,0l,0,0);
+  point6ix2 stateveci = point6ix2(0,0,0,0,0,0,0,0);
+  double geodist=0l;
+  long kdroot=0;
+  long splitpoint=0;
+  int gridpoint_clusternum=0;
+  int geobin_clusternum=0;
+  KD_point6ix2 kdpoint = KD_point6ix2(stateveci,-1,-1,1,-1);
+  double timespan=0;
+  int daysteps = 0;
+  int obsnights = 0;
+  uint_pair c2d = uint_pair(0,0);
+  shortclust onecluster = shortclust(0, 0.0, 0.0, 0, 0.0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+  double posRMS = 0.0;
+  double totRMS = 0.0;
+  int pairnum = 0;
+  float posX, posY, posZ, velX, velY, velZ;
+  posX = posY = posZ = velX = velY = velZ = 0.0;
+  long clusterct=0;
+  long clusterct2=0;
+  double clustmetric=0.0l;
+  string rating;
+  int pairct=0;
+  long i=0;
+  long j=0;
+  double dgnum;
+  int georadct,georadnum;
+  georadct=georadnum=0;
+  double georadcen = mingeodist*intpowD(geologstep,georadct);
+  vector <shortclust> outclust2;
+  vector <vector <unsigned int>> pointind_mat;
+  vector <unsigned int> pointind;
+  double clustrad=0.0l;
+  unsigned int pj=0;
+  long uniquepoints=0;
+
+  // Loop over geocentric bins, selecting the subset of state-vectors
+  // in each bin, and running the k-d range query only on those, 
+  // with clustering radius adjusted accordingly.
+
+  // Sanity check the logarithmic geocentric distance framework to avoid a
+  // possible infinite loop.
+  dgnum = log(maxgeodist/mingeodist)/log(geologstep);
+  if(!isnormal(dgnum) || dgnum<0.0l) {
+    cerr << "ERROR: geocentric distance parameters led to nonsense:\n";
+    cerr << "mingeodist, maxgeodist, geologstep = " << maxgeodist << ", " << mingeodist << ", " << geologstep << "\n";
+    cerr << "dgnum = " << dgnum << "\n";
+    return(10);
+  } else georadnum = ceil(dgnum)+1;
+
+  georadct = 0;
+  pointind_mat = {};
+  outclust2 = {};
+  while(georadcen<=maxgeodist && georadct<=georadnum) {
+    georadct++;
+    georadcen = mingeodist*intpowD(geologstep,georadct-1);
+    cout << "Geocentric distance step " << georadct << ", bin-center distance is " << georadcen << " AU\n";
+    georadmin = georadcen/geologstep;
+    georadmax = georadcen*geologstep;
+    // Load new array of state vectors, limited to those in the current geocentric bin
+    vector <point6ix2> binstatevecs;
+    geobin_clusternum=0;
+    for(i=0; i<long(allstatevecs.size()); i++) {
+      // Reverse integerization of the state vector.
+      // This is only possible to a crude approximation, of course.
+      statevec1 = conv_6i_to_6d(allstatevecs[i],INTEGERIZING_SCALEFAC);
+      // Calculate geocentric distance in AU
+      geodist = sqrt(DSQUARE(statevec1.x-Earthrefpos.x) + DSQUARE(statevec1.y-Earthrefpos.y) + DSQUARE(statevec1.z-Earthrefpos.z))/AU_KM;
+      if(geodist >= georadmin && geodist <= georadmax) {
+	// This state vector is in the geocentric radius bin we are currently considering.
+	// Add it to binstatevecs.
+	binstatevecs.push_back(allstatevecs[i]);
+      }
+    }
+    if(verbose>=1) cout << "Found " << binstatevecs.size() << " state vectors in geocentric bin from " << georadmin << " to " << georadmax << " AU\n";
+    if(binstatevecs.size()<dbscan_npt) {
+      continue; // No clusters possible, skip to the next step.
+    } else {      
+      vector <KD_point6ix2> kdvec;
+      kdroot = splitpoint = 0;
+      splitpoint=medind_6ix2(binstatevecs,1);
+      kdpoint = KD_point6ix2(binstatevecs[splitpoint],-1,-1,1,-1);
+      kdvec.push_back(kdpoint);
+      kdtree_6i01(binstatevecs,1,splitpoint,kdroot,kdvec);
+      if(verbose>=1) cout << "Created a KD tree with " << kdvec.size() << " branches\n";
+
+      vector <KD6i_clust> kdclust;
+      if(georadcen >= clustchangerad) {
+	// cluster radius scales linearly with geocentric distance.
+	clustrad = cluster_radius*(georadcen/REF_GEODIST);
+      }
+      else {
+	// cluster radius remains fixed at the minimum value,
+	// in order to make sure it does not get excessively small
+	// for very small geocentric radii.
+	clustrad = cluster_radius*(clustchangerad/REF_GEODIST);
+      }
+      long clusternum = KDRclust_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, dbscan_npt, INTEGERIZING_SCALEFAC, kdclust, verbose);
+      cout << "KDRclust_6i01 finished clustering geobin " << georadct << ", with " << clusternum << " = " << kdclust.size() << " clusters found\n";
+      if(clusternum<0) return(8);
+      
+      // FIRST LOOP OVER CLUSTERS: FLAG POINT-BY-POINT DUPLICATES
+      long hashval=0;
+      long_index li01 = long_index(0,0);
+      vector <long_index> hashvec;
+      for(clusterct=0; clusterct<long(kdclust.size()); clusterct++) {
+		
+	// Map cluster to individual detections.
+	// create vector of unique detection indices.
+	if(DEBUG >= 1) cout << "Loading pointind for " << kdclust[clusterct].numpoints << " of cluster #" << clusterct <<  " out of " << kdclust.size() << "\n";
+	fflush(stdout);
+	pointind = {};
+	for(i=0; i<kdclust[clusterct].numpoints; i++) {
+	  pairct=kdvec[kdclust[clusterct].clustind[i]].point.i1;
+	  vector <unsigned int> pointjunk;
+	  pointjunk = uint_lookup(trk2det, pairct);
+	  if(pointjunk.size()<=0) {
+	    cerr << "ERROR: no detections found for tracklet " << pairct << "\n";
+	    return(3);
+	  }
+	  if(DEBUG >= 2) cout << "Found " << pointjunk.size() << " detections for tracklet " << pairct << "\n";
+	  for(j=0; j<long(pointjunk.size()); j++) {
+	    if(pointjunk[j]>=0 && pointjunk[j]<UINT_MAX) pj = pointjunk[j];
+	    else {
+	      cerr << "ERROR in form_clusters_RR_lowmem: out-of-range long to int conversion\n";
+	      cerr << "Attempted to convert long " << pointjunk[j] << " into an unsigned int\n";
+	      return(2);
+	    }
+	    pointind.push_back(pj);
+	  }
+	}	
+	// Sort vector of detection indices
+	sort(pointind.begin(), pointind.end());
+	// Cull out duplicate entries in pointind
+	for(i=long(pointind.size()-1); i>0; i--) {
+	  if(pointind[i]==pointind[i-1]) pointind.erase(pointind.begin()+i);
+	}
+	// For compatibility with the hashing function blend_vector,
+	// make a temporary copy of pointind that uses longs instead of unsigned ints.
+	vector <long> pointind_long =  uintvec2long(pointind);
+	hashval=blend_vector(pointind_long);
+	li01.lelem = hashval;
+	li01.index = clusterct;
+	hashvec.push_back(li01);
+      }
+      sort(hashvec.begin(), hashvec.end(), lower_long_index());
+
+      // SECOND LOOP OVER CLUSTERS: FULL ANALYSIS
+      for(clusterct2=0; clusterct2<long(kdclust.size()); clusterct2++) {
+	if(clusterct2>0 && hashvec[clusterct2].lelem == hashvec[clusterct2-1].lelem) {
+	  // This cluster is a duplicate of the previous one: skip it
+	  continue;
+	}
+	// If we get here, the cluster is NOT a duplicate, and so we analyze it.
+	clusterct = hashvec[clusterct2].index;
+	// Scale cluster RMS down to reference geocentric distance
+	if(DEBUG >= 2) cout << "scaling kdclust rms for cluster " << clusterct << " out of " << kdclust.size() << "\n";
+	fflush(stdout);
+	for(i=0; i<9; i++) {
+	  if(DEBUG >= 2) cout << "scaling rmsvec point " << i << " out of " << kdclust[clusterct].rmsvec.size() << "\n";
+	  if(DEBUG >= 2) cout << "RMS = " << kdclust[clusterct].rmsvec[i];
+	  if(georadcen >= clustchangerad) kdclust[clusterct].rmsvec[i] *= REF_GEODIST/georadcen;
+	  else kdclust[clusterct].rmsvec[i] *= REF_GEODIST/clustchangerad;
+	  if(DEBUG >= 2) cout << ", scales to " << kdclust[clusterct].rmsvec[i] << "\n";
+	}
+	// Note that RMS is scaled down for more distant clusters, to
+	// avoid bias against them in post-processing.
+	
+	// Map cluster to individual detections.
+	// create vector of unique detection indices.
+	if(DEBUG >= 1) cout << "Loading pointind for " << kdclust[clusterct].numpoints << " of cluster #" << clusterct <<  " out of " << kdclust.size() << "\n";
+	fflush(stdout);
+	pointind = {};
+	for(i=0; i<kdclust[clusterct].numpoints; i++) {
+	  pairct=kdvec[kdclust[clusterct].clustind[i]].point.i1;
+	  vector <unsigned int> pointjunk;
+	  pointjunk = uint_lookup(trk2det, pairct);
+	  if(pointjunk.size()<=0) {
+	    cerr << "ERROR: no detections found for tracklet " << pairct << "\n";
+	    return(3);
+	  }
+	  if(DEBUG >= 2) cout << "Found " << pointjunk.size() << " detections for tracklet " << pairct << "\n";
+	  for(j=0; j<long(pointjunk.size()); j++) {
+	    if(pointjunk[j]>=0 && pointjunk[j]<UINT_MAX) pj = pointjunk[j];
+	    else {
+	      cerr << "ERROR in form_clusters_RR_lowmem: out-of-range long to int conversion\n";
+	      cerr << "Attempted to convert long " << pointjunk[j] << " into an unsigned int\n";
+	      return(2);
+	    }
+	    pointind.push_back(pj);
+	  }
+	}	
+	// Sort vector of detection indices
+	sort(pointind.begin(), pointind.end());
+	// Cull out duplicate entries in pointind
+	for(i=long(pointind.size()-1); i>0; i--) {
+	  if(pointind[i]==pointind[i-1]) pointind.erase(pointind.begin()+i);
+	}
+	uniquepoints = pointind.size();      
+	// Load vector of detection MJD's
+	vector <double> clustmjd;
+	for(i=0; i<uniquepoints; i++) {
+	  if(pointind[i]<0 || pointind[i]>=detnum) {
+	    cerr << "ERROR: form_clusters trying to reference point " << pointind[i] << " of detvec! Range is 0 --" << detnum-1 << "\n";
+	    return(1);
+	  }
+	  clustmjd.push_back(detvec[pointind[i]].MJD);
+	}
+
+	// Sort vector of MJD's
+	sort(clustmjd.begin(), clustmjd.end());
+	timespan = clustmjd[clustmjd.size()-1] - clustmjd[0];
+	// Load vector of MJD steps
+	vector <double> mjdstep;
+	for(i=1; i<long(clustmjd.size()); i++) {
+	  mjdstep.push_back(clustmjd[i]-clustmjd[i-1]);
+	}
+	// Count steps large enough to suggest a daytime period between nights.
+	daysteps=0;	
+	for(i=0; i<long(mjdstep.size()); i++) {
+	  if(mjdstep[i]>nightstep) daysteps++;
+	}
+	obsnights = daysteps+1;
+	// Does cluster pass the criteria for a linked detection?
+	if(timespan >= mintimespan && obsnights >= minobsnights) {
+	  if(verbose >= 1) cout << "Cluster passes discovery criteria\n";
+
+	  // Calculate values for the statistics in the output array (class hlclust) that have
+	  // not been caculated already.
+	  clustmetric = double(uniquepoints)*double(obsnights)*timespan/kdclust[clusterct].rmsvec[8];
+	  // Note contents of rmsvec: [0] xrms, [1] yrms, [2] zrms, [3] vxrms, [4] vyrms, [5] vzrms,
+	  // [6] overall position rms, [7] overall velocity rms, [8] overall rms
+	  posRMS = kdclust[clusterct].rmsvec[6];
+	  totRMS = kdclust[clusterct].rmsvec[8];
+	  pairnum = kdclust[clusterct].numpoints; // This is the original total number of pairs/tracklets assigned
+	                                          // to this cluster, which might have a lot of overlap in terms of 
+	                                          // individual detections (of which the non-overlapping count has
+	                                          // already been saved in 'uniquepoints').
+	  // Now calculate the position and velocity at reference_MJD, based on the
+	  // mean positions stored in kdclust[clusterct].meanvec. In the heliolincRR
+	  // algorithm, these are not position and velocity but rather two positions,
+	  // one at reference_MJD-chartimescale/SOLARDAY and one at reference_MJD+chartimescale/SOLARDAY;
+	  point3d startpos = point3d(kdclust[clusterct].meanvec[0],kdclust[clusterct].meanvec[1],kdclust[clusterct].meanvec[2]);
+	  point3d endpos = point3d(kdclust[clusterct].meanvec[3],kdclust[clusterct].meanvec[4],kdclust[clusterct].meanvec[5]);
+	  point3d startvel = point3d(0l,0l,0l);
+	  point3d endvel = point3d(0l,0l,0l);
+	  double deltat = 2.0l*chartimescale/SOLARDAY;
+	  // Calculate the velocity at the first time, which is reference_MJD-chartimescale/SOLARDAY.
+	  Twopoint_Kepler_vstar(GMSUN_KM3_SEC2, startpos, endpos, deltat, startvel, KVSTAR_ITMAX);
+	  // Integrate forward to reference_MJD.
+	  Kepler_univ_int(GMSUN_KM3_SEC2, reference_MJD-chartimescale/SOLARDAY, startpos, startvel, reference_MJD, endpos, endvel, verbose);
+	  // Note: this is less efficient than Ben Engebreth's code, because I am
+	  // trying to preserve the API for the post-processing codes. It would be
+	  // more efficient to redefine the API, feed the mean positions startpos and endpos
+	  // directly to the post-processing codes, and have them solve Lambert's problem, which
+	  // would be analogous to what Ben does.
+	  posX = endpos.x;
+	  posY = endpos.y;
+	  posZ = endpos.z;
+	  velX = endvel.x;
+	  velY = endvel.y;
+	  velZ = endvel.z;
+	  // Write overall cluster statistics to the outclust2 array.	
+	  onecluster = shortclust(0, posRMS, totRMS, pairnum, clustmetric, hypindex, posX, posY, posZ, velX, velY, velZ);
+	  // cout << "kdload velrms: " << velRMS << " " << kdclust[clusterct].rmsvec[7] << " " << onecluster.velRMS << "\n";
+	  outclust2.push_back(onecluster);
+	  pointind_mat.push_back(pointind);
+	  gridpoint_clusternum++;
+	  geobin_clusternum++;
+	}
+      }
+    }
+    // Move on to the next bin in geocentric distance
+    cout << "Final analysis of geobin " << georadct << " identified " << geobin_clusternum << " distinct candidate linkages. Current total is " << gridpoint_clusternum << "\n";
+  }
+  if(verbose>=0) cout << "Across all geobins, identified " << gridpoint_clusternum << " total linkages\n";
+
+  // Final loop over all clusters, to remove duplicates
+  // that were in different geocentric bins.
+  if(outclust2.size()==pointind_mat.size()) {
+    // Vector sizes make sense. Load the new hash vector
+    longpd_index lpi = longpd_index(0,0,0);
+    vector <longpd_index> lpdvec;
+    long hashval=0;
+    for(i=0; i<long(outclust2.size()); i++) {
+      vector <long> pointind_long =  uintvec2long(pointind_mat[i]);
+      lpi.index = i;
+      hashval=blend_vector(pointind_long);
+      lpi.lelem = hashval;
+      lpi.delem = outclust2[i].metric;
+      lpdvec.push_back(lpi);
+    }
+    if(outclust2.size()==lpdvec.size()) {
+      // New vector has the right size. Sort it.
+      sort(lpdvec.begin(), lpdvec.end(), lower_longpd_index());
+      long newclusterct=0;
+      for(i=0; i<long(outclust2.size()); i++) {
+	long clustct = lpdvec[i].index;
+	onecluster = outclust2[clustct];
+	onecluster.clusternum = realclusternum;
+	pointind = pointind_mat[clustct];
+	uniquepoints = pointind.size();
+	if(i==0 || lpdvec[i].lelem != lpdvec[i-1].lelem) {
+	  // This cluster is not a duplicate. Write it to
+	  // the output vectors.
+	  if(verbose >= 1) cout << fixed << setprecision(6) << "Loading good cluster " << realclusternum << " with metric " << onecluster.metric << "\n";
+	  
+	  outclust.push_back(onecluster);
+	  // Write all individual detections in this cluster to the clust2det array
+	  for(j=0; j<uniquepoints; j++) {
+	    unsigned int rcn=0;
+	    if(realclusternum>=0 && realclusternum<UINT_MAX) rcn = realclusternum;
+	    else {
+	      cerr << "ERROR in form_clusters_kd4_lowmem: out-of-range long to int conversion\n";
+	      cerr << "Attempted to convert long realclusternum = " << realclusternum << " into an unsigned int\n";
+	      return(2);
+	    }
+	    c2d = uint_pair(rcn,pointind[j]);
+	    clust2det.push_back(c2d);
+	  }
+	  realclusternum++;
+	  newclusterct++;
+	  if(realclusternum>=UINT_MAX) {
+	    cerr << "ERROR: form_clusters_kd4_lowmem finds too many clusters:\n";
+	    cerr << "found " << realclusternum+1 << " clusters when the maximum is " << UINT_MAX << "\n";
+	    return(2);
+	  }
+	}
+      }
+      if(verbose>=0) if(verbose>=0) cout << "This hypothesis: " << newclusterct << " deduplicated linkages; total now " << realclusternum << " linkages totalling " << clust2det.size() << " detections.\n";
+      return(0);
+    } else {
+      cerr << "ERROR: the lengths of the vectors outclust2 and lpvec are not the same!\n";
+      cerr << outclust2.size() << " vs. " << lpdvec.size() << "\n";
+      return(9);
+    }
+  } else {
+    cerr << "ERROR: the lengths of the vectors outclust2 and pointind_mat are not the same!\n";
+    cerr << outclust2.size() << " vs. " << pointind_mat.size() << "\n";
+    return(10);
+  }
+  cerr << "ERROR: form_clusters_RR_lowmem has reached a case that should not be\nreachable under the design logic.\n";
+  return(11);
+}
+
+
+// form_clusters_dbscan_RR: November 04, 2026:
+// Like form_clusters_RR, but uses DBSCAN
+int form_clusters_dbscan_RR(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
+{
+  long detnum = detvec.size();
+  double georadmin=0l;
+  double georadmax=0l;
+  point6dx2 statevec1 = point6dx2(0l,0l,0l,0l,0l,0l,0,0);
+  point6ix2 stateveci = point6ix2(0,0,0,0,0,0,0,0);
+  double geodist=0l;
+  long kdroot=0;
+  long splitpoint=0;
+  long gridpoint_clusternum=0;
+  long geobin_clusternum=0;
+  KD_point6ix2 kdpoint = KD_point6ix2(stateveci,-1,-1,1,-1);
+  double timespan=0;
+  int daysteps = 0;
+  int obsnights = 0;
+  longpair c2d = longpair(0,0);
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  double posRMS = 0.0l;
+  double velRMS = 0.0l;
+  double totRMS = 0.0l;
+  double astromRMS = 0.0l;
+  long pairnum = 0;
+  long uniquepoints = 0;
+  double orbit_a, orbit_e, orbit_incl, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ;
+  orbit_a = orbit_e = orbit_incl = orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
+  long orbit_eval_count = 0;
+  long clusterct=0;
+  double clustmetric=0.0l;
+  string rating;
+  long pairct=0;
+  double dgnum;
+  long georadct,georadnum;
+  georadct=georadnum=0;
+  double georadcen = mingeodist*intpowD(geologstep,georadct);
+  double clustrad = 0.0;
+  
+  // Loop over geocentric bins, selecting the subset of state-vectors
+  // in each bin, and running DBSCAN only on those, with clustering radius
+  // adjusted accordingly.
+
+  // Sanity check the logarithmic geocentric distance framework to avoid a
+  // possible infinite loop.
+  dgnum = log(maxgeodist/mingeodist)/log(geologstep);
+  if(!isnormal(dgnum) || dgnum<0.0l) {
+    cerr << "ERROR: geocentric distance parameters led to nonsense:\n";
+    cerr << "mingeodist, maxgeodist, geologstep = " << maxgeodist << ", " << mingeodist << ", " << geologstep << "\n";
+    cerr << "dgnum = " << dgnum << "\n";
+    return(10);
+  } else georadnum = ceil(dgnum)+1;
+
+  georadct = 0;
+  while(georadcen<=maxgeodist && georadct<=georadnum) {
+    georadct++;
+    georadcen = mingeodist*intpowD(geologstep,georadct-1);
+    cout << fixed << setprecision(2) << "Geocentric distance step " << georadct << ", bin-center distance is " << georadcen << " AU\n";
+    georadmin = georadcen/geologstep;
+    georadmax = georadcen*geologstep;
+    // Load new array of state vectors, limited to those in the current geocentric bin
+    vector <point6ix2> binstatevecs;
+    geobin_clusternum=0;
+    for(long i=0; i<long(allstatevecs.size()); i++) {
+      // Reverse integerization of the state vector.
+      // This is only possible to a crude approximation, of course.
+      statevec1 = conv_6i_to_6d(allstatevecs[i],INTEGERIZING_SCALEFAC);
+      // Calculate geocentric distance in AU
+      geodist = sqrt(DSQUARE(statevec1.x-Earthrefpos.x) + DSQUARE(statevec1.y-Earthrefpos.y) + DSQUARE(statevec1.z-Earthrefpos.z))/AU_KM;
+      if(geodist >= georadmin && geodist <= georadmax) {
+	// This state vector is in the geocentric radius bin we are currently considering.
+	// Add it to binstatevecs.
+	binstatevecs.push_back(allstatevecs[i]);
+      }
+    }
+    if(verbose>=1) cout << fixed << setprecision(2) << "Found " << binstatevecs.size() << " state vectors in geocentric bin from " << georadmin << " to " << georadmax << " AU\n";
+    if(binstatevecs.size()<dbscan_npt) {
+      continue; // No clusters possible, skip to the next step.
+    } else {      
+      vector <KD_point6ix2> kdvec;
+      kdroot = splitpoint = 0;
+      splitpoint=medind_6ix2(binstatevecs,1);
+      kdpoint = KD_point6ix2(binstatevecs[splitpoint],-1,-1,1,-1);
+      kdvec.push_back(kdpoint);
+      kdtree_6i01(binstatevecs,1,splitpoint,kdroot,kdvec);
+      if(verbose>=1) cout << "Created a KD tree with " << kdvec.size() << " branches\n";
+
+      vector <KD6i_clust> kdclust;
+      if(georadcen >= clustchangerad) {
+	// cluster radius scales linearly with geocentric distance.
+	clustrad = cluster_radius*(georadcen/REF_GEODIST);
+	if(verbose>=1) cout << "normal scaling clustrad = " << clustrad << "\n";
+      }
+      else {
+	// cluster radius remains fixed at the minimum value,
+	// in order to make sure it does not get excessively small
+	// for very small geocentric radii.
+	clustrad = cluster_radius*(clustchangerad/REF_GEODIST);
+	if(verbose>=1) cout << "fixed minimum clustrad = " << clustrad << "\n";
+      }
+      long clusternum = DBSCAN_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, dbscan_npt, INTEGERIZING_SCALEFAC, kdclust, verbose);
+      cout << "DBSCAN_6i01 finished clustering geobin " << georadct << ", with " << clusternum << " = " << kdclust.size() << " clusters found\n";
+      if(clusternum<0) return(8);
+      for(clusterct=0; clusterct<long(kdclust.size()); clusterct++) {
+	// Scale cluster RMS down to reference geocentric distance
+	if(DEBUG >= 2) cout << "scaling kdclust rms for cluster " << clusterct << " out of " << kdclust.size() << "\n";
+	fflush(stdout);
+	for(long i=0; i<9; i++) {
+	  if(DEBUG >= 2) cout << "scaling rmsvec point " << i << " out of " << kdclust[clusterct].rmsvec.size() << "\n";
+	  if(DEBUG >= 2) cout << fixed << setprecision(6) << "RMS = " << kdclust[clusterct].rmsvec[i];
+	  if(georadcen >= clustchangerad) kdclust[clusterct].rmsvec[i] *= REF_GEODIST/georadcen;
+	  else kdclust[clusterct].rmsvec[i] *= REF_GEODIST/clustchangerad;
+	  if(DEBUG >= 2) cout << fixed << setprecision(6) << ", scales to " << kdclust[clusterct].rmsvec[i] << "\n";
+	}
+	// Note that RMS is scaled down for more distant clusters, to
+	// avoid bias against them in post-processing.
+	
+	// Map cluster to individual detections.
+	// create vector of unique detection indices.
+	if(DEBUG >= 1) cout << "Loading pointind for " << kdclust[clusterct].numpoints << " of cluster #" << clusterct <<  " out of " << kdclust.size() << "\n";
+	fflush(stdout);
+	vector <long> pointind;
+	for(long i=0; i<kdclust[clusterct].numpoints; i++) {
+	  pairct=kdvec[kdclust[clusterct].clustind[i]].point.i1;
+	  vector <long> pointjunk;
+	  pointjunk = tracklet_lookup(trk2det, pairct);
+	  if(pointjunk.size()<=0) {
+	    cerr << "ERROR: no detections found for tracklet " << pairct << "\n";
+	    return(3);
+	  }
+	  if(DEBUG >= 2) cout << "Found " << pointjunk.size() << " detections for tracklet " << pairct << "\n";
+	  for(long j=0; j<long(pointjunk.size()); j++) {
+	    pointind.push_back(pointjunk[j]);
+	  }
+	}
+	// Sort vector of detection indices
+	sort(pointind.begin(), pointind.end());
+	// Cull out duplicate entries in pointind
+	for(long i=long(pointind.size()-1); i>0; i--) {
+	  if(pointind[i]==pointind[i-1]) pointind.erase(pointind.begin()+i);
+	}
+	uniquepoints = pointind.size();
+	// Load vector of detection MJD's
+	vector <double> clustmjd;
+	for(long i=0; i<long(pointind.size()); i++) {
+	  if(pointind[i]<0 || pointind[i]>=detnum) {
+	    cerr << "ERROR: form_clusters trying to reference point " << pointind[i] << " of detvec! Range is 0 --" << detnum-1 << "\n";
+	    return(1);
+	  }
+	  clustmjd.push_back(detvec[pointind[i]].MJD);
+	}
+
+	// Sort vector of MJD's
+	sort(clustmjd.begin(), clustmjd.end());
+	timespan = clustmjd[clustmjd.size()-1] - clustmjd[0];
+	// Load vector of MJD steps
+	vector <double> mjdstep;
+	for(long i=1; i<long(clustmjd.size()); i++) {
+	  mjdstep.push_back(clustmjd[i]-clustmjd[i-1]);
+	}
+	// Count steps large enough to suggest a daytime period between nights.
+	daysteps=0;	
+	for(long i=0; i<long(mjdstep.size()); i++) {
+	  if(mjdstep[i]>nightstep) daysteps++;
+	}
+	obsnights = daysteps+1;
+	// Does cluster pass the criteria for a linked detection?
+	if(timespan >= mintimespan && obsnights >= minobsnights) {
+	  if(verbose >= 1) cout << "Loading good cluster " << realclusternum << " with timespan " << timespan << " and obsnights " << obsnights << "\n";
+	  fflush(stdout);
+	  if(verbose >= 1) cout << "Cluster passes discovery criteria: will be designated as cluster " << realclusternum << "\n";
+	  // Check whether cluster is composed purely of detections from
+	  // a single simulated object (i.e., would be a real discovery) or is a mixture
+	  // of detections from two or more different simulated objects (i.e., spurious).
+	  rating="PURE";
+	  for(long i=1; i<long(pointind.size()); i++) {
+	    if(stringnmatch01(detvec[pointind[i]].idstring,detvec[pointind[i-1]].idstring,SHORTSTRINGLEN)!=0) rating="MIXED";
+	  }
+	  if(DEBUG >= 1) cout << "Rating is found to be " << rating << "\n";
+	  fflush(stdout);
+	  // Write all individual detections in this cluster to the clust2det array
+	  for(long i=0; i<long(pointind.size()); i++) {
+	    c2d = longpair(realclusternum,pointind[i]);
+	    clust2det.push_back(c2d);
+	  }
+
+	  // Calculate values for the statistics in the output array (class hlclust) that have
+	  // not been caculated already.
+	  clustmetric = double(pointind.size())*double(obsnights)*timespan/kdclust[clusterct].rmsvec[8];
+	  // Note contents of rmsvec: [0] xrms, [1] yrms, [2] zrms, [3] vxrms, [4] vyrms, [5] vzrms,
+	  // [6] overall position rms, [7] overall velocity rms, [8] overall rms
+	  posRMS = kdclust[clusterct].rmsvec[6];
+	  velRMS = kdclust[clusterct].rmsvec[7];
+	  totRMS = kdclust[clusterct].rmsvec[8];
+	  pairnum = kdclust[clusterct].numpoints; // This is the original total number of pairs/tracklets assigned
+	                                          // to this cluster, which might have a lot of overlap in terms of 
+	                                          // individual detections (of which the non-overlapping count has
+	                                          // already been saved in 'uniquepoints').
+	  // Now calculate the position and velocity at reference_MJD, based on the
+	  // mean positions stored in kdclust[clusterct].meanvec. In the heliolincRR
+	  // algorithm, these are not position and velocity but rather two positions,
+	  // one at reference_MJD-chartimescale/SOLARDAY and one at reference_MJD+chartimescale/SOLARDAY;
+	  point3d startpos = point3d(kdclust[clusterct].meanvec[0],kdclust[clusterct].meanvec[1],kdclust[clusterct].meanvec[2]);
+	  point3d endpos = point3d(kdclust[clusterct].meanvec[3],kdclust[clusterct].meanvec[4],kdclust[clusterct].meanvec[5]);
+	  point3d startvel = point3d(0l,0l,0l);
+	  point3d endvel = point3d(0l,0l,0l);
+	  double deltat = 2.0l*chartimescale/SOLARDAY;
+	  // Calculate the velocity at the first time, which is reference_MJD-chartimescale/SOLARDAY.
+	  Twopoint_Kepler_vstar(GMSUN_KM3_SEC2, startpos, endpos, deltat, startvel, KVSTAR_ITMAX);
+	  // Integrate forward to reference_MJD.
+	  Kepler_univ_int(GMSUN_KM3_SEC2, reference_MJD-chartimescale/SOLARDAY, startpos, startvel, reference_MJD, endpos, endvel, verbose);
+	  // Note: this is less efficient than Ben Engebreth's code, because I am
+	  // trying to preserve the API for the post-processing codes. It would be
+	  // more efficient to redefine the API, feed the mean positions startpos and endpos
+	  // directly to the post-processing codes, and have them solve Lambert's problem, which
+	  // would be analogous to what Ben does.
+
+	  // Some of the statistics in the hlclust class relate to orbit-fitting,
+	  // and are meant for later use. For now, set them all to zero.
+	  astromRMS = orbit_a = orbit_e = orbit_incl = 0.0l;
+	  orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
+	  orbit_eval_count = 0;
+	  // Write overall cluster statistics to the outclust2 array.	
+	  onecluster = hlclust(0, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, clustmetric, rating, reference_MJD, heliodist/AU_KM, heliovel/SOLARDAY, helioacc*1000.0/SOLARDAY/SOLARDAY, endpos.x, endpos.y, endpos.z, endvel.x, endvel.y, endvel.z, orbit_a, orbit_e, orbit_incl, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
+	  // cout << "kdload velrms: " << velRMS << " " << kdclust[clusterct].rmsvec[7] << " " << onecluster.velRMS << "\n";
+	  outclust.push_back(onecluster);
+	  realclusternum++;
+	  geobin_clusternum++;
+	  gridpoint_clusternum++;
+	}
+      }
+    }
+    // Move on to the next bin in geocentric distance
+    cout << "Final analysis of geobin " << georadct << " identified " << geobin_clusternum << " distinct candidate linkages. Current total is " << gridpoint_clusternum << "\n";
+  }
+  if(verbose>=0) cout << "This hypothesis: " << gridpoint_clusternum << " linkages; total now " << realclusternum << " linkages totalling " << clust2det.size() << " detections.\n";
+  return(0);
+}
+
+
+// form_clusters_dbscan_RR_lowmem: November 04, 2026:
+// Like form_clusters_RR_lowmem, but uses DBSCAN
+int form_clusters_dbscan_RR_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
+{
+  long detnum = detvec.size();
+  if(detnum>=UINT_MAX) {
+    cerr << "ERROR: form_clusters_lowmem called with too many detections:\n";
+    cerr << "received " << detnum << " detections when the maximum is " << UINT_MAX << "\n";
+    return(1);
+  }
+  
+  double georadmin=0l;
+  double georadmax=0l;
+  point6dx2 statevec1 = point6dx2(0l,0l,0l,0l,0l,0l,0,0);
+  point6ix2 stateveci = point6ix2(0,0,0,0,0,0,0,0);
+  double geodist=0l;
+  long kdroot=0;
+  long splitpoint=0;
+  long gridpoint_clusternum=0;
+  long geobin_clusternum=0;
+  KD_point6ix2 kdpoint = KD_point6ix2(stateveci,-1,-1,1,-1);
+  double timespan=0;
+  int daysteps = 0;
+  int obsnights = 0;
+  uint_pair c2d = uint_pair(0,0);
+  shortclust onecluster = shortclust(0, 0.0, 0.0, 0, 0.0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+  float posRMS = 0.0;
+  float totRMS = 0.0;
+  long pairnum = 0;
+  long uniquepoints = 0;
+  long clusterct=0;
+  double clustmetric=0.0l;
+  string rating;
+  long pairct=0;
+  double dgnum;
+  long georadct,georadnum;
+  georadct=georadnum=0;
+  double georadcen = mingeodist*intpowD(geologstep,georadct);
+  double clustrad = 0.0;
+  unsigned int pj=0;
+  unsigned int rcn=0;
+  
+  // Loop over geocentric bins, selecting the subset of state-vectors
+  // in each bin, and running DBSCAN only on those, with clustering radius
+  // adjusted accordingly.
+
+  // Sanity check the logarithmic geocentric distance framework to avoid a
+  // possible infinite loop.
+  dgnum = log(maxgeodist/mingeodist)/log(geologstep);
+  if(!isnormal(dgnum) || dgnum<0.0l) {
+    cerr << "ERROR: geocentric distance parameters led to nonsense:\n";
+    cerr << "mingeodist, maxgeodist, geologstep = " << maxgeodist << ", " << mingeodist << ", " << geologstep << "\n";
+    cerr << "dgnum = " << dgnum << "\n";
+    return(10);
+  } else georadnum = ceil(dgnum)+1;
+
+  georadct = 0;
+  while(georadcen<=maxgeodist && georadct<=georadnum) {
+    georadct++;
+    georadcen = mingeodist*intpowD(geologstep,georadct-1);
+    cout << fixed << setprecision(2) << "Geocentric distance step " << georadct << ", bin-center distance is " << georadcen << " AU\n";
+    georadmin = georadcen/geologstep;
+    georadmax = georadcen*geologstep;
+    // Load new array of state vectors, limited to those in the current geocentric bin
+    vector <point6ix2> binstatevecs;
+    geobin_clusternum=0;
+    for(long i=0; i<long(allstatevecs.size()); i++) {
+      // Reverse integerization of the state vector.
+      // This is only possible to a crude approximation, of course.
+      statevec1 = conv_6i_to_6d(allstatevecs[i],INTEGERIZING_SCALEFAC);
+      // Calculate geocentric distance in AU
+      geodist = sqrt(DSQUARE(statevec1.x-Earthrefpos.x) + DSQUARE(statevec1.y-Earthrefpos.y) + DSQUARE(statevec1.z-Earthrefpos.z))/AU_KM;
+      if(geodist >= georadmin && geodist <= georadmax) {
+	// This state vector is in the geocentric radius bin we are currently considering.
+	// Add it to binstatevecs.
+	binstatevecs.push_back(allstatevecs[i]);
+      }
+    }
+    if(verbose>=1) cout << fixed << setprecision(2) << "Found " << binstatevecs.size() << " state vectors in geocentric bin from " << georadmin << " to " << georadmax << " AU\n";
+    if(binstatevecs.size()<dbscan_npt) {
+      continue; // No clusters possible, skip to the next step.
+    } else {      
+      vector <KD_point6ix2> kdvec;
+      kdroot = splitpoint = 0;
+      splitpoint=medind_6ix2(binstatevecs,1);
+      kdpoint = KD_point6ix2(binstatevecs[splitpoint],-1,-1,1,-1);
+      kdvec.push_back(kdpoint);
+      kdtree_6i01(binstatevecs,1,splitpoint,kdroot,kdvec);
+      if(verbose>=1) cout << "Created a KD tree with " << kdvec.size() << " branches\n";
+
+      vector <KD6i_clust> kdclust;
+      if(georadcen >= clustchangerad) {
+	// cluster radius scales linearly with geocentric distance.
+	clustrad = cluster_radius*(georadcen/REF_GEODIST);
+	if(verbose>=1) cout << "normal scaling clustrad = " << clustrad << "\n";
+      }
+      else {
+	// cluster radius remains fixed at the minimum value,
+	// in order to make sure it does not get excessively small
+	// for very small geocentric radii.
+	clustrad = cluster_radius*(clustchangerad/REF_GEODIST);
+	if(verbose>=1) cout << "fixed minimum clustrad = " << clustrad << "\n";
+      }
+      long clusternum = DBSCAN_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, dbscan_npt, INTEGERIZING_SCALEFAC, kdclust, verbose);
+      cout << "DBSCAN_6i01 finished clustering geobin " << georadct << ", with " << clusternum << " = " << kdclust.size() << " clusters found\n";
+      if(clusternum<0) return(8);
+      for(clusterct=0; clusterct<long(kdclust.size()); clusterct++) {
+	// Scale cluster RMS down to reference geocentric distance
+	if(DEBUG >= 2) cout << "scaling kdclust rms for cluster " << clusterct << " out of " << kdclust.size() << "\n";
+	fflush(stdout);
+	for(long i=0; i<9; i++) {
+	  if(DEBUG >= 2) cout << "scaling rmsvec point " << i << " out of " << kdclust[clusterct].rmsvec.size() << "\n";
+	  if(DEBUG >= 2) cout << fixed << setprecision(6) << "RMS = " << kdclust[clusterct].rmsvec[i];
+	  if(georadcen >= clustchangerad) kdclust[clusterct].rmsvec[i] *= REF_GEODIST/georadcen;
+	  else kdclust[clusterct].rmsvec[i] *= REF_GEODIST/clustchangerad;
+	  if(DEBUG >= 2) cout << fixed << setprecision(6) << ", scales to " << kdclust[clusterct].rmsvec[i] << "\n";
+	}
+	// Note that RMS is scaled down for more distant clusters, to
+	// avoid bias against them in post-processing.
+	
+	// Map cluster to individual detections.
+	// create vector of unique detection indices.
+	if(DEBUG >= 1) cout << "Loading pointind for " << kdclust[clusterct].numpoints << " of cluster #" << clusterct <<  " out of " << kdclust.size() << "\n";
+	fflush(stdout);
+	vector <unsigned int> pointind_ui;
+	for(long i=0; i<kdclust[clusterct].numpoints; i++) {
+	  pairct=kdvec[kdclust[clusterct].clustind[i]].point.i1;
+	  vector <long> pointjunk;
+	  pointjunk = tracklet_lookup(trk2det, pairct);
+	  if(pointjunk.size()<=0) {
+	    cerr << "ERROR: no detections found for tracklet " << pairct << "\n";
+	    return(3);
+	  }
+	  if(DEBUG >= 2) cout << "Found " << pointjunk.size() << " detections for tracklet " << pairct << "\n";
+	  for(long j=0; j<long(pointjunk.size()); j++) {
+	    if(pointjunk[j]>=0 && pointjunk[j]<UINT_MAX) pj = pointjunk[j];
+	    else {
+	      cerr << "ERROR in form_clusters_lowmem: out-of-range long to int conversion\n";
+	      cerr << "Attempted to convert long " << pointjunk[j] << " into an unsigned int\n";
+	      return(2);
+	    }
+	    pointind_ui.push_back(pj);
+	  }
+	}
+	// Sort vector of detection indices
+	sort(pointind_ui.begin(), pointind_ui.end());
+	for(long i=long(pointind_ui.size()-1); i>0; i--) {
+	  if(pointind_ui[i]==pointind_ui[i-1]) pointind_ui.erase(pointind_ui.begin()+i);
+	}
+	uniquepoints = pointind_ui.size();
+	// Load vector of detection MJD's
+	vector <double> clustmjd;
+	for(long i=0; i<uniquepoints; i++) {
+	  if(pointind_ui[i]<0 || pointind_ui[i]>=detnum) {
+	    cerr << "ERROR: form_clusters trying to reference point " << pointind_ui[i] << " of detvec! Range is 0 --" << detnum-1 << "\n";
+	    return(1);
+	  }
+	  clustmjd.push_back(detvec[pointind_ui[i]].MJD);
+	}
+
+	// Sort vector of MJD's
+	sort(clustmjd.begin(), clustmjd.end());
+	timespan = clustmjd[clustmjd.size()-1] - clustmjd[0];
+	// Load vector of MJD steps
+	vector <double> mjdstep;
+	for(long i=1; i<long(clustmjd.size()); i++) {
+	  mjdstep.push_back(clustmjd[i]-clustmjd[i-1]);
+	}
+	// Count steps large enough to suggest a daytime period between nights.
+	daysteps=0;	
+	for(long i=0; i<long(mjdstep.size()); i++) {
+	  if(mjdstep[i]>nightstep) daysteps++;
+	}
+	obsnights = daysteps+1;
+	// Does cluster pass the criteria for a linked detection?
+	if(timespan >= mintimespan && obsnights >= minobsnights) {
+	  if(verbose >= 1) cout << "Loading good cluster " << realclusternum << " with timespan " << timespan << " and obsnights " << obsnights << "\n";
+	  fflush(stdout);
+	  if(verbose >= 1) cout << "Cluster passes discovery criteria: will be designated as cluster " << realclusternum << "\n";
+	  // Write all individual detections in this cluster to the clust2det array
+	  if(realclusternum>=0 && realclusternum<UINT_MAX) rcn = realclusternum;
+	  else {
+	    cerr << "ERROR in form_clusters_dbscan_RR_lowmem: out-of-range long to int conversion\n";
+	    cerr << "Attempted to convert long realclusternum = " << realclusternum << " into an unsigned int\n";
+	    return(2);
+	  }
+	  for(long j=0; j<long(pointind_ui.size()); j++) {
+	    c2d = uint_pair(rcn,pointind_ui[j]);
+	    clust2det.push_back(c2d);
+	  }
+	  
+	  // Check whether cluster is composed purely of detections from
+	  // a single simulated object (i.e., would be a real discovery) or is a mixture
+	  // of detections from two or more different simulated objects (i.e., spurious).
+	  rating="PURE";
+	  for(long i=1; i<long(pointind_ui.size()); i++) {
+	    if(stringnmatch01(detvec[pointind_ui[i]].idstring,detvec[pointind_ui[i-1]].idstring,SHORTSTRINGLEN)!=0) rating="MIXED";
+	  }
+	  if(DEBUG >= 1) cout << "Rating is found to be " << rating << "\n";
+	  fflush(stdout);
+
+	  // Calculate values for the statistics in the output array (class shortclust) that have
+	  // not been caculated already.
+	  clustmetric = double(pointind_ui.size())*double(obsnights)*timespan/kdclust[clusterct].rmsvec[8];
+	  // Note contents of rmsvec: [0] xrms, [1] yrms, [2] zrms, [3] vxrms, [4] vyrms, [5] vzrms,
+	  // [6] overall position rms, [7] overall velocity rms, [8] overall rms
+	  posRMS = kdclust[clusterct].rmsvec[6];
+	  totRMS = kdclust[clusterct].rmsvec[8];
+	  pairnum = kdclust[clusterct].numpoints; // This is the original total number of pairs/tracklets assigned
+	                                          // to this cluster, which might have a lot of overlap in terms of 
+	                                          // individual detections (of which the non-overlapping count has
+	                                          // already been saved in 'uniquepoints').
+	  // Now calculate the position and velocity at reference_MJD, based on the
+	  // mean positions stored in kdclust[clusterct].meanvec. In the heliolincRR
+	  // algorithm, these are not position and velocity but rather two positions,
+	  // one at reference_MJD-chartimescale/SOLARDAY and one at reference_MJD+chartimescale/SOLARDAY;
+	  point3d startpos = point3d(kdclust[clusterct].meanvec[0],kdclust[clusterct].meanvec[1],kdclust[clusterct].meanvec[2]);
+	  point3d endpos = point3d(kdclust[clusterct].meanvec[3],kdclust[clusterct].meanvec[4],kdclust[clusterct].meanvec[5]);
+	  point3d startvel = point3d(0l,0l,0l);
+	  point3d endvel = point3d(0l,0l,0l);
+	  double deltat = 2.0l*chartimescale/SOLARDAY;
+	  // Calculate the velocity at the first time, which is reference_MJD-chartimescale/SOLARDAY.
+	  Twopoint_Kepler_vstar(GMSUN_KM3_SEC2, startpos, endpos, deltat, startvel, KVSTAR_ITMAX);
+	  // Integrate forward to reference_MJD.
+	  Kepler_univ_int(GMSUN_KM3_SEC2, reference_MJD-chartimescale/SOLARDAY, startpos, startvel, reference_MJD, endpos, endvel, verbose);
+	  // Note: this is less efficient than Ben Engebreth's code, because I am
+	  // trying to preserve the API for the post-processing codes. It would be
+	  // more efficient to redefine the API, feed the mean positions startpos and endpos
+	  // directly to the post-processing codes, and have them solve Lambert's problem, which
+	  // would be analogous to what Ben does.
+
+	  if(realclusternum>=0 && realclusternum<UINT_MAX) rcn = realclusternum;
+	  else {
+	    cerr << "ERROR in form_clusters_lowmem: out-of-range long to int conversion\n";
+	    cerr << "Attempted to convert long realclusternum = " << realclusternum << " into an unsigned int\n";
+	    return(2);
+	  }
+	  // Write overall cluster statistics to the outclust array.	
+	  onecluster = shortclust(rcn, posRMS, totRMS, pairnum, clustmetric, hypindex, endpos.x, endpos.y, endpos.z, endvel.x, endvel.y, endvel.z);
+	  // cout << "kdload velrms: " << velRMS << " " << kdclust[clusterct].rmsvec[7] << " " << onecluster.velRMS << "\n";
+	  outclust.push_back(onecluster);
+	  realclusternum++;
+	  geobin_clusternum++;
+	  gridpoint_clusternum++;
+	}
+      }
+    }
+    // Move on to the next bin in geocentric distance
+    cout << "Final analysis of geobin " << georadct << " identified " << geobin_clusternum << " distinct candidate linkages. Current total is " << gridpoint_clusternum << "\n";
+  }
+  if(verbose>=0) cout << "This hypothesis: " << gridpoint_clusternum << " linkages; total now " << realclusternum << " linkages totalling " << clust2det.size() << " detections.\n";
+  return(0);
+}
+
+// form_clusters_dbscan_RR_uint: November 04, 2026:
+// Like form_clusters_RR, but uses DBSCAN
+int form_clusters_dbscan_RR_uint(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <uint_pair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
+{
+  long detnum = detvec.size();
+  double georadmin=0l;
+  double georadmax=0l;
+  point6dx2 statevec1 = point6dx2(0l,0l,0l,0l,0l,0l,0,0);
+  point6ix2 stateveci = point6ix2(0,0,0,0,0,0,0,0);
+  double geodist=0l;
+  long kdroot=0;
+  long splitpoint=0;
+  long gridpoint_clusternum=0;
+  long geobin_clusternum=0;
+  KD_point6ix2 kdpoint = KD_point6ix2(stateveci,-1,-1,1,-1);
+  double timespan=0;
+  int daysteps = 0;
+  int obsnights = 0;
+  longpair c2d = longpair(0,0);
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  double posRMS = 0.0l;
+  double velRMS = 0.0l;
+  double totRMS = 0.0l;
+  double astromRMS = 0.0l;
+  long pairnum = 0;
+  long uniquepoints = 0;
+  double orbit_a, orbit_e, orbit_incl, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ;
+  orbit_a = orbit_e = orbit_incl = orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
+  long orbit_eval_count = 0;
+  long clusterct=0;
+  double clustmetric=0.0l;
+  string rating;
+  long pairct=0;
+  double dgnum;
+  long georadct,georadnum;
+  georadct=georadnum=0;
+  double georadcen = mingeodist*intpowD(geologstep,georadct);
+  double clustrad = 0.0;
+  
+  // Loop over geocentric bins, selecting the subset of state-vectors
+  // in each bin, and running DBSCAN only on those, with clustering radius
+  // adjusted accordingly.
+
+  // Sanity check the logarithmic geocentric distance framework to avoid a
+  // possible infinite loop.
+  dgnum = log(maxgeodist/mingeodist)/log(geologstep);
+  if(!isnormal(dgnum) || dgnum<0.0l) {
+    cerr << "ERROR: geocentric distance parameters led to nonsense:\n";
+    cerr << "mingeodist, maxgeodist, geologstep = " << maxgeodist << ", " << mingeodist << ", " << geologstep << "\n";
+    cerr << "dgnum = " << dgnum << "\n";
+    return(10);
+  } else georadnum = ceil(dgnum)+1;
+
+  georadct = 0;
+  while(georadcen<=maxgeodist && georadct<=georadnum) {
+    georadct++;
+    georadcen = mingeodist*intpowD(geologstep,georadct-1);
+    cout << fixed << setprecision(2) << "Geocentric distance step " << georadct << ", bin-center distance is " << georadcen << " AU\n";
+    georadmin = georadcen/geologstep;
+    georadmax = georadcen*geologstep;
+    // Load new array of state vectors, limited to those in the current geocentric bin
+    vector <point6ix2> binstatevecs;
+    geobin_clusternum=0;
+    for(long i=0; i<long(allstatevecs.size()); i++) {
+      // Reverse integerization of the state vector.
+      // This is only possible to a crude approximation, of course.
+      statevec1 = conv_6i_to_6d(allstatevecs[i],INTEGERIZING_SCALEFAC);
+      // Calculate geocentric distance in AU
+      geodist = sqrt(DSQUARE(statevec1.x-Earthrefpos.x) + DSQUARE(statevec1.y-Earthrefpos.y) + DSQUARE(statevec1.z-Earthrefpos.z))/AU_KM;
+      if(geodist >= georadmin && geodist <= georadmax) {
+	// This state vector is in the geocentric radius bin we are currently considering.
+	// Add it to binstatevecs.
+	binstatevecs.push_back(allstatevecs[i]);
+      }
+    }
+    if(verbose>=1) cout << fixed << setprecision(2) << "Found " << binstatevecs.size() << " state vectors in geocentric bin from " << georadmin << " to " << georadmax << " AU\n";
+    if(binstatevecs.size()<dbscan_npt) {
+      continue; // No clusters possible, skip to the next step.
+    } else {      
+      vector <KD_point6ix2> kdvec;
+      kdroot = splitpoint = 0;
+      splitpoint=medind_6ix2(binstatevecs,1);
+      kdpoint = KD_point6ix2(binstatevecs[splitpoint],-1,-1,1,-1);
+      kdvec.push_back(kdpoint);
+      kdtree_6i01(binstatevecs,1,splitpoint,kdroot,kdvec);
+      if(verbose>=1) cout << "Created a KD tree with " << kdvec.size() << " branches\n";
+
+      vector <KD6i_clust> kdclust;
+      if(georadcen >= clustchangerad) {
+	// cluster radius scales linearly with geocentric distance.
+	clustrad = cluster_radius*(georadcen/REF_GEODIST);
+	if(verbose>=1) cout << "normal scaling clustrad = " << clustrad << "\n";
+      }
+      else {
+	// cluster radius remains fixed at the minimum value,
+	// in order to make sure it does not get excessively small
+	// for very small geocentric radii.
+	clustrad = cluster_radius*(clustchangerad/REF_GEODIST);
+	if(verbose>=1) cout << "fixed minimum clustrad = " << clustrad << "\n";
+      }
+      long clusternum = DBSCAN_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, dbscan_npt, INTEGERIZING_SCALEFAC, kdclust, verbose);
+      cout << "DBSCAN_6i01 finished clustering geobin " << georadct << ", with " << clusternum << " = " << kdclust.size() << " clusters found\n";
+      if(clusternum<0) return(8);
+      for(clusterct=0; clusterct<long(kdclust.size()); clusterct++) {
+	// Scale cluster RMS down to reference geocentric distance
+	if(DEBUG >= 2) cout << "scaling kdclust rms for cluster " << clusterct << " out of " << kdclust.size() << "\n";
+	fflush(stdout);
+	for(long i=0; i<9; i++) {
+	  if(DEBUG >= 2) cout << "scaling rmsvec point " << i << " out of " << kdclust[clusterct].rmsvec.size() << "\n";
+	  if(DEBUG >= 2) cout << fixed << setprecision(6) << "RMS = " << kdclust[clusterct].rmsvec[i];
+	  if(georadcen >= clustchangerad) kdclust[clusterct].rmsvec[i] *= REF_GEODIST/georadcen;
+	  else kdclust[clusterct].rmsvec[i] *= REF_GEODIST/clustchangerad;
+	  if(DEBUG >= 2) cout << fixed << setprecision(6) << ", scales to " << kdclust[clusterct].rmsvec[i] << "\n";
+	}
+	// Note that RMS is scaled down for more distant clusters, to
+	// avoid bias against them in post-processing.
+	
+	// Map cluster to individual detections.
+	// create vector of unique detection indices.
+	if(DEBUG >= 1) cout << "Loading pointind for " << kdclust[clusterct].numpoints << " of cluster #" << clusterct <<  " out of " << kdclust.size() << "\n";
+	fflush(stdout);
+	vector <unsigned int> pointind;
+	for(long i=0; i<kdclust[clusterct].numpoints; i++) {
+	  pairct=kdvec[kdclust[clusterct].clustind[i]].point.i1;
+	  vector <unsigned int> pointjunk;
+	  pointjunk = uint_lookup(trk2det, pairct);
+	  if(pointjunk.size()<=0) {
+	    cerr << "ERROR: no detections found for tracklet " << pairct << "\n";
+	    return(3);
+	  }
+	  if(DEBUG >= 2) cout << "Found " << pointjunk.size() << " detections for tracklet " << pairct << "\n";
+	  for(long j=0; j<long(pointjunk.size()); j++) {
+	    pointind.push_back(pointjunk[j]);
+	  }
+	}
+	// Sort vector of detection indices
+	sort(pointind.begin(), pointind.end());
+	// Cull out duplicate entries in pointind
+	for(long i=long(pointind.size()-1); i>0; i--) {
+	  if(pointind[i]==pointind[i-1]) pointind.erase(pointind.begin()+i);
+	}
+	uniquepoints = pointind.size();
+	// Load vector of detection MJD's
+	vector <double> clustmjd;
+	for(long i=0; i<long(pointind.size()); i++) {
+	  if(pointind[i]<0 || pointind[i]>=detnum) {
+	    cerr << "ERROR: form_clusters trying to reference point " << pointind[i] << " of detvec! Range is 0 --" << detnum-1 << "\n";
+	    return(1);
+	  }
+	  clustmjd.push_back(detvec[pointind[i]].MJD);
+	}
+
+	// Sort vector of MJD's
+	sort(clustmjd.begin(), clustmjd.end());
+	timespan = clustmjd[clustmjd.size()-1] - clustmjd[0];
+	// Load vector of MJD steps
+	vector <double> mjdstep;
+	for(long i=1; i<long(clustmjd.size()); i++) {
+	  mjdstep.push_back(clustmjd[i]-clustmjd[i-1]);
+	}
+	// Count steps large enough to suggest a daytime period between nights.
+	daysteps=0;	
+	for(long i=0; i<long(mjdstep.size()); i++) {
+	  if(mjdstep[i]>nightstep) daysteps++;
+	}
+	obsnights = daysteps+1;
+	// Does cluster pass the criteria for a linked detection?
+	if(timespan >= mintimespan && obsnights >= minobsnights) {
+	  if(verbose >= 1) cout << "Loading good cluster " << realclusternum << " with timespan " << timespan << " and obsnights " << obsnights << "\n";
+	  fflush(stdout);
+	  if(verbose >= 1) cout << "Cluster passes discovery criteria: will be designated as cluster " << realclusternum << "\n";
+	  // Check whether cluster is composed purely of detections from
+	  // a single simulated object (i.e., would be a real discovery) or is a mixture
+	  // of detections from two or more different simulated objects (i.e., spurious).
+	  rating="PURE";
+	  for(long i=1; i<long(pointind.size()); i++) {
+	    if(stringnmatch01(detvec[pointind[i]].idstring,detvec[pointind[i-1]].idstring,SHORTSTRINGLEN)!=0) rating="MIXED";
+	  }
+	  if(DEBUG >= 1) cout << "Rating is found to be " << rating << "\n";
+	  fflush(stdout);
+	  // Write all individual detections in this cluster to the clust2det array
+	  for(long i=0; i<long(pointind.size()); i++) {
+	    c2d = longpair(realclusternum,pointind[i]);
+	    clust2det.push_back(c2d);
+	  }
+
+	  // Calculate values for the statistics in the output array (class hlclust) that have
+	  // not been caculated already.
+	  clustmetric = double(pointind.size())*double(obsnights)*timespan/kdclust[clusterct].rmsvec[8];
+	  // Note contents of rmsvec: [0] xrms, [1] yrms, [2] zrms, [3] vxrms, [4] vyrms, [5] vzrms,
+	  // [6] overall position rms, [7] overall velocity rms, [8] overall rms
+	  posRMS = kdclust[clusterct].rmsvec[6];
+	  velRMS = kdclust[clusterct].rmsvec[7];
+	  totRMS = kdclust[clusterct].rmsvec[8];
+	  pairnum = kdclust[clusterct].numpoints; // This is the original total number of pairs/tracklets assigned
+	                                          // to this cluster, which might have a lot of overlap in terms of 
+	                                          // individual detections (of which the non-overlapping count has
+	                                          // already been saved in 'uniquepoints').
+	  // Now calculate the position and velocity at reference_MJD, based on the
+	  // mean positions stored in kdclust[clusterct].meanvec. In the heliolincRR
+	  // algorithm, these are not position and velocity but rather two positions,
+	  // one at reference_MJD-chartimescale/SOLARDAY and one at reference_MJD+chartimescale/SOLARDAY;
+	  point3d startpos = point3d(kdclust[clusterct].meanvec[0],kdclust[clusterct].meanvec[1],kdclust[clusterct].meanvec[2]);
+	  point3d endpos = point3d(kdclust[clusterct].meanvec[3],kdclust[clusterct].meanvec[4],kdclust[clusterct].meanvec[5]);
+	  point3d startvel = point3d(0l,0l,0l);
+	  point3d endvel = point3d(0l,0l,0l);
+	  double deltat = 2.0l*chartimescale/SOLARDAY;
+	  // Calculate the velocity at the first time, which is reference_MJD-chartimescale/SOLARDAY.
+	  Twopoint_Kepler_vstar(GMSUN_KM3_SEC2, startpos, endpos, deltat, startvel, KVSTAR_ITMAX);
+	  // Integrate forward to reference_MJD.
+	  Kepler_univ_int(GMSUN_KM3_SEC2, reference_MJD-chartimescale/SOLARDAY, startpos, startvel, reference_MJD, endpos, endvel, verbose);
+	  // Note: this is less efficient than Ben Engebreth's code, because I am
+	  // trying to preserve the API for the post-processing codes. It would be
+	  // more efficient to redefine the API, feed the mean positions startpos and endpos
+	  // directly to the post-processing codes, and have them solve Lambert's problem, which
+	  // would be analogous to what Ben does.
+
+	  // Some of the statistics in the hlclust class relate to orbit-fitting,
+	  // and are meant for later use. For now, set them all to zero.
+	  astromRMS = orbit_a = orbit_e = orbit_incl = 0.0l;
+	  orbit_MJD = orbitX = orbitY = orbitZ = orbitVX = orbitVY = orbitVZ = 0.0l;
+	  orbit_eval_count = 0;
+	  // Write overall cluster statistics to the outclust2 array.	
+	  onecluster = hlclust(0, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, clustmetric, rating, reference_MJD, heliodist/AU_KM, heliovel/SOLARDAY, helioacc*1000.0/SOLARDAY/SOLARDAY, endpos.x, endpos.y, endpos.z, endvel.x, endvel.y, endvel.z, orbit_a, orbit_e, orbit_incl, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
+	  // cout << "kdload velrms: " << velRMS << " " << kdclust[clusterct].rmsvec[7] << " " << onecluster.velRMS << "\n";
+	  outclust.push_back(onecluster);
+	  realclusternum++;
+	  geobin_clusternum++;
+	  gridpoint_clusternum++;
+	}
+      }
+    }
+    // Move on to the next bin in geocentric distance
+    cout << "Final analysis of geobin " << georadct << " identified " << geobin_clusternum << " distinct candidate linkages. Current total is " << gridpoint_clusternum << "\n";
+  }
+  if(verbose>=0) cout << "This hypothesis: " << gridpoint_clusternum << " linkages; total now " << realclusternum << " linkages totalling " << clust2det.size() << " detections.\n";
+  return(0);
+}
+
+
+// form_clusters_dbscan_uint_RR_lowmem: November 04, 2026:
+// Like form_clusters_RR_uint_lowmem, but uses DBSCAN
+int form_clusters_dbscan_RR_uint_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <uint_pair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
+{
+  long detnum = detvec.size();
+  if(detnum>=UINT_MAX) {
+    cerr << "ERROR: form_clusters_lowmem called with too many detections:\n";
+    cerr << "received " << detnum << " detections when the maximum is " << UINT_MAX << "\n";
+    return(1);
+  }
+  
+  double georadmin=0l;
+  double georadmax=0l;
+  point6dx2 statevec1 = point6dx2(0l,0l,0l,0l,0l,0l,0,0);
+  point6ix2 stateveci = point6ix2(0,0,0,0,0,0,0,0);
+  double geodist=0l;
+  long kdroot=0;
+  long splitpoint=0;
+  long gridpoint_clusternum=0;
+  long geobin_clusternum=0;
+  KD_point6ix2 kdpoint = KD_point6ix2(stateveci,-1,-1,1,-1);
+  double timespan=0;
+  int daysteps = 0;
+  int obsnights = 0;
+  uint_pair c2d = uint_pair(0,0);
+  shortclust onecluster = shortclust(0, 0.0, 0.0, 0, 0.0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+  float posRMS = 0.0;
+  float totRMS = 0.0;
+  long pairnum = 0;
+  long uniquepoints = 0;
+  long clusterct=0;
+  double clustmetric=0.0l;
+  string rating;
+  long pairct=0;
+  double dgnum;
+  long georadct,georadnum;
+  georadct=georadnum=0;
+  double georadcen = mingeodist*intpowD(geologstep,georadct);
+  double clustrad = 0.0;
+  unsigned int pj=0;
+  unsigned int rcn=0;
+  
+  // Loop over geocentric bins, selecting the subset of state-vectors
+  // in each bin, and running DBSCAN only on those, with clustering radius
+  // adjusted accordingly.
+
+  // Sanity check the logarithmic geocentric distance framework to avoid a
+  // possible infinite loop.
+  dgnum = log(maxgeodist/mingeodist)/log(geologstep);
+  if(!isnormal(dgnum) || dgnum<0.0l) {
+    cerr << "ERROR: geocentric distance parameters led to nonsense:\n";
+    cerr << "mingeodist, maxgeodist, geologstep = " << maxgeodist << ", " << mingeodist << ", " << geologstep << "\n";
+    cerr << "dgnum = " << dgnum << "\n";
+    return(10);
+  } else georadnum = ceil(dgnum)+1;
+
+  georadct = 0;
+  while(georadcen<=maxgeodist && georadct<=georadnum) {
+    georadct++;
+    georadcen = mingeodist*intpowD(geologstep,georadct-1);
+    cout << fixed << setprecision(2) << "Geocentric distance step " << georadct << ", bin-center distance is " << georadcen << " AU\n";
+    georadmin = georadcen/geologstep;
+    georadmax = georadcen*geologstep;
+    // Load new array of state vectors, limited to those in the current geocentric bin
+    vector <point6ix2> binstatevecs;
+    geobin_clusternum=0;
+    for(long i=0; i<long(allstatevecs.size()); i++) {
+      // Reverse integerization of the state vector.
+      // This is only possible to a crude approximation, of course.
+      statevec1 = conv_6i_to_6d(allstatevecs[i],INTEGERIZING_SCALEFAC);
+      // Calculate geocentric distance in AU
+      geodist = sqrt(DSQUARE(statevec1.x-Earthrefpos.x) + DSQUARE(statevec1.y-Earthrefpos.y) + DSQUARE(statevec1.z-Earthrefpos.z))/AU_KM;
+      if(geodist >= georadmin && geodist <= georadmax) {
+	// This state vector is in the geocentric radius bin we are currently considering.
+	// Add it to binstatevecs.
+	binstatevecs.push_back(allstatevecs[i]);
+      }
+    }
+    if(verbose>=1) cout << fixed << setprecision(2) << "Found " << binstatevecs.size() << " state vectors in geocentric bin from " << georadmin << " to " << georadmax << " AU\n";
+    if(binstatevecs.size()<dbscan_npt) {
+      continue; // No clusters possible, skip to the next step.
+    } else {      
+      vector <KD_point6ix2> kdvec;
+      kdroot = splitpoint = 0;
+      splitpoint=medind_6ix2(binstatevecs,1);
+      kdpoint = KD_point6ix2(binstatevecs[splitpoint],-1,-1,1,-1);
+      kdvec.push_back(kdpoint);
+      kdtree_6i01(binstatevecs,1,splitpoint,kdroot,kdvec);
+      if(verbose>=1) cout << "Created a KD tree with " << kdvec.size() << " branches\n";
+
+      vector <KD6i_clust> kdclust;
+      if(georadcen >= clustchangerad) {
+	// cluster radius scales linearly with geocentric distance.
+	clustrad = cluster_radius*(georadcen/REF_GEODIST);
+	if(verbose>=1) cout << "normal scaling clustrad = " << clustrad << "\n";
+      }
+      else {
+	// cluster radius remains fixed at the minimum value,
+	// in order to make sure it does not get excessively small
+	// for very small geocentric radii.
+	clustrad = cluster_radius*(clustchangerad/REF_GEODIST);
+	if(verbose>=1) cout << "fixed minimum clustrad = " << clustrad << "\n";
+      }
+      long clusternum = DBSCAN_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, dbscan_npt, INTEGERIZING_SCALEFAC, kdclust, verbose);
+      cout << "DBSCAN_6i01 finished clustering geobin " << georadct << ", with " << clusternum << " = " << kdclust.size() << " clusters found\n";
+      if(clusternum<0) return(8);
+      for(clusterct=0; clusterct<long(kdclust.size()); clusterct++) {
+	// Scale cluster RMS down to reference geocentric distance
+	if(DEBUG >= 2) cout << "scaling kdclust rms for cluster " << clusterct << " out of " << kdclust.size() << "\n";
+	fflush(stdout);
+	for(long i=0; i<9; i++) {
+	  if(DEBUG >= 2) cout << "scaling rmsvec point " << i << " out of " << kdclust[clusterct].rmsvec.size() << "\n";
+	  if(DEBUG >= 2) cout << fixed << setprecision(6) << "RMS = " << kdclust[clusterct].rmsvec[i];
+	  if(georadcen >= clustchangerad) kdclust[clusterct].rmsvec[i] *= REF_GEODIST/georadcen;
+	  else kdclust[clusterct].rmsvec[i] *= REF_GEODIST/clustchangerad;
+	  if(DEBUG >= 2) cout << fixed << setprecision(6) << ", scales to " << kdclust[clusterct].rmsvec[i] << "\n";
+	}
+	// Note that RMS is scaled down for more distant clusters, to
+	// avoid bias against them in post-processing.
+	
+	// Map cluster to individual detections.
+	// create vector of unique detection indices.
+	if(DEBUG >= 1) cout << "Loading pointind for " << kdclust[clusterct].numpoints << " of cluster #" << clusterct <<  " out of " << kdclust.size() << "\n";
+	fflush(stdout);
+	vector <unsigned int> pointind_ui;
+	for(long i=0; i<kdclust[clusterct].numpoints; i++) {
+	  pairct=kdvec[kdclust[clusterct].clustind[i]].point.i1;
+	  vector <unsigned int> pointjunk;
+	  pointjunk = uint_lookup(trk2det, pairct);
+	  if(pointjunk.size()<=0) {
+	    cerr << "ERROR: no detections found for tracklet " << pairct << "\n";
+	    return(3);
+	  }
+	  if(DEBUG >= 2) cout << "Found " << pointjunk.size() << " detections for tracklet " << pairct << "\n";
+	  for(long j=0; j<long(pointjunk.size()); j++) {
+	    if(pointjunk[j]>=0 && pointjunk[j]<UINT_MAX) pj = pointjunk[j];
+	    else {
+	      cerr << "ERROR in form_clusters_lowmem: out-of-range long to int conversion\n";
+	      cerr << "Attempted to convert long " << pointjunk[j] << " into an unsigned int\n";
+	      return(2);
+	    }
+	    pointind_ui.push_back(pj);
+	  }
+	}
+	// Sort vector of detection indices
+	sort(pointind_ui.begin(), pointind_ui.end());
+	for(long i=long(pointind_ui.size()-1); i>0; i--) {
+	  if(pointind_ui[i]==pointind_ui[i-1]) pointind_ui.erase(pointind_ui.begin()+i);
+	}
+	uniquepoints = pointind_ui.size();
+	// Load vector of detection MJD's
+	vector <double> clustmjd;
+	for(long i=0; i<uniquepoints; i++) {
+	  if(pointind_ui[i]<0 || pointind_ui[i]>=detnum) {
+	    cerr << "ERROR: form_clusters trying to reference point " << pointind_ui[i] << " of detvec! Range is 0 --" << detnum-1 << "\n";
+	    return(1);
+	  }
+	  clustmjd.push_back(detvec[pointind_ui[i]].MJD);
+	}
+
+	// Sort vector of MJD's
+	sort(clustmjd.begin(), clustmjd.end());
+	timespan = clustmjd[clustmjd.size()-1] - clustmjd[0];
+	// Load vector of MJD steps
+	vector <double> mjdstep;
+	for(long i=1; i<long(clustmjd.size()); i++) {
+	  mjdstep.push_back(clustmjd[i]-clustmjd[i-1]);
+	}
+	// Count steps large enough to suggest a daytime period between nights.
+	daysteps=0;	
+	for(long i=0; i<long(mjdstep.size()); i++) {
+	  if(mjdstep[i]>nightstep) daysteps++;
+	}
+	obsnights = daysteps+1;
+	// Does cluster pass the criteria for a linked detection?
+	if(timespan >= mintimespan && obsnights >= minobsnights) {
+	  if(verbose >= 1) cout << "Loading good cluster " << realclusternum << " with timespan " << timespan << " and obsnights " << obsnights << "\n";
+	  fflush(stdout);
+	  if(verbose >= 1) cout << "Cluster passes discovery criteria: will be designated as cluster " << realclusternum << "\n";
+	  // Write all individual detections in this cluster to the clust2det array
+	  if(realclusternum>=0 && realclusternum<UINT_MAX) rcn = realclusternum;
+	  else {
+	    cerr << "ERROR in form_clusters_dbscan_RR_lowmem: out-of-range long to int conversion\n";
+	    cerr << "Attempted to convert long realclusternum = " << realclusternum << " into an unsigned int\n";
+	    return(2);
+	  }
+	  for(long j=0; j<long(pointind_ui.size()); j++) {
+	    c2d = uint_pair(rcn,pointind_ui[j]);
+	    clust2det.push_back(c2d);
+	  }
+	  
+	  // Check whether cluster is composed purely of detections from
+	  // a single simulated object (i.e., would be a real discovery) or is a mixture
+	  // of detections from two or more different simulated objects (i.e., spurious).
+	  rating="PURE";
+	  for(long i=1; i<long(pointind_ui.size()); i++) {
+	    if(stringnmatch01(detvec[pointind_ui[i]].idstring,detvec[pointind_ui[i-1]].idstring,SHORTSTRINGLEN)!=0) rating="MIXED";
+	  }
+	  if(DEBUG >= 1) cout << "Rating is found to be " << rating << "\n";
+	  fflush(stdout);
+
+	  // Calculate values for the statistics in the output array (class shortclust) that have
+	  // not been caculated already.
+	  clustmetric = double(pointind_ui.size())*double(obsnights)*timespan/kdclust[clusterct].rmsvec[8];
+	  // Note contents of rmsvec: [0] xrms, [1] yrms, [2] zrms, [3] vxrms, [4] vyrms, [5] vzrms,
+	  // [6] overall position rms, [7] overall velocity rms, [8] overall rms
+	  posRMS = kdclust[clusterct].rmsvec[6];
+	  totRMS = kdclust[clusterct].rmsvec[8];
+	  pairnum = kdclust[clusterct].numpoints; // This is the original total number of pairs/tracklets assigned
+	                                          // to this cluster, which might have a lot of overlap in terms of 
+	                                          // individual detections (of which the non-overlapping count has
+	                                          // already been saved in 'uniquepoints').
+	  // Now calculate the position and velocity at reference_MJD, based on the
+	  // mean positions stored in kdclust[clusterct].meanvec. In the heliolincRR
+	  // algorithm, these are not position and velocity but rather two positions,
+	  // one at reference_MJD-chartimescale/SOLARDAY and one at reference_MJD+chartimescale/SOLARDAY;
+	  point3d startpos = point3d(kdclust[clusterct].meanvec[0],kdclust[clusterct].meanvec[1],kdclust[clusterct].meanvec[2]);
+	  point3d endpos = point3d(kdclust[clusterct].meanvec[3],kdclust[clusterct].meanvec[4],kdclust[clusterct].meanvec[5]);
+	  point3d startvel = point3d(0l,0l,0l);
+	  point3d endvel = point3d(0l,0l,0l);
+	  double deltat = 2.0l*chartimescale/SOLARDAY;
+	  // Calculate the velocity at the first time, which is reference_MJD-chartimescale/SOLARDAY.
+	  Twopoint_Kepler_vstar(GMSUN_KM3_SEC2, startpos, endpos, deltat, startvel, KVSTAR_ITMAX);
+	  // Integrate forward to reference_MJD.
+	  Kepler_univ_int(GMSUN_KM3_SEC2, reference_MJD-chartimescale/SOLARDAY, startpos, startvel, reference_MJD, endpos, endvel, verbose);
+	  // Note: this is less efficient than Ben Engebreth's code, because I am
+	  // trying to preserve the API for the post-processing codes. It would be
+	  // more efficient to redefine the API, feed the mean positions startpos and endpos
+	  // directly to the post-processing codes, and have them solve Lambert's problem, which
+	  // would be analogous to what Ben does.
+
+	  if(realclusternum>=0 && realclusternum<UINT_MAX) rcn = realclusternum;
+	  else {
+	    cerr << "ERROR in form_clusters_lowmem: out-of-range long to int conversion\n";
+	    cerr << "Attempted to convert long realclusternum = " << realclusternum << " into an unsigned int\n";
+	    return(2);
+	  }
+	  // Write overall cluster statistics to the outclust array.	
+	  onecluster = shortclust(rcn, posRMS, totRMS, pairnum, clustmetric, hypindex, endpos.x, endpos.y, endpos.z, endvel.x, endvel.y, endvel.z);
+	  // cout << "kdload velrms: " << velRMS << " " << kdclust[clusterct].rmsvec[7] << " " << onecluster.velRMS << "\n";
+	  outclust.push_back(onecluster);
+	  realclusternum++;
+	  geobin_clusternum++;
+	  gridpoint_clusternum++;
+	}
+      }
+    }
+    // Move on to the next bin in geocentric distance
+    cout << "Final analysis of geobin " << georadct << " identified " << geobin_clusternum << " distinct candidate linkages. Current total is " << gridpoint_clusternum << "\n";
+  }
+  if(verbose>=0) cout << "This hypothesis: " << gridpoint_clusternum << " linkages; total now " << realclusternum << " linkages totalling " << clust2det.size() << " detections.\n";
+  return(0);
+}
+
 
 // form_clusters_kdR: May 20, 2024
 // Like form_clusters_kd4, but performs clustering
 // in the 3-D parameter space of X, Y, Z, rather than the
 // 6-D space of X, Y, Z, VX, VY, VZ.
-int form_clusters_kdR(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, int verbose)
+int form_clusters_kdR(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
 {
   long detnum = detvec.size();
   double georadmin=0l;
@@ -39226,7 +45082,7 @@ int form_clusters_kdR(const vector <point6ix2> &allstatevecs, const vector <hlde
 	// Count steps large enough to suggest a daytime period between nights.
 	daysteps=0;	
 	for(long i=0; i<long(mjdstep.size()); i++) {
-	  if(mjdstep[i]>NIGHTSTEP) daysteps++;
+	  if(mjdstep[i]>nightstep) daysteps++;
 	}
 	obsnights = daysteps+1;
 	// Does cluster pass the criteria for a linked detection?
@@ -39340,7 +45196,7 @@ int form_clusters_kdR(const vector <point6ix2> &allstatevecs, const vector <hlde
 // Like form_clusters_kd4, but performs clustering
 // in the 3-D parameter space of X, Y, Z, rather than the
 // 6-D space of X, Y, Z, VX, VY, VZ.
-int form_clusters_kdR_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, int verbose)
+int form_clusters_kdR_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
 {
   long detnum = detvec.size();
   if(detnum>=UINT_MAX) {
@@ -39576,7 +45432,7 @@ int form_clusters_kdR_lowmem(const vector <point6ix2> &allstatevecs, const vecto
 	// Count steps large enough to suggest a daytime period between nights.
 	daysteps=0;	
 	for(i=0; i<long(mjdstep.size()); i++) {
-	  if(mjdstep[i]>NIGHTSTEP) daysteps++;
+	  if(mjdstep[i]>nightstep) daysteps++;
 	}
 	obsnights = daysteps+1;
 	// Does cluster pass the criteria for a linked detection?
@@ -39710,7 +45566,7 @@ int heliolinc_alg(const vector <hlimage> &image_log, const vector <hldet> &detve
   cout << "Configuration parameters:\n";
   cout << "MJD of reference time: " << config.MJDref << "\n";
   cout << "DBSCAN clustering radius: " << config.clustrad << " km\n";
-  cout << "DBSCAN npt: " << config.dbscan_npt << "\n";
+  cout << "DBSCAN npt: " << config.cluster_minpts << "\n";
   cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
   cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
   cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
@@ -39782,7 +45638,7 @@ int heliolinc_alg(const vector <hlimage> &image_log, const vector <hldet> &detve
     if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
     if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+    status = form_clusters(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
     if(status!=0) {
       cerr << "ERROR: form_clusters exited with error code " << status << "\n";
       return(status);
@@ -39816,7 +45672,7 @@ int heliolinc_alg_fgfunc(const vector <hlimage> &image_log, const vector <hldet>
   cout << "Configuration parameters:\n";
   cout << "MJD of reference time: " << config.MJDref << "\n";
   cout << "DBSCAN clustering radius: " << config.clustrad << " km\n";
-  cout << "DBSCAN npt: " << config.dbscan_npt << "\n";
+  cout << "DBSCAN npt: " << config.cluster_minpts << "\n";
   cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
   cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
   cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
@@ -39874,7 +45730,7 @@ int heliolinc_alg_fgfunc(const vector <hlimage> &image_log, const vector <hldet>
     
     // Covert all tracklets into state vectors at the reference time, under
     // the assumption that the heliocentric distance hypothesis is correct.
-    status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf,0);
+    status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf,0,config.verbose);
     
     if(status==1) {
       cerr << "WARNING: hypothesis " << accelct << ": " << radhyp[accelct].HelioRad << " " << radhyp[accelct].R_dot << " " << radhyp[accelct].R_dubdot << " led to\nnegative heliocentric distance or other invalid result: SKIPPING\n";
@@ -39888,7 +45744,7 @@ int heliolinc_alg_fgfunc(const vector <hlimage> &image_log, const vector <hldet>
     if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
     if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+    status = form_clusters(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
     if(status!=0) {
       cerr << "ERROR: form_clusters exited with error code " << status << "\n";
       return(status);
@@ -39922,7 +45778,7 @@ int heliolinc_alg_univar(const vector <hlimage> &image_log, const vector <hldet>
   cout << "Configuration parameters:\n";
   cout << "MJD of reference time: " << config.MJDref << "\n";
   cout << "DBSCAN clustering radius: " << config.clustrad << " km\n";
-  cout << "DBSCAN npt: " << config.dbscan_npt << "\n";
+  cout << "DBSCAN npt: " << config.cluster_minpts << "\n";
   cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
   cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
   cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
@@ -39994,7 +45850,7 @@ int heliolinc_alg_univar(const vector <hlimage> &image_log, const vector <hldet>
     if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
     if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+    status = form_clusters(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
     if(status!=0) {
       cerr << "ERROR: form_clusters exited with error code " << status << "\n";
       return(status);
@@ -40030,7 +45886,7 @@ int heliolinc_alg_danby(const vector <hlimage> &image_log, const vector <hldet> 
   cout << "Configuration parameters:\n";
   cout << "MJD of reference time: " << config.MJDref << "\n";
   cout << "DBSCAN clustering radius: " << config.clustrad << " km\n";
-  cout << "DBSCAN npt: " << config.dbscan_npt << "\n";
+  cout << "DBSCAN npt: " << config.cluster_minpts << "\n";
   cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
   cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
   cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
@@ -40091,7 +45947,7 @@ int heliolinc_alg_danby(const vector <hlimage> &image_log, const vector <hldet> 
     if(config.use_univar >= 1) {
       status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0, config.verbose);
     } else {
-      status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf,0);
+      status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf,0,config.verbose);
     }
     
     if(status==1) {
@@ -40106,7 +45962,7 @@ int heliolinc_alg_danby(const vector <hlimage> &image_log, const vector <hldet> 
     if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
     if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+    status = form_clusters(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
     if(status!=0) {
       cerr << "ERROR: form_clusters exited with error code " << status << "\n";
       return(status);
@@ -40142,7 +45998,7 @@ int heliovane_alg_danby(const vector <hlimage> &image_log, const vector <hldet> 
   cout << "Configuration parameters:\n";
   cout << "MJD of reference time: " << config.MJDref << "\n";
   cout << "DBSCAN clustering radius: " << config.clustrad << " km\n";
-  cout << "DBSCAN npt: " << config.dbscan_npt << "\n";
+  cout << "DBSCAN npt: " << config.cluster_minpts << "\n";
   cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
   cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
   cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
@@ -40225,7 +46081,7 @@ int heliovane_alg_danby(const vector <hlimage> &image_log, const vector <hldet> 
     if(config.use_univar >= 1) {
       status = trk2statevane_univar(image_log, tracklets, lambda[lambdact], lambda_dot[lambdact], lambda_ddot[lambdact], chartimescale, config.minsunelong, config.maxsunelong, min_proj_sine, config.maxheliodist, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.verbose);
     } else {
-      status = trk2statevane_fgfunc(image_log, tracklets, lambda[lambdact], lambda_dot[lambdact], lambda_ddot[lambdact], chartimescale, config.minsunelong, config.maxsunelong, min_proj_sine, config.maxheliodist, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
+      status = trk2statevane_fgfunc(image_log, tracklets, lambda[lambdact], lambda_dot[lambdact], lambda_ddot[lambdact], chartimescale, config.minsunelong, config.maxsunelong, min_proj_sine, config.maxheliodist, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.verbose);
     }
   
     if(status==1) {
@@ -40240,7 +46096,7 @@ int heliovane_alg_danby(const vector <hlimage> &image_log, const vector <hldet> 
     if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
     if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, lambdahyp[lambdact].HelioRad, lambdahyp[lambdact].R_dot, lambdahyp[lambdact].R_dubdot, chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+    status = form_clusters(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, lambdahyp[lambdact].HelioRad, lambdahyp[lambdact].R_dot, lambdahyp[lambdact].R_dubdot, chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
     if(status!=0) {
       cerr << "ERROR: form_clusters exited with error code " << status << "\n";
       return(status);
@@ -40289,7 +46145,7 @@ int heliovane_alg_all(const vector <hlimage> &image_log, const vector <hldet> &d
   cout << "Configuration parameters:\n";
   cout << "MJD of reference time: " << config.MJDref << "\n";
   cout << "DBSCAN clustering radius: " << config.clustrad << " km\n";
-  cout << "DBSCAN npt: " << config.dbscan_npt << "\n";
+  cout << "DBSCAN npt: " << config.cluster_minpts << "\n";
   cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
   cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
   cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
@@ -40389,7 +46245,7 @@ int heliovane_alg_all(const vector <hlimage> &image_log, const vector <hldet> &d
       // Use the Kepler f and g functions for orbit propagation
       // This is faster than the universal variable formulation, but cannot handle hyperbolic
       // (i.e., unbound, interstellar) orbits. Being fastest for normal orbits, it is the default,
-      status = trk2statevane_fgfunc(image_log, tracklets, lambda[lambdact], lambda_dot[lambdact], lambda_ddot[lambdact], chartimescale, config.minsunelong, config.maxsunelong, min_proj_sine, config.maxheliodist, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
+      status = trk2statevane_fgfunc(image_log, tracklets, lambda[lambdact], lambda_dot[lambdact], lambda_ddot[lambdact], chartimescale, config.minsunelong, config.maxsunelong, min_proj_sine, config.maxheliodist, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.verbose);
     }
     
     if(status==1) {
@@ -40406,13 +46262,13 @@ int heliovane_alg_all(const vector <hlimage> &image_log, const vector <hldet> &d
     long newhypstart = outclust.size();
     if(config.use_univar==2 || config.use_univar==3) {
       // Use old DBSCAN algorithm for clustering.
-      status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, lambdahyp[lambdact].HelioRad, lambdahyp[lambdact].R_dot, lambdahyp[lambdact].R_dubdot, chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+      status = form_clusters(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, lambdahyp[lambdact].HelioRad, lambdahyp[lambdact].R_dot, lambdahyp[lambdact].R_dubdot, chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
       if(status!=0) {
 	cerr << "ERROR: form_clusters exited with error code " << status << "\n";
       }
     } else {
       // Use a KDtree range-query in six dimensions for clustering.
-      status = form_clusters_kd4(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, lambdahyp[lambdact].HelioRad, lambdahyp[lambdact].R_dot, lambdahyp[lambdact].R_dubdot, chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+      status = form_clusters_kd4(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, lambdahyp[lambdact].HelioRad, lambdahyp[lambdact].R_dot, lambdahyp[lambdact].R_dubdot, chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
       if(status!=0) {
 	cerr << "ERROR: form_clusters_kd4 exited with error code " << status << "\n";
       }
@@ -40474,7 +46330,7 @@ int heliolinc_alg_omp(const vector <hlimage> &image_log, const vector <hldet> &d
   cout << "Configuration parameters:\n";
   cout << "MJD of reference time: " << config.MJDref << "\n";
   cout << "DBSCAN clustering radius: " << config.clustrad << " km\n";
-  cout << "DBSCAN npt: " << config.dbscan_npt << "\n";
+  cout << "DBSCAN npt: " << config.cluster_minpts << "\n";
   cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
   cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
   cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
@@ -40546,7 +46402,7 @@ int heliolinc_alg_omp(const vector <hlimage> &image_log, const vector <hldet> &d
     if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
     if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+    status = form_clusters(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
     if(status!=0) {
       cerr << "ERROR: form_clusters exited with error code " << status << "\n";
       return(status);
@@ -40580,7 +46436,7 @@ int heliolinc_alg_omp2(const vector <hlimage> &image_log, const vector <hldet> &
   cout << "Configuration parameters:\n";
   cout << "MJD of reference time: " << config.MJDref << "\n";
   cout << "DBSCAN clustering radius: " << config.clustrad << " km\n";
-  cout << "DBSCAN npt: " << config.dbscan_npt << "\n";
+  cout << "DBSCAN npt: " << config.cluster_minpts << "\n";
   cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
   cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
   cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
@@ -40652,7 +46508,7 @@ int heliolinc_alg_omp2(const vector <hlimage> &image_log, const vector <hldet> &
     if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
     if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-    status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+    status = form_clusters(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
     if(status!=0) {
       cerr << "ERROR: form_clusters exited with error code " << status << "\n";
       return(status);
@@ -40684,7 +46540,7 @@ int heliolinc_alg_omp3(const vector <hlimage> &image_log, const vector <hldet> &
   cout << "Configuration parameters:\n";
   cout << "MJD of reference time: " << config.MJDref << "\n";
   cout << "DBSCAN clustering radius: " << config.clustrad << " km\n";
-  cout << "DBSCAN npt: " << config.dbscan_npt << "\n";
+  cout << "DBSCAN npt: " << config.cluster_minpts << "\n";
   cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
   cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
   cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
@@ -40791,7 +46647,7 @@ int heliolinc_alg_omp3(const vector <hlimage> &image_log, const vector <hldet> &
 	// trk2statevec probably ran OK, and some clusters possible.
 	if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-	status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+	status = form_clusters(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
 	if(status!=0) {
 	  cerr << "ERROR: form_clusters exited with error code " << status << "\n";
 	}
@@ -40848,7 +46704,7 @@ int heliolinc_alg_ompdanby(const vector <hlimage> &image_log, const vector <hlde
   cout << "Configuration parameters:\n";
   cout << "MJD of reference time: " << config.MJDref << "\n";
   cout << "DBSCAN clustering radius: " << config.clustrad << " km\n";
-  cout << "DBSCAN npt: " << config.dbscan_npt << "\n";
+  cout << "DBSCAN npt: " << config.cluster_minpts << "\n";
   cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
   cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
   cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
@@ -40947,7 +46803,7 @@ int heliolinc_alg_ompdanby(const vector <hlimage> &image_log, const vector <hlde
       if(config.use_univar >= 1) {
 	status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0, config.verbose);
       } else {
-	status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf,0);
+	status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf,0,config.verbose);
       }
       if(status==1) {
 	cerr << "FAILURE IN THREAD " << ithread << "\n";
@@ -40959,7 +46815,7 @@ int heliolinc_alg_ompdanby(const vector <hlimage> &image_log, const vector <hlde
 	// trk2statevec probably ran OK, and some clusters possible.
 	if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-	status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+	status = form_clusters(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
 	if(status!=0) {
 	  cerr << "ERROR: form_clusters exited with error code " << status << "\n";
 	}
@@ -41016,7 +46872,7 @@ int heliolinc_alg_ompkd(const vector <hlimage> &image_log, const vector <hldet> 
   cout << "Configuration parameters:\n";
   cout << "MJD of reference time: " << config.MJDref << "\n";
   cout << "DBSCAN clustering radius: " << config.clustrad << " km\n";
-  cout << "DBSCAN npt: " << config.dbscan_npt << "\n";
+  cout << "DBSCAN npt: " << config.cluster_minpts << "\n";
   cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
   cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
   cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
@@ -41115,7 +46971,7 @@ int heliolinc_alg_ompkd(const vector <hlimage> &image_log, const vector <hldet> 
       if(config.use_univar >= 1) {
 	status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0, config.verbose);
       } else {
-	status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf,0);
+	status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf,0,config.verbose);
       }
       if(status==1) {
 	cerr << "FAILURE IN THREAD " << ithread << "\n";
@@ -41127,7 +46983,7 @@ int heliolinc_alg_ompkd(const vector <hlimage> &image_log, const vector <hldet> 
 	// trk2statevec probably ran OK, and some clusters possible.
 	if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-	status = form_clusters_kd2(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+	status = form_clusters_kd2(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
 	allstatevecs = vector<point6ix2>();
 	allstatevecs = {};
 	if(status!=0) {
@@ -41186,7 +47042,7 @@ int heliolinc_alg_ompkd3(const vector <hlimage> &image_log, const vector <hldet>
   cout << "Configuration parameters:\n";
   cout << "MJD of reference time: " << config.MJDref << "\n";
   cout << "DBSCAN clustering radius: " << config.clustrad << " km\n";
-  cout << "DBSCAN npt: " << config.dbscan_npt << "\n";
+  cout << "DBSCAN npt: " << config.cluster_minpts << "\n";
   cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
   cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
   cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
@@ -41285,7 +47141,7 @@ int heliolinc_alg_ompkd3(const vector <hlimage> &image_log, const vector <hldet>
       if(config.use_univar >= 1) {
 	status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0, config.verbose);
       } else {
-	status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf,0);
+	status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf,0,config.verbose);
       }
       if(status==1) {
 	cerr << "FAILURE IN THREAD " << ithread << "\n";
@@ -41297,7 +47153,7 @@ int heliolinc_alg_ompkd3(const vector <hlimage> &image_log, const vector <hldet>
 	// trk2statevec probably ran OK, and some clusters possible.
 	if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-	status = form_clusters_kd3(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+	status = form_clusters_kd3(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
 	if(status!=0) {
 	  cerr << "ERROR: form_clusters exited with error code " << status << "\n";
 	}
@@ -41831,7 +47687,7 @@ int heliolinc_alg_ompkd4(const vector <hlimage> &image_log, const vector <hldet>
   cout << "MJD of reference time: " << config.MJDref << "\n";
   cout << "K-D tree clustering radius: " << config.clustrad << " km\n";
   cout << "Geocentric distance within which cluster radius has a fixed min. value: " << config.clustchangerad << " AU\n";
-  cout << "Min points per cluster: " << config.dbscan_npt << "\n";
+  cout << "Min points per cluster: " << config.cluster_minpts << "\n";
   cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
   cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
   cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
@@ -41930,7 +47786,7 @@ int heliolinc_alg_ompkd4(const vector <hlimage> &image_log, const vector <hldet>
       if(config.use_univar >= 1) {
 	status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0, config.verbose);
       } else {
-	status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf,0);
+	status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf,0,config.verbose);
       }
       if(status==1) {
 	cerr << "FAILURE IN THREAD " << ithread << "\n";
@@ -41942,7 +47798,7 @@ int heliolinc_alg_ompkd4(const vector <hlimage> &image_log, const vector <hldet>
 	// trk2statevec probably ran OK, and some clusters possible.
 	if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-	status = form_clusters_kd4(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+	status = form_clusters_kd4(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
 	if(status!=0) {
 	  cerr << "ERROR: form_clusters exited with error code " << status << "\n";
 	}
@@ -42012,7 +47868,7 @@ int heliolinc_alg_kd(const vector <hlimage> &image_log, const vector <hldet> &de
   cout << "Configuration parameters:\n";
   cout << "MJD of reference time: " << config.MJDref << "\n";
   cout << "DBSCAN clustering radius: " << config.clustrad << " km\n";
-  cout << "DBSCAN npt: " << config.dbscan_npt << "\n";
+  cout << "DBSCAN npt: " << config.cluster_minpts << "\n";
   cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
   cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
   cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
@@ -42074,7 +47930,7 @@ int heliolinc_alg_kd(const vector <hlimage> &image_log, const vector <hldet> &de
     if(config.use_univar >= 1) {
       status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0, config.verbose);
     } else {
-      status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf,0);
+      status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf,0,config.verbose);
     }
 
     if(status==1) {
@@ -42089,7 +47945,7 @@ int heliolinc_alg_kd(const vector <hlimage> &image_log, const vector <hldet> &de
     if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
     if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-    status = form_clusters_kd4(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+    status = form_clusters_kd4(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
     if(status!=0) {
       cerr << "ERROR: form_clusters_kd4 exited with error code " << status << "\n";
     }
@@ -42136,7 +47992,7 @@ int heliolinc_alg_RR(const vector <hlimage> &image_log, const vector <hldet> &de
   cout << "Configuration parameters:\n";
   cout << "MJD of reference time: " << config.MJDref << "\n";
   cout << "DBSCAN clustering radius: " << config.clustrad << " km\n";
-  cout << "DBSCAN npt: " << config.dbscan_npt << "\n";
+  cout << "DBSCAN npt: " << config.cluster_minpts << "\n";
   cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
   cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
   cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
@@ -42198,7 +48054,7 @@ int heliolinc_alg_RR(const vector <hlimage> &image_log, const vector <hldet> &de
     if(config.use_univar >= 1) {
       status = trk2statevec_univarRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0, config.verbose);
     } else {
-      status = trk2statevec_fgfuncRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0);
+      status = trk2statevec_fgfuncRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0, config.verbose);
     }
 
     if(status==1) {
@@ -42213,7 +48069,7 @@ int heliolinc_alg_RR(const vector <hlimage> &image_log, const vector <hldet> &de
     if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
     if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-    status = form_clusters_RR(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+    status = form_clusters_RR(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
     if(status!=0) {
       cerr << "ERROR: form_clusters_RR exited with error code " << status << "\n";
     }
@@ -42260,7 +48116,7 @@ int heliolinc_alg_R(const vector <hlimage> &image_log, const vector <hldet> &det
   cout << "Configuration parameters:\n";
   cout << "MJD of reference time: " << config.MJDref << "\n";
   cout << "DBSCAN clustering radius: " << config.clustrad << " km\n";
-  cout << "DBSCAN npt: " << config.dbscan_npt << "\n";
+  cout << "DBSCAN npt: " << config.cluster_minpts << "\n";
   cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
   cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
   cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
@@ -42322,7 +48178,7 @@ int heliolinc_alg_R(const vector <hlimage> &image_log, const vector <hldet> &det
     if(config.use_univar >= 1) {
       status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, 0, config.verbose);
     } else {
-      status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf,0);
+      status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf,0,config.verbose);
     }
 
     if(status==1) {
@@ -42337,7 +48193,7 @@ int heliolinc_alg_R(const vector <hlimage> &image_log, const vector <hldet> &det
     if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
     if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-    status = form_clusters_kdR(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+    status = form_clusters_kdR(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
     if(status!=0) {
       cerr << "ERROR: form_clusters_kd4 exited with error code " << status << "\n";
     }
@@ -42359,9 +48215,9 @@ int heliolinc_alg_R(const vector <hlimage> &image_log, const vector <hldet> &det
 }
 
 
-// heliolinc_alg_all: May 23, 2024
-// Attempt to aggregate all extant single-threaded versions of heliolinc into
-// a single code whose behavior is determined by config.use_univar.
+// heliolinc_alg_all: August 24, 2026:
+// Prototype of heliolinc using Ben Engebreth's concept of the
+// SAD tracklet, which is implemented in trk2statevec_fgfunc_TNV
 int heliolinc_alg_all(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, vector <hlclust> &outclust, vector <longpair> &clust2det)
 {
   outclust = {};
@@ -42380,24 +48236,392 @@ int heliolinc_alg_all(const vector <hlimage> &image_log, const vector <hldet> &d
   long realclusternum, gridpoint_clusternum, status;
   realclusternum = gridpoint_clusternum = status = 0;
   vector <point6ix2> allstatevecs;
-  int use_univar=0;
-  int NotKepler=0;
   int automjd=0;
   long i=0;
-  
-  if(config.use_univar>7 && config.use_univar<=15) {
-    use_univar = config.use_univar-8;
-    NotKepler=1;
-  } else {
-    use_univar = config.use_univar;
-    NotKepler=0;
+  int use_sad=0;
+
+  // Additional variables only needed for the use_smallclust case
+  vector <shortclust> outclust_lowmem;
+  vector <uint_pair> clust2det_lowmem;
+  longpair onepair = longpair(0,0);
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  double posRMS,velRMS,totRMS;
+  posRMS = velRMS = totRMS = 0.0;
+  vector <long> clustind;
+  vector <hldet> clusterdets;
+  vector <double> clustmjd;
+  long clusterct=0;
+  long daysteps=0;
+  long obsnights=0;
+  double timespan=0.0;
+  string rating;
+
+  // Catch case where max v_inf > 0 but universal variables are not set.
+  if(config.max_v_inf>0.0l && config.use_univar<=0) {
+    cerr << "ERROR: unbound orbits being probed (max_v_inf = " << config.max_v_inf << "),\n";
+    cerr << "but code is not set to use universal variables (use_univar = " << config.use_univar << ").\n";
+    return(1);
   }
+
+  if(config.tanveltol>0.0) use_sad=1;
+  if(use_sad>0 && config.use_taylor>0) {
+    cerr << "ERROR: non-Keplerian (Taylor Series) interpretation of hypotheses\n";
+    cerr << "requested at the same time as intrinsically Keplerian tangential velocity\n";
+    cerr << "checking with tolerance " << config.tanveltol << "\n";
+    return(0);
+  }
+   if(use_sad==0 && config.min_obstanvel>0) {
+     cerr << "ERROR: min_obstanvel set to operative value (" << config.min_obstanvel << " km/sec without also\n";
+     cerr << "setting the heliocentric tangential velocity tolerance tanveltol, which\n";
+     cerr << "remains at its default, non-operative value of " << config.tanveltol << " km/sec.\n";
+     cerr << "Re-run with -tanveltol set. If you want tanveltol not to exclude any,\n";
+     cerr << "tracklets, set it to a very large positive value (e.g. -tanveltol 1000.0).\n";
+     cerr << "This, combined with your desired operative setting for min_obstanvel, will render\n";
+     cerr << "min_obstanvel operative while tanveltol is not.\n";
+     return(0);
+   }
+ 
+  // Echo config struct
+  cout << "Configuration parameters:\n";
+  cout << "MJD of reference time: " << config.MJDref << "\n";
+  cout << "DBSCAN clustering radius: " << config.clustrad << " km\n";
+  cout << "DBSCAN npt: " << config.cluster_minpts << "\n";
+  cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
+  cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
+  cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
+  cout << "Max geocentric distance (will be exceeded by center only of the outermost bin): " << config.maxgeodist << " AU\n";
+  cout << "Logarthmic step size (and bin width) for geocentric distance bins: " << config.geologstep << "\n";
+  cout << "Minimum inferred geocentric distance for a valid tracklet: " << config.mingeoobs << " AU\n";
+  cout << "Minimum inferred impact parameter (w.r.t. Earth) for a valid tracklet: " << config.minimpactpar << " km\n";
+  if(config.verbose) cout << "Verbose output selected\n";
+  
+  if(imnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty image catalog\n";
+    return(1);
+  } else if(pairnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty tracklet array\n";
+    return(1);
+  } else if(trk2detnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty trk2det array\n";
+    return(1);
+  } else if(accelnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty heliocentric hypothesis array\n";
+    return(1);
+  }
+
+  cout << "Inside heliolinc_alg_all with use_univar = " << config.use_univar << ",\n";
+  cout << "Inside heliolinc_alg_all with use_dbscan = " << config.use_dbscan << ",\n";
+  cout << "Inside heliolinc_alg_all with use_rr = " << config.use_rr << ",\n";
+  cout << "Inside heliolinc_alg_all with use_taylor = " << config.use_taylor << ",\n";
+  cout << "Inside heliolinc_alg_all with use_smallclust = " << config.use_smallclust << ",\n";
+  cout << "Inside heliolinc_alg_all with use_smalltrk = " << config.use_smalltrk << ",\n";
+  cout << "Inside heliolinc_alg_all with use_streaming = " << config.use_streaming << ",\n";
+  cout << "Inside heliolinc_alg_all with config.tanveltol = " << config.tanveltol << "\n";
+    
+  // Find MJD for first and last detections.
+  double minMJD = detvec[0].MJD;
+  double maxMJD = detvec[0].MJD;
+  for(i=0; i<long(detvec.size()); i++) {
+    if(minMJD > detvec[i].MJD) minMJD = detvec[i].MJD;
+    if(maxMJD < detvec[i].MJD) maxMJD = detvec[i].MJD;
+  }
+  if(!isnormal(config.MJDref) || config.MJDref < minMJD || config.MJDref > maxMJD) {
+    if(config.autorun<=0) {
+      cout << "\nERROR: input positive-valued reference MJD is required\n";
+      cout << "MJD range is " << minMJD << " to " << maxMJD << "\n";
+      cout << fixed << setprecision(2) << "Suggested reference value is " << minMJD*0.5L + maxMJD*0.5L << "\n";
+      return(1);
+    } else {
+      cout << "\nUser did not input a positive-valued reference MJD in the\n";
+      cout << "acceptable range, so heliolinc will generate one internally\n";
+      cout << "MJD range is " << minMJD << " to " << maxMJD << "\n";
+      cout << fixed << setprecision(2) << "Suggested reference value is " << minMJD*0.5L + maxMJD*0.5L << "\n";
+      config.MJDref = round(minMJD*50.0l + maxMJD*50.0l)/100.0l;
+      cout << fixed << setprecision(2) << "Adopting reference MJD = " << config.MJDref << "\n";
+      automjd=1;
+    } 
+  }
+
+  double chartimescale = (maxMJD - minMJD)*SOLARDAY/TIMECONVSCALE; // Note that the units are seconds.
+  Earthrefpos = earthpos01(earthpos, config.MJDref);
+
+  // Convert heliocentric radial motion hypothesis matrix
+  // from units of AU, AU/day, and GMSun/R^2
+  // to units of km, km/day, and km/day^2.
+  heliodist = heliovel = helioacc = {};
+  for(accelct=0;accelct<accelnum;accelct++) {
+    heliodist.push_back(radhyp[accelct].HelioRad * AU_KM);
+    heliovel.push_back(radhyp[accelct].R_dot * AU_KM);
+    helioacc.push_back(radhyp[accelct].R_dubdot * (-GMSUN_KM3_SEC2*SOLARDAY*SOLARDAY/heliodist[accelct]/heliodist[accelct]));
+  }
+
+  // Begin master loop over heliocentric hypotheses
+  outclust={};
+  clust2det={};
+  realclusternum=0;
+  for(accelct=0;accelct<accelnum;accelct++) {
+    cout << "Working on hypothesis " << accelct << ": " << radhyp[accelct].HelioRad << " AU, " << radhyp[accelct].R_dot*AU_KM/SOLARDAY << " km/sec " << radhyp[accelct].R_dubdot << " GMsun/r^2\n";
+
+    gridpoint_clusternum=0;
+    // Covert all tracklets into state vectors at the reference time, under
+    // the assumption that the heliocentric distance hypothesis is correct.
+    if(use_sad==1) {
+      if(config.use_univar == 1) {
+	// Use the universal variable formulation of the Kepler problem for orbit propagation.
+	// This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
+	if(config.use_rr == 1) {
+	  // Integrate to perform clustering in the parameter space of Ben Engebreth's 
+	  // heliolinc_RR algorithm, which uses position vectors at two different
+	  // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
+	  cout << "heliolinc_alg_all is calling trk2statevec_univarRR_TNV\n";
+	  status = trk2statevec_univarRR_TNV(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+	} else {
+	  // Integrate to perform clustering in the standard heliolinc3d parameter space
+	  // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
+	  cout << "heliolinc_alg_all is calling trk2statevec_univar_TNV\n";
+	  status = trk2statevec_univar_TNV(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+	}
+      } else {
+	// Use the Kepler f and g functions for orbit propagation
+	// This is faster than the universal variable formulation, but cannot handle hyperbolic
+	// (i.e., unbound, interstellar) orbits. Being fastest for normal orbits, it is the default.
+	if(config.use_rr == 1) {
+	  // Integrate to perform clustering in the parameter space of Ben Engebreth's 
+	  // heliolinc_RR algorithm, which uses position vectors at two different
+	  // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
+	  cout << "heliolinc_alg_all is calling trk2statevec_fgfuncRR_TNV\n";
+	  status = trk2statevec_fgfuncRR_TNV(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+	} else {
+	  // Integrate to perform clustering in the standard heliolinc3d parameter space
+	  // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
+	  cout << "heliolinc_alg_all is calling trk2statevec_fgfunc_TNV\n";
+	  status = trk2statevec_fgfunc_TNV(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+	}
+      }
+    } else {
+      // tanveltol is not set, so rejection of SAD tracklets is off. This means the
+      // config.use_taylor==1 is allowed, as reflected in the trk2statevec calls.
+      // Note that config.use_taylor==1 remains (probably) a bad idea except for testing.
+      if(config.use_univar == 1) {
+	// Use the universal variable formulation of the Kepler problem for orbit propagation.
+	// This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
+	if(config.use_rr == 1) {
+	  // Integrate to perform clustering in the parameter space of Ben Engebreth's 
+	  // heliolinc_RR algorithm, which uses position vectors at two different
+	  // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
+	  cout << "heliolinc_alg_all is calling trk2statevec_univarRR\n";
+	  status = trk2statevec_univarRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.use_taylor, config.verbose);
+	} else {
+	  // Integrate to perform clustering in the standard heliolinc3d parameter space
+	  // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
+	  cout << "heliolinc_alg_all is calling trk2statevec_univar\n";
+	  status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.use_taylor, config.verbose);
+	}
+      } else {
+	// Use the Kepler f and g functions for orbit propagation
+	// This is faster than the universal variable formulation, but cannot handle hyperbolic
+	// (i.e., unbound, interstellar) orbits. Being fastest for normal orbits, it is the default.
+	if(config.use_rr == 1) {
+	  // Integrate to perform clustering in the parameter space of Ben Engebreth's 
+	  // heliolinc_RR algorithm, which uses position vectors at two different
+	  // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
+	  cout << "heliolinc_alg_all is calling trk2statevec_fgfuncRR\n";
+	  status = trk2statevec_fgfuncRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.use_taylor, config.verbose);
+	} else {
+	  // Integrate to perform clustering in the standard heliolinc3d parameter space
+	  // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
+	  cout << "heliolinc_alg_all is calling trk2statevec_fgfunc\n";
+	  status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.use_taylor, config.verbose);
+	}
+      }
+    }
+
+    if(status==1) {
+      cerr << "WARNING: hypothesis " << accelct << ": " << radhyp[accelct].HelioRad << " " << radhyp[accelct].R_dot << " " << radhyp[accelct].R_dubdot << " led to\nnegative heliocentric distance or other invalid result: SKIPPING\n";
+      continue;
+    } else if(status==2) {
+      // This is a weirder error case and is fatal.
+      cerr << "Fatal error case from trk2statevec.\n";
+      return(3);
+    }
+    // If we get here, trk2statevec probably ran OK.
+    if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
+    if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
+  
+    if(config.use_smallclust == 1) {
+      // Use compressed cluster class to reduce memory demand
+      
+      if(config.use_dbscan==1) {
+	// Use old DBSCAN algorithm in six dimensions for clustering the standard heliolinc parameter space
+	if(config.use_rr==1) {
+	  status = form_clusters_dbscan_RR_lowmem(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], accelct, chartimescale, outclust_lowmem, clust2det_lowmem, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+	} else {
+	  status = form_clusters_lowmem(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], accelct, chartimescale, outclust_lowmem, clust2det_lowmem, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+	  if(status!=0) {
+	    cerr << "ERROR: form_clusters_lowmem exited with error code " << status << "\n";
+	  }
+	}
+      } else if(config.use_rr==1) {
+	// Use a KDtree range-query in six dimensions for clustering the heliolinc_RR parameter space
+	status = form_clusters_RR_lowmem(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], accelct, chartimescale, outclust_lowmem, clust2det_lowmem, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+	if(status!=0) {
+	  cerr << "ERROR: form_clusters_RR exited with error code " << status << "\n";
+	}
+      } else {
+	// Use a KDtree range-query in six dimensions for clustering the standard heliolinc parameter space
+	status = form_clusters_kd4_lowmem(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], accelct, chartimescale, outclust_lowmem, clust2det_lowmem, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+	if(status!=0) {
+	  cerr << "ERROR: form_clusters_kd4_lowmem exited with error code " << status << "\n";
+	}
+      }
+
+    } else {
+      // Use normal, full precision cluster class
+      if(config.use_dbscan == 1) {
+	// Use old DBSCAN algorithm in six dimensions for clustering the standard heliolinc parameter space
+	
+	status = form_clusters(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+	if(status!=0) {
+	  cerr << "ERROR: form_clusters exited with error code " << status << "\n";
+	}
+      } else if(config.use_rr==1) {
+	// Use a KDtree range-query in six dimensions for clustering the heliolinc_RR parameter space
+	status = form_clusters_RR(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+	if(status!=0) {
+	  cerr << "ERROR: form_clusters_RR exited with error code " << status << "\n";
+	}
+      } else {
+	// Use a KDtree range-query in six dimensions for clustering the standard heliolinc parameter space
+	status = form_clusters_kd4(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+	if(status!=0) {
+	  cerr << "ERROR: form_clusters_kd4 exited with error code " << status << "\n";
+	}
+      }
+    }
+  }
+  if(config.use_smallclust==1) {
+    
+    // De-duplicate the final output set, and convert to full-precision clusters
+    cout << "De-duplicating output set of " << outclust_lowmem.size() << " candidate linkages totalling " << clust2det_lowmem.size() << " detections\n";
+    vector <shortclust> outclust_lowmem2;
+    vector  <uint_pair> outclust2det_lowmem2;
+    link_dedup_lowmem2(outclust_lowmem, clust2det_lowmem, outclust_lowmem2, outclust2det_lowmem2);
+    cout << "De-duplicated set contains " << outclust_lowmem2.size() << " linkages totalling " << outclust2det_lowmem2.size() << " detections.\n";
+    
+    // Convert from the low-memory classes uint_pair and shortclust
+    // into the desired output classes longpair and hlclust
+    outclust = {};
+    clust2det = {};
+    cout << "Converting from memory-efficient to normal:\n";
+    cout << "outclust_lowmem2 with size " << outclust_lowmem2.size() << " and outclust2det_lowmem2 with size " <<  outclust2det_lowmem2.size() << "\n";
+    // First step: outclust2det_lowmem2 (uint_pair) into clust2det (longpair)
+    for(i=0; i<long(outclust2det_lowmem2.size()); i++) {
+      onepair = longpair(long(outclust2det_lowmem2[i].i1),long(outclust2det_lowmem2[i].i2));
+      clust2det.push_back(onepair);
+    }
+    cout << "Conversion complete for clust2det: size is " << clust2det.size() << "\n";
+    // Now outclust_lowmem2 (shortclust) to outclust (hlclust)
+    for(clusterct=0; clusterct<long(outclust_lowmem2.size()); clusterct++) {
+      clustind = {};
+      if(long(outclust_lowmem2[clusterct].clusternum) != clusterct) {
+	cerr << "ERROR: cluster count mismatch " << outclust_lowmem2[clusterct].clusternum << " != " << clusterct << "\n";
+	return(4);
+      }
+      clustind = tracklet_lookup(clust2det, long(outclust_lowmem2[clusterct].clusternum));
+      long uniquepoints = clustind.size();
+      // Load vector of detections for this cluster
+      clusterdets={};
+      clustmjd={};
+      for(i=0; i<uniquepoints; i++) {
+	clusterdets.push_back(detvec[clustind[i]]);
+	clustmjd.push_back(detvec[clustind[i]].MJD);
+      }
+      // Sort vector of MJD's
+      sort(clustmjd.begin(), clustmjd.end());
+      timespan = clustmjd[clustmjd.size()-1] - clustmjd[0];
+      // Load vector of MJD steps
+      vector <double> mjdstep;
+      for(i=1; i<long(clustmjd.size()); i++) mjdstep.push_back(clustmjd[i]-clustmjd[i-1]);
+      // Count steps large enough to suggest a daytime period between nights.
+      daysteps=0;
+      for(i=0; i<long(mjdstep.size()); i++) {
+	if(mjdstep[i]>config.nightstep) daysteps++;
+      }
+      obsnights = daysteps+1;
+      // Check whether cluster is composed purely of detections from
+      // a single simulated object (i.e., would be a real discovery) or is a mixture
+      // of detections from two or more different simulated objects (i.e., spurious).
+      rating="PURE";
+      for(long i=1; i<long(clusterdets.size()); i++) {
+	if(stringnmatch01(clusterdets[i].idstring,clusterdets[i-1].idstring,SHORTSTRINGLEN)!=0) rating="MIXED";
+      }
+      // Calculate or assign trivial quantities for hlclust
+      posRMS = outclust_lowmem2[clusterct].posRMS;
+      totRMS = outclust_lowmem2[clusterct].totRMS;
+      if(totRMS>posRMS) velRMS = sqrt(totRMS*totRMS - posRMS*posRMS);
+      else velRMS = 0.0;
+      accelct = outclust_lowmem2[clusterct].hypindex;
+      // Load the new cluster as an item of class hlclust
+      onecluster = hlclust(outclust_lowmem2[clusterct].clusternum, posRMS, velRMS, totRMS, 0.0, outclust_lowmem2[clusterct].pairnum, timespan, uniquepoints, obsnights, outclust_lowmem2[clusterct].metric, rating, config.MJDref, heliodist[accelct]/AU_KM, heliovel[accelct]/SOLARDAY, helioacc[accelct]*1000.0/SOLARDAY/SOLARDAY, outclust_lowmem2[clusterct].posX, outclust_lowmem2[clusterct].posY, outclust_lowmem2[clusterct].posZ, outclust_lowmem2[clusterct].velX, outclust_lowmem2[clusterct].velY,outclust_lowmem2[clusterct].velZ, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0);
+      outclust.push_back(onecluster);
+    }
+    cout << "Conversion complete for outclust: size is " << outclust.size() << "\n";
+    cout << "Final de-duplicated set contains " << outclust.size() << " linkages totalling " << clust2det.size() << " detections\n";
+  } else {
+    // De-duplicate the final output set, which is already full-precision clusters
+    cout << "De-duplicating output set of " << outclust.size() << " candidate linkages totalling " << clust2det.size() << " detections\n";
+    vector <hlclust> outclust2;
+    vector  <longpair> outclust2det2;
+    link_dedup(outclust, clust2det, outclust2, outclust2det2);
+    outclust = outclust2;
+    for(long i=0; i<long(outclust.size()); i++) {
+      outclust[i].reference_MJD = config.MJDref;
+    }
+    clust2det = outclust2det2;
+    cout << "Final de-duplicated set contains " << outclust.size() << " linkages totalling " << clust2det.size() << " detections\n";
+  }
+  if(automjd) {
+    cout << "Automatically calculated reference MJD was " << config.MJDref << "\n";
+  }
+  return(0);    
+}
+
+// heliolinc_alg_TNV_uint: September 08, 2026:
+// Version of heliolinc using Ben Engebreth's concept of the
+// SAD tracklet AND ALSO storing tracklet information in
+// more memory-efficient vectors.
+int heliolinc_alg_TNV_uint(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <uint_tracklet> &tracklets, const vector <uint_pair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, vector <hlclust> &outclust, vector <longpair> &clust2det)
+{
+  outclust = {};
+  clust2det = {};
+   
+  point3d Earthrefpos = point3d(0l,0l,0l);
+  long imnum = image_log.size();
+  long pairnum = tracklets.size();
+  long trk2detnum = trk2det.size();
+  long accelnum = radhyp.size();
+  long accelct=0;
+  
+  if(pairnum>=UINT_MAX) {
+    cerr << "ERROR: heliolinc_alg_TNV_uint has too many tracklets\n";
+    cerr << "(" << pairnum << " >= " << UINT_MAX << "). Re-run with a non-uint version of heliolinc\n";
+    return(1);
+  }
+
+  vector <double> heliodist;
+  vector <double> heliovel;
+  vector <double> helioacc;
+  long realclusternum, gridpoint_clusternum, status;
+  realclusternum = gridpoint_clusternum = status = 0;
+  vector <point6ix2> allstatevecs;
+  int automjd=0;
+  long i=0;
   
   // Echo config struct
   cout << "Configuration parameters:\n";
   cout << "MJD of reference time: " << config.MJDref << "\n";
   cout << "DBSCAN clustering radius: " << config.clustrad << " km\n";
-  cout << "DBSCAN npt: " << config.dbscan_npt << "\n";
+  cout << "DBSCAN npt: " << config.cluster_minpts << "\n";
   cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
   cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
   cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
@@ -42468,34 +48692,32 @@ int heliolinc_alg_all(const vector <hlimage> &image_log, const vector <hldet> &d
     gridpoint_clusternum=0;
     // Covert all tracklets into state vectors at the reference time, under
     // the assumption that the heliocentric distance hypothesis is correct.
-    if(use_univar == 1 || use_univar == 5 || use_univar == 7) {
-      // Integrate to perform clustering in the standard heliolinc3d parameter space
-      // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
+    if(config.use_univar == 1) {
       // Use the universal variable formulation of the Kepler problem for orbit propagation.
       // This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
-      status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler, config.verbose);
-    } else if(use_univar == 2) {
-      // Integrate to perform clustering in the parameter space of Ben Engebreth's 
-      // heliolinc_RR algorithm, which uses position vectors at two different
-      // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
-      // Use the Kepler f and g functions for orbit propagation
-      // This is faster than the universal variable formulation, but cannot handle hyperbolic
-      status = trk2statevec_fgfuncRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler);
-    } else if(use_univar == 3) {
-      // Integrate to perform clustering in the parameter space of Ben Engebreth's 
-      // heliolinc_RR algorithm, which uses position vectors at two different
-      // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
-      // Use the universal variable formulation of the Kepler problem for orbit propagation.
-      // This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
-      status = trk2statevec_univarRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler, config.verbose);
+      if(config.use_rr == 1) {
+	// Integrate to perform clustering in the parameter space of Ben Engebreth's 
+	// heliolinc_RR algorithm, which uses position vectors at two different
+	// reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
+	status = trk2statevec_univarRR_TNV_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+      } else {
+	// Integrate to perform clustering in the standard heliolinc3d parameter space
+	// of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
+	status = trk2statevec_univar_TNV_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+      }
     } else {
-      // Integrate to perform clustering in the standard heliolinc3d parameter space
-      // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
       // Use the Kepler f and g functions for orbit propagation
       // This is faster than the universal variable formulation, but cannot handle hyperbolic
-      // (i.e., unbound, interstellar) orbits. Being fastest for normal orbits, it is the default,
-      // and also corresponds to use_univar == 0, 4, or 6
-      status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler);
+      if(config.use_rr == 1) {
+	// Integrate to perform clustering in the parameter space of Ben Engebreth's 
+	// heliolinc_RR algorithm, which uses position vectors at two different
+	// reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
+	status = trk2statevec_fgfuncRR_TNV_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+      } else {
+	// Integrate to perform clustering in the standard heliolinc3d parameter space
+	// of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
+	status = trk2statevec_fgfunc_TNV_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+      }
     }
 
     if(status==1) {
@@ -42510,27 +48732,24 @@ int heliolinc_alg_all(const vector <hlimage> &image_log, const vector <hldet> &d
     if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
     if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-    if(use_univar==6 || use_univar==7) {
+    if(config.use_dbscan == 1 && config.use_rr == 0) {
       // Use old DBSCAN algorithm in six dimensions for clustering the standard heliolinc parameter space
-      status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+      status = form_clusters_uint(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
       if(status!=0) {
 	cerr << "ERROR: form_clusters exited with error code " << status << "\n";
       }
-    } else if(use_univar==2 || use_univar==3) {
+    } else if(config.use_dbscan == 0 && config.use_rr == 1) {
       // Use a KDtree range-query in six dimensions for clustering the heliolinc_RR parameter space
-      status = form_clusters_RR(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+      status = form_clusters_RR_uint(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
       if(status!=0) {
 	cerr << "ERROR: form_clusters_RR exited with error code " << status << "\n";
       }
-    } else if (use_univar==4 || use_univar==5) {
-      // Use a KDtree range-query in only three dimensions for clustering the position-only heliolinc parameter space
-      status = form_clusters_kdR(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
-      if(status!=0) {
-	cerr << "ERROR: form_clusters_kd4 exited with error code " << status << "\n";
-      }
+    } else if(config.use_dbscan == 1 && config.use_rr == 1) {
+      cerr << "ERROR: use_dbscan option is not available in combination with use_rr\n";
+      return(12);
     } else {
       // Use a KDtree range-query in six dimensions for clustering the standard heliolinc parameter space
-      status = form_clusters_kd4(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+      status = form_clusters_kd4_uint(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
       if(status!=0) {
 	cerr << "ERROR: form_clusters_kd4 exited with error code " << status << "\n";
       }
@@ -42554,11 +48773,10 @@ int heliolinc_alg_all(const vector <hlimage> &image_log, const vector <hldet> &d
   return(0);    
 }
 
-
-// heliolinc_alg_TNV: August 24, 2026:
-// Prototype of heliolinc using Ben Engebreth's concept of the
-// SAD tracklet, which is implemented in 
-int heliolinc_alg_TNV(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, vector <hlclust> &outclust, vector <longpair> &clust2det)
+// heliolinc_alg_uint: October 19, 2026:
+// Version of heliolinc that OPTIONALLY uses Ben Engebreth's concept of the
+// SAD tracklet AND stores tracklet information in more memory-efficient vectors.
+int heliolinc_alg_uint(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <uint_tracklet> &tracklets, const vector <uint_pair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, vector <hlclust> &outclust, vector <longpair> &clust2det)
 {
   outclust = {};
   clust2det = {};
@@ -42569,6 +48787,12 @@ int heliolinc_alg_TNV(const vector <hlimage> &image_log, const vector <hldet> &d
   long trk2detnum = trk2det.size();
   long accelnum = radhyp.size();
   long accelct=0;
+  
+  if(pairnum>=UINT_MAX) {
+    cerr << "ERROR: heliolinc_alg_uint has too many tracklets\n";
+    cerr << "(" << pairnum << " >= " << UINT_MAX << "). Re-run with a non-uint version of heliolinc\n";
+    return(1);
+  }
 
   vector <double> heliodist;
   vector <double> heliovel;
@@ -42576,24 +48800,40 @@ int heliolinc_alg_TNV(const vector <hlimage> &image_log, const vector <hldet> &d
   long realclusternum, gridpoint_clusternum, status;
   realclusternum = gridpoint_clusternum = status = 0;
   vector <point6ix2> allstatevecs;
-  int use_univar=0;
-  int NotKepler=0;
   int automjd=0;
   long i=0;
-  
-  if(config.use_univar>7 && config.use_univar<=15) {
-    use_univar = config.use_univar-8;
-    NotKepler=1;
-  } else {
-    use_univar = config.use_univar;
-    NotKepler=0;
+  int use_sad=0;
+
+  // Catch case where max v_inf > 0 but universal variables are not set.
+  if(config.max_v_inf>0.0l && config.use_univar<=0) {
+    cerr << "ERROR: unbound orbits being probed (max_v_inf = " << config.max_v_inf << "),\n";
+    cerr << "but code is not set to use universal variables (use_univar = " << config.use_univar << ").\n";
+    return(1);
   }
-  
+
+  if(config.tanveltol>0.0) use_sad=1;
+  if(use_sad>0 && config.use_taylor>0) {
+    cerr << "ERROR: non-Keplerian (Taylor Series) interpretation of hypotheses\n";
+    cerr << "requested at the same time as intrinsically Keplerian tangential velocity\n";
+    cerr << "checking with tolerance " << config.tanveltol << "\n";
+    return(0);
+  }
+  if(use_sad==0 && config.min_obstanvel>0) {
+    cerr << "ERROR: min_obstanvel set to operative value (" << config.min_obstanvel << " km/sec without also\n";
+    cerr << "setting the heliocentric tangential velocity tolerance tanveltol, which\n";
+    cerr << "remains at its default, non-operative value of " << config.tanveltol << " km/sec.\n";
+    cerr << "Re-run with -tanveltol set. If you want tanveltol not to exclude any,\n";
+    cerr << "tracklets, set it to a very large positive value (e.g. -tanveltol 1000.0).\n";
+    cerr << "This, combined with your desired operative setting for min_obstanvel, will render\n";
+    cerr << "min_obstanvel operative while tanveltol is not.\n";
+    return(0);
+  }
+   
   // Echo config struct
   cout << "Configuration parameters:\n";
   cout << "MJD of reference time: " << config.MJDref << "\n";
   cout << "DBSCAN clustering radius: " << config.clustrad << " km\n";
-  cout << "DBSCAN npt: " << config.dbscan_npt << "\n";
+  cout << "DBSCAN npt: " << config.cluster_minpts << "\n";
   cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
   cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
   cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
@@ -42664,36 +48904,66 @@ int heliolinc_alg_TNV(const vector <hlimage> &image_log, const vector <hldet> &d
     gridpoint_clusternum=0;
     // Covert all tracklets into state vectors at the reference time, under
     // the assumption that the heliocentric distance hypothesis is correct.
-    if(use_univar == 1 || use_univar == 5 || use_univar == 7) {
-      // Integrate to perform clustering in the standard heliolinc3d parameter space
-      // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
-      // Use the universal variable formulation of the Kepler problem for orbit propagation.
-      // This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
-      status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler, config.verbose);
-    } else if(use_univar == 2) {
-      // Integrate to perform clustering in the parameter space of Ben Engebreth's 
-      // heliolinc_RR algorithm, which uses position vectors at two different
-      // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
-      // Use the Kepler f and g functions for orbit propagation
-      // This is faster than the universal variable formulation, but cannot handle hyperbolic
-      status = trk2statevec_fgfuncRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler);
-    } else if(use_univar == 3) {
-      // Integrate to perform clustering in the parameter space of Ben Engebreth's 
-      // heliolinc_RR algorithm, which uses position vectors at two different
-      // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
-      // Use the universal variable formulation of the Kepler problem for orbit propagation.
-      // This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
-      status = trk2statevec_univarRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler, config.verbose);
+    if(use_sad==1) {
+      if(config.use_univar == 1) {
+	// Use the universal variable formulation of the Kepler problem for orbit propagation.
+	// This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
+	if(config.use_rr == 1) {
+	  // Integrate to perform clustering in the parameter space of Ben Engebreth's 
+	  // heliolinc_RR algorithm, which uses position vectors at two different
+	  // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
+	  status = trk2statevec_univarRR_TNV_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+	} else {
+	  // Integrate to perform clustering in the standard heliolinc3d parameter space
+	  // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
+	  status = trk2statevec_univar_TNV_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+	}
+      } else {
+	// Use the Kepler f and g functions for orbit propagation
+	// This is faster than the universal variable formulation, but cannot handle hyperbolic
+	if(config.use_rr == 1) {
+	  // Integrate to perform clustering in the parameter space of Ben Engebreth's 
+	  // heliolinc_RR algorithm, which uses position vectors at two different
+	  // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
+	  status = trk2statevec_fgfuncRR_TNV_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+	} else {
+	  // Integrate to perform clustering in the standard heliolinc3d parameter space
+	  // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
+	  status = trk2statevec_fgfunc_TNV_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+	}
+      }
     } else {
-      // Integrate to perform clustering in the standard heliolinc3d parameter space
-      // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
-      // Use the Kepler f and g functions for orbit propagation
-      // This is faster than the universal variable formulation, but cannot handle hyperbolic
-      // (i.e., unbound, interstellar) orbits. Being fastest for normal orbits, it is the default,
-      // and also corresponds to use_univar == 0, 4, or 6
-      status = trk2statevec_fgfunc_TNV(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.tanveltol, config.veltol_changerad, NotKepler);
+      // Do not use SAD tracklet rejection. Hence, use_taylor is allowed, though
+      // still not recommended.
+      if(config.use_univar == 1) {
+	// Use the universal variable formulation of the Kepler problem for orbit propagation.
+	// This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
+	if(config.use_rr == 1) {
+	  // Integrate to perform clustering in the parameter space of Ben Engebreth's 
+	  // heliolinc_RR algorithm, which uses position vectors at two different
+	  // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
+	  status = trk2statevec_univarRR_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.use_taylor, config.verbose);
+	} else {
+	  // Integrate to perform clustering in the standard heliolinc3d parameter space
+	  // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
+	  status = trk2statevec_univar_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.use_taylor, config.verbose);
+	}
+      } else {
+	// Use the Kepler f and g functions for orbit propagation
+	// This is faster than the universal variable formulation, but cannot handle hyperbolic
+	if(config.use_rr == 1) {
+	  // Integrate to perform clustering in the parameter space of Ben Engebreth's 
+	  // heliolinc_RR algorithm, which uses position vectors at two different
+	  // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
+	  status = trk2statevec_fgfuncRR_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.use_taylor, config.verbose);
+	} else {
+	  // Integrate to perform clustering in the standard heliolinc3d parameter space
+	  // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
+	  status = trk2statevec_fgfunc_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.use_taylor, config.verbose);
+	}
+      }
     }
-
+    
     if(status==1) {
       cerr << "WARNING: hypothesis " << accelct << ": " << radhyp[accelct].HelioRad << " " << radhyp[accelct].R_dot << " " << radhyp[accelct].R_dubdot << " led to\nnegative heliocentric distance or other invalid result: SKIPPING\n";
       continue;
@@ -42706,27 +48976,24 @@ int heliolinc_alg_TNV(const vector <hlimage> &image_log, const vector <hldet> &d
     if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
     if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-    if(use_univar==6 || use_univar==7) {
+    if(config.use_dbscan == 1 && config.use_rr == 0) {
       // Use old DBSCAN algorithm in six dimensions for clustering the standard heliolinc parameter space
-      status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+      status = form_clusters_uint(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
       if(status!=0) {
 	cerr << "ERROR: form_clusters exited with error code " << status << "\n";
       }
-    } else if(use_univar==2 || use_univar==3) {
+    } else if(config.use_dbscan == 0 && config.use_rr == 1) {
       // Use a KDtree range-query in six dimensions for clustering the heliolinc_RR parameter space
-      status = form_clusters_RR(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+      status = form_clusters_RR_uint(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
       if(status!=0) {
 	cerr << "ERROR: form_clusters_RR exited with error code " << status << "\n";
       }
-    } else if (use_univar==4 || use_univar==5) {
-      // Use a KDtree range-query in only three dimensions for clustering the position-only heliolinc parameter space
-      status = form_clusters_kdR(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
-      if(status!=0) {
-	cerr << "ERROR: form_clusters_kd4 exited with error code " << status << "\n";
-      }
+    } else if(config.use_dbscan == 1 && config.use_rr == 1) {
+      cerr << "ERROR: use_dbscan option is not available in combination with use_rr\n";
+      return(12);
     } else {
       // Use a KDtree range-query in six dimensions for clustering the standard heliolinc parameter space
-      status = form_clusters_kd4(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+      status = form_clusters_kd4_uint(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
       if(status!=0) {
 	cerr << "ERROR: form_clusters_kd4 exited with error code " << status << "\n";
       }
@@ -42789,7 +49056,7 @@ int heliolinc_omp_all(const vector <hlimage> &image_log, const vector <hldet> &d
   cout << "Configuration parameters:\n";
   cout << "MJD of reference time: " << config.MJDref << "\n";
   cout << "DBSCAN clustering radius: " << config.clustrad << " km\n";
-  cout << "DBSCAN npt: " << config.dbscan_npt << "\n";
+  cout << "DBSCAN npt: " << config.cluster_minpts << "\n";
   cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
   cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
   cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
@@ -42916,7 +49183,7 @@ int heliolinc_omp_all(const vector <hlimage> &image_log, const vector <hldet> &d
 	// reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
 	// Use the Kepler f and g functions for orbit propagation
 	// This is faster than the universal variable formulation, but cannot handle hyperbolic
-	status = trk2statevec_fgfuncRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler);
+	status = trk2statevec_fgfuncRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler, config.verbose);
 	if(status==1) {
 	  cerr << "FAILURE IN THREAD " << ithread << ": ";
 	  cerr << "hypothesis " << accelct << ": " << radhyp[accelct].HelioRad << " " << radhyp[accelct].R_dot << " " << radhyp[accelct].R_dubdot << " led to\nnegative heliocentric distance or other invalid result: SKIPPING\n";
@@ -42947,7 +49214,7 @@ int heliolinc_omp_all(const vector <hlimage> &image_log, const vector <hldet> &d
 	// This is faster than the universal variable formulation, but cannot handle hyperbolic
 	// (i.e., unbound, interstellar) orbits. Being fastest for normal orbits, it is the default,
 	// and also corresponds to use_univar == 0, 4, or 6
-	status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler);
+	status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler, config.verbose);
 	if(status==1) {
 	  cerr << "FAILURE IN THREAD " << ithread << ": ";
 	  cerr << "hypothesis " << accelct << ": " << radhyp[accelct].HelioRad << " " << radhyp[accelct].R_dot << " " << radhyp[accelct].R_dubdot << " led to\nnegative heliocentric distance or other invalid result: SKIPPING\n";
@@ -42963,25 +49230,25 @@ int heliolinc_omp_all(const vector <hlimage> &image_log, const vector <hldet> &d
 
 	if(use_univar==6 || use_univar==7) {
 	  // Use old DBSCAN algorithm in six dimensions for clustering the standard heliolinc parameter space
-	  status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+	  status = form_clusters(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
 	  if(status!=0) {
 	    cerr << "ERROR: form_clusters exited with error code " << status << "\n";
 	  }
 	} else if(use_univar==2 || use_univar==3) {
 	  // Use a KDtree range-query in six dimensions for clustering the heliolinc_RR parameter space
-	  status = form_clusters_RR(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+	  status = form_clusters_RR(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
 	  if(status!=0) {
 	    cerr << "ERROR: form_clusters_RR exited with error code " << status << "\n";
 	  }
 	} else if (use_univar==4 || use_univar==5) {
 	  // Use a KDtree range-query in only three dimensions for clustering the position-only heliolinc parameter space
-	  status = form_clusters_kdR(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+	  status = form_clusters_kdR(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
 	  if(status!=0) {
 	    cerr << "ERROR: form_clusters_kdR exited with error code " << status << "\n";
 	  }
 	} else {
 	  // Use a KDtree range-query in six dimensions for clustering the standard heliolinc parameter space
-	  status = form_clusters_kd4(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+	  status = form_clusters_kd4(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
 	  if(status!=0) {
 	    cerr << "ERROR: form_clusters_kd4 exited with error code " << status << "\n";
 	  }
@@ -43029,14 +49296,16 @@ int heliolinc_omp_all(const vector <hlimage> &image_log, const vector <hldet> &d
   return(0);    
 }
 
-
-// heliolinc_alg_lowmem: July 07, 2025
-// Related to heliolinc_alg_all, but aimed to reduce memory usage.
-int heliolinc_alg_lowmem(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, vector <hlclust> &outclust, vector <longpair> &clust2det)
+// heliolinc_alg_TNV_uint_lowmem: September 15, 2026:
+// Version of heliolinc using Ben Engebreth's concept of the
+// SAD tracklet AND ALSO storing tracklet information in
+// more memory-efficient vectors AND also using more memory-efficient
+// 'lowmem' classes for storing internal cluster and clust2det vectors.
+int heliolinc_alg_TNV_uint_lowmem(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <uint_tracklet> &tracklets, const vector <uint_pair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, vector <hlclust> &outclust, vector <longpair> &clust2det)
 {
   long detnum = detvec.size();
   if(detnum>=UINT_MAX) {
-    cerr << "ERROR: heliolinc_alg_lowmem called with too long a detection catalog!\n";
+    cerr << "ERROR: heliolinc_alg_TNV_uint_lowmem called with too long a detection catalog!\n";
     cerr << "Catalog contains " << detnum << " detections when no more than " << UINT_MAX-1 << " are allowed\n";
     return(10);
   }
@@ -43048,6 +49317,12 @@ int heliolinc_alg_lowmem(const vector <hlimage> &image_log, const vector <hldet>
   long trk2detnum = trk2det.size();
   long accelnum = radhyp.size();
   long accelct=0;
+  
+  if(pairnum>=UINT_MAX) {
+    cerr << "ERROR: heliolinc_alg_TNV_uint_lowmem has too many tracklets\n";
+    cerr << "(" << pairnum << " >= " << UINT_MAX << "). Re-run with a non-uint version of heliolinc\n";
+    return(1);
+  }
 
   vector <double> heliodist;
   vector <double> heliovel;
@@ -43055,8 +49330,6 @@ int heliolinc_alg_lowmem(const vector <hlimage> &image_log, const vector <hldet>
   long realclusternum, gridpoint_clusternum, status;
   realclusternum = gridpoint_clusternum = status = 0;
   vector <point6ix2> allstatevecs;
-  int use_univar=0;
-  int NotKepler=0;
   int automjd=0;
   long i=0;
   longpair onepair = longpair(0,0);
@@ -43071,20 +49344,12 @@ int heliolinc_alg_lowmem(const vector <hlimage> &image_log, const vector <hldet>
   long obsnights=0;
   double timespan=0.0;
   string rating;
-  
-  if(config.use_univar>7 && config.use_univar<=15) {
-    use_univar = config.use_univar-8;
-    NotKepler=1;
-  } else {
-    use_univar = config.use_univar;
-    NotKepler=0;
-  }
-  
+   
   // Echo config struct
   cout << "Configuration parameters:\n";
   cout << "MJD of reference time: " << config.MJDref << "\n";
   cout << "DBSCAN clustering radius: " << config.clustrad << " km\n";
-  cout << "DBSCAN npt: " << config.dbscan_npt << "\n";
+  cout << "DBSCAN npt: " << config.cluster_minpts << "\n";
   cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
   cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
   cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
@@ -43155,34 +49420,32 @@ int heliolinc_alg_lowmem(const vector <hlimage> &image_log, const vector <hldet>
     gridpoint_clusternum=0;
     // Covert all tracklets into state vectors at the reference time, under
     // the assumption that the heliocentric distance hypothesis is correct.
-    if(use_univar == 1 || use_univar == 5 || use_univar == 7) {
-      // Integrate to perform clustering in the standard heliolinc3d parameter space
-      // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
+    if(config.use_univar == 1) {
       // Use the universal variable formulation of the Kepler problem for orbit propagation.
       // This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
-      status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler, config.verbose);
-    } else if(use_univar == 2) {
-      // Integrate to perform clustering in the parameter space of Ben Engebreth's 
-      // heliolinc_RR algorithm, which uses position vectors at two different
-      // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
-      // Use the Kepler f and g functions for orbit propagation
-      // This is faster than the universal variable formulation, but cannot handle hyperbolic
-      status = trk2statevec_fgfuncRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler);
-    } else if(use_univar == 3) {
-      // Integrate to perform clustering in the parameter space of Ben Engebreth's 
-      // heliolinc_RR algorithm, which uses position vectors at two different
-      // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
-      // Use the universal variable formulation of the Kepler problem for orbit propagation.
-      // This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
-      status = trk2statevec_univarRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler, config.verbose);
+      if(config.use_rr == 1) {
+	// Integrate to perform clustering in the parameter space of Ben Engebreth's 
+	// heliolinc_RR algorithm, which uses position vectors at two different
+	// reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
+	status = trk2statevec_univarRR_TNV_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+      } else {
+	// Integrate to perform clustering in the standard heliolinc3d parameter space
+	// of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
+	status = trk2statevec_univar_TNV_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+      }
     } else {
-      // Integrate to perform clustering in the standard heliolinc3d parameter space
-      // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
       // Use the Kepler f and g functions for orbit propagation
       // This is faster than the universal variable formulation, but cannot handle hyperbolic
-      // (i.e., unbound, interstellar) orbits. Being fastest for normal orbits, it is the default,
-      // and also corresponds to use_univar == 0, 4, or 6
-      status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler);
+      if(config.use_rr == 1) {
+	// Integrate to perform clustering in the parameter space of Ben Engebreth's 
+	// heliolinc_RR algorithm, which uses position vectors at two different
+	// reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
+	status = trk2statevec_fgfuncRR_TNV_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+      } else {
+	// Integrate to perform clustering in the standard heliolinc3d parameter space
+	// of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
+	status = trk2statevec_fgfunc_TNV_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+      }
     }
 
     if(status==1) {
@@ -43197,33 +49460,30 @@ int heliolinc_alg_lowmem(const vector <hlimage> &image_log, const vector <hldet>
     if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
     if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-    if(use_univar==6 || use_univar==7) {
+    if(config.use_dbscan == 1 && config.use_rr == 0) {
       // Use old DBSCAN algorithm in six dimensions for clustering the standard heliolinc parameter space
-      status = form_clusters_lowmem(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], accelct, chartimescale, outclust_lowmem, clust2det_lowmem, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+      status = form_clusters_uint_lowmem(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], accelct, chartimescale, outclust_lowmem, clust2det_lowmem, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
       if(status!=0) {
 	cerr << "ERROR: form_clusters exited with error code " << status << "\n";
       }
-    } else if(use_univar==2 || use_univar==3) {
+    } else if(config.use_dbscan == 0 && config.use_rr == 1) {
       // Use a KDtree range-query in six dimensions for clustering the heliolinc_RR parameter space
-      status = form_clusters_RR_lowmem(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], accelct, chartimescale, outclust_lowmem, clust2det_lowmem, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+      status = form_clusters_RR_uint_lowmem(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], accelct, chartimescale, outclust_lowmem, clust2det_lowmem, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
       if(status!=0) {
 	cerr << "ERROR: form_clusters_RR exited with error code " << status << "\n";
       }
-    } else if (use_univar==4 || use_univar==5) {
-      // Use a KDtree range-query in only three dimensions for clustering the position-only heliolinc parameter space
-      status = form_clusters_kdR_lowmem(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], accelct, chartimescale, outclust_lowmem, clust2det_lowmem, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+    } else if(config.use_dbscan == 1 && config.use_rr == 1) {
+      cerr << "ERROR: use_dbscan option is not available in combination with use_rr\n";
+      return(12);
+    } else {
+      // Use a KDtree range-query in six dimensions for clustering the standard heliolinc parameter space
+      status = form_clusters_kd4_uint_lowmem(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], accelct, chartimescale, outclust_lowmem, clust2det_lowmem, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
       if(status!=0) {
 	cerr << "ERROR: form_clusters_kd4 exited with error code " << status << "\n";
       }
-    } else {
-      // Use a KDtree range-query in six dimensions for clustering the standard heliolinc parameter space
-      status = form_clusters_kd4_lowmem(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], accelct, chartimescale, outclust_lowmem, clust2det_lowmem, realclusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
-      if(status!=0) {
-	cerr << "ERROR: form_clusters_kd4_lowmem exited with error code " << status << "\n";
-      }
     }
   }
-
+  
   // De-duplicate the final output set
   cout << "De-duplicating output set of " << outclust_lowmem.size() << " candidate linkages totalling " << clust2det_lowmem.size() << " detections\n";
   vector <shortclust> outclust_lowmem2;
@@ -43268,7 +49528,7 @@ int heliolinc_alg_lowmem(const vector <hlimage> &image_log, const vector <hldet>
     // Count steps large enough to suggest a daytime period between nights.
     daysteps=0;
     for(i=0; i<long(mjdstep.size()); i++) {
-      if(mjdstep[i]>NIGHTSTEP) daysteps++;
+      if(mjdstep[i]>config.nightstep) daysteps++;
     }
     obsnights = daysteps+1;
     // Check whether cluster is composed purely of detections from
@@ -43295,6 +49555,327 @@ int heliolinc_alg_lowmem(const vector <hlimage> &image_log, const vector <hldet>
   }
   return(0);    
 }
+
+
+// heliolinc_alg_uint_lowmem: October 19, 2026:
+// Version of heliolinc OPTIONALLY using Ben Engebreth's concept of the
+// SAD tracklet AND ALSO storing tracklet information in
+// more memory-efficient vectors AND also using more memory-efficient
+// 'lowmem' classes for storing internal cluster and clust2det vectors.
+int heliolinc_alg_uint_lowmem(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <uint_tracklet> &tracklets, const vector <uint_pair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, vector <hlclust> &outclust, vector <longpair> &clust2det)
+{
+  long detnum = detvec.size();
+  if(detnum>=UINT_MAX) {
+    cerr << "ERROR: heliolinc_alg_TNV_uint_lowmem called with too long a detection catalog!\n";
+    cerr << "Catalog contains " << detnum << " detections when no more than " << UINT_MAX-1 << " are allowed\n";
+    return(10);
+  }
+  vector <shortclust> outclust_lowmem;
+  vector <uint_pair> clust2det_lowmem;
+  point3d Earthrefpos = point3d(0l,0l,0l);
+  long imnum = image_log.size();
+  long pairnum = tracklets.size();
+  long trk2detnum = trk2det.size();
+  long accelnum = radhyp.size();
+  long accelct=0;
+  
+  if(pairnum>=UINT_MAX) {
+    cerr << "ERROR: heliolinc_alg_TNV_uint_lowmem has too many tracklets\n";
+    cerr << "(" << pairnum << " >= " << UINT_MAX << "). Re-run with a non-uint version of heliolinc\n";
+    return(1);
+  }
+
+  vector <double> heliodist;
+  vector <double> heliovel;
+  vector <double> helioacc;
+  long realclusternum, gridpoint_clusternum, status;
+  realclusternum = gridpoint_clusternum = status = 0;
+  vector <point6ix2> allstatevecs;
+  int automjd=0;
+  long i=0;
+  longpair onepair = longpair(0,0);
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  double posRMS,velRMS,totRMS;
+  posRMS = velRMS = totRMS = 0.0;
+  vector <long> clustind;
+  vector <hldet> clusterdets;
+  vector <double> clustmjd;
+  long clusterct=0;
+  long daysteps=0;
+  long obsnights=0;
+  double timespan=0.0;
+  string rating;
+  int use_sad=0;
+
+  // Catch case where max v_inf > 0 but universal variables are not set.
+  if(config.max_v_inf>0.0l && config.use_univar<=0) {
+    cerr << "ERROR: unbound orbits being probed (max_v_inf = " << config.max_v_inf << "),\n";
+    cerr << "but code is not set to use universal variables (use_univar = " << config.use_univar << ").\n";
+    return(1);
+  }
+
+  if(config.tanveltol>0.0) use_sad=1;
+  if(use_sad>0 && config.use_taylor>0) {
+    cerr << "ERROR: non-Keplerian (Taylor Series) interpretation of hypotheses\n";
+    cerr << "requested at the same time as intrinsically Keplerian tangential velocity\n";
+    cerr << "checking with tolerance " << config.tanveltol << "\n";
+    return(0);
+  }
+  if(use_sad==0 && config.min_obstanvel>0) {
+    cerr << "ERROR: min_obstanvel set to operative value (" << config.min_obstanvel << " km/sec without also\n";
+    cerr << "setting the heliocentric tangential velocity tolerance tanveltol, which\n";
+    cerr << "remains at its default, non-operative value of " << config.tanveltol << " km/sec.\n";
+    cerr << "Re-run with -tanveltol set. If you want tanveltol not to exclude any,\n";
+    cerr << "tracklets, set it to a very large positive value (e.g. -tanveltol 1000.0).\n";
+    cerr << "This, combined with your desired operative setting for min_obstanvel, will render\n";
+    cerr << "min_obstanvel operative while tanveltol is not.\n";
+    return(0);
+  }
+   
+  // Echo config struct
+  cout << "Configuration parameters:\n";
+  cout << "MJD of reference time: " << config.MJDref << "\n";
+  cout << "DBSCAN clustering radius: " << config.clustrad << " km\n";
+  cout << "DBSCAN npt: " << config.cluster_minpts << "\n";
+  cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
+  cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
+  cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
+  cout << "Max geocentric distance (will be exceeded by center only of the outermost bin): " << config.maxgeodist << " AU\n";
+  cout << "Logarthmic step size (and bin width) for geocentric distance bins: " << config.geologstep << "\n";
+  cout << "Minimum inferred geocentric distance for a valid tracklet: " << config.mingeoobs << " AU\n";
+  cout << "Minimum inferred impact parameter (w.r.t. Earth) for a valid tracklet: " << config.minimpactpar << " km\n";
+  if(config.verbose) cout << "Verbose output selected\n";
+  
+  if(imnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty image catalog\n";
+    return(1);
+  } else if(pairnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty tracklet array\n";
+    return(1);
+  } else if(trk2detnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty trk2det array\n";
+    return(1);
+  } else if(accelnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty heliocentric hypothesis array\n";
+    return(1);
+  }
+  
+  // Find MJD for first and last detections.
+  double minMJD = detvec[0].MJD;
+  double maxMJD = detvec[0].MJD;
+  for(i=0; i<long(detvec.size()); i++) {
+    if(minMJD > detvec[i].MJD) minMJD = detvec[i].MJD;
+    if(maxMJD < detvec[i].MJD) maxMJD = detvec[i].MJD;
+  }
+  if(!isnormal(config.MJDref) || config.MJDref < minMJD || config.MJDref > maxMJD) {
+    if(config.autorun<=0) {
+      cout << "\nERROR: input positive-valued reference MJD is required\n";
+      cout << "MJD range is " << minMJD << " to " << maxMJD << "\n";
+      cout << fixed << setprecision(2) << "Suggested reference value is " << minMJD*0.5L + maxMJD*0.5L << "\n";
+      return(1);
+    } else {
+      cout << "\nUser did not input a positive-valued reference MJD in the\n";
+      cout << "acceptable range, so heliolinc will generate one internally\n";
+      cout << "MJD range is " << minMJD << " to " << maxMJD << "\n";
+      cout << fixed << setprecision(2) << "Suggested reference value is " << minMJD*0.5L + maxMJD*0.5L << "\n";
+      config.MJDref = round(minMJD*50.0l + maxMJD*50.0l)/100.0l;
+      cout << fixed << setprecision(2) << "Adopting reference MJD = " << config.MJDref << "\n";
+      automjd=1;
+    } 
+  }
+
+  double chartimescale = (maxMJD - minMJD)*SOLARDAY/TIMECONVSCALE; // Note that the units are seconds.
+  Earthrefpos = earthpos01(earthpos, config.MJDref);
+
+  // Convert heliocentric radial motion hypothesis matrix
+  // from units of AU, AU/day, and GMSun/R^2
+  // to units of km, km/day, and km/day^2.
+  heliodist = heliovel = helioacc = {};
+  for(accelct=0;accelct<accelnum;accelct++) {
+    heliodist.push_back(radhyp[accelct].HelioRad * AU_KM);
+    heliovel.push_back(radhyp[accelct].R_dot * AU_KM);
+    helioacc.push_back(radhyp[accelct].R_dubdot * (-GMSUN_KM3_SEC2*SOLARDAY*SOLARDAY/heliodist[accelct]/heliodist[accelct]));
+  }
+
+  // Begin master loop over heliocentric hypotheses
+  outclust={};
+  clust2det={};
+  realclusternum=0;
+  for(accelct=0;accelct<accelnum;accelct++) {
+    cout << "Working on hypothesis " << accelct << ": " << radhyp[accelct].HelioRad << " AU, " << radhyp[accelct].R_dot*AU_KM/SOLARDAY << " km/sec " << radhyp[accelct].R_dubdot << " GMsun/r^2\n";
+
+    gridpoint_clusternum=0;
+    // Covert all tracklets into state vectors at the reference time, under
+    // the assumption that the heliocentric distance hypothesis is correct.
+    if(use_sad==1) {
+      // Reject tracklets with discrepant heliocentric tangential velocities (SAD tracklets)
+      if(config.use_univar == 1) {
+	// Use the universal variable formulation of the Kepler problem for orbit propagation.
+	// This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
+	if(config.use_rr == 1) {
+	  // Integrate to perform clustering in the parameter space of Ben Engebreth's 
+	  // heliolinc_RR algorithm, which uses position vectors at two different
+	  // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
+	  status = trk2statevec_univarRR_TNV_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+	} else {
+	  // Integrate to perform clustering in the standard heliolinc3d parameter space
+	  // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
+	  status = trk2statevec_univar_TNV_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+	}
+      } else {
+	// Use the Kepler f and g functions for orbit propagation
+	// This is faster than the universal variable formulation, but cannot handle hyperbolic
+	if(config.use_rr == 1) {
+	  // Integrate to perform clustering in the parameter space of Ben Engebreth's 
+	  // heliolinc_RR algorithm, which uses position vectors at two different
+	  // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
+	  status = trk2statevec_fgfuncRR_TNV_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+	} else {
+	  // Integrate to perform clustering in the standard heliolinc3d parameter space
+	  // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
+	  status = trk2statevec_fgfunc_TNV_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+	}
+      }
+    } else {
+      // Do not use SAD tracklet rejection. This means use_taylor can be invoked, though
+      // it is still not recommended.
+      // Reject tracklets with discrepant heliocentric tangential velocities (SAD tracklets)
+      if(config.use_univar == 1) {
+	// Use the universal variable formulation of the Kepler problem for orbit propagation.
+	// This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
+	if(config.use_rr == 1) {
+	  // Integrate to perform clustering in the parameter space of Ben Engebreth's 
+	  // heliolinc_RR algorithm, which uses position vectors at two different
+	  // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
+	  status = trk2statevec_univarRR_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.use_taylor, config.verbose);
+	} else {
+	  // Integrate to perform clustering in the standard heliolinc3d parameter space
+	  // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
+	  status = trk2statevec_univar_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.use_taylor, config.verbose);
+	}
+      } else {
+	// Use the Kepler f and g functions for orbit propagation
+	// This is faster than the universal variable formulation, but cannot handle hyperbolic
+	if(config.use_rr == 1) {
+	  // Integrate to perform clustering in the parameter space of Ben Engebreth's 
+	  // heliolinc_RR algorithm, which uses position vectors at two different
+	  // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
+	  status = trk2statevec_fgfuncRR_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.use_taylor, config.verbose);
+	} else {
+	  // Integrate to perform clustering in the standard heliolinc3d parameter space
+	  // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
+	  status = trk2statevec_fgfunc_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.use_taylor, config.verbose);
+	}
+      }
+    }
+    if(status==1) {
+      cerr << "WARNING: hypothesis " << accelct << ": " << radhyp[accelct].HelioRad << " " << radhyp[accelct].R_dot << " " << radhyp[accelct].R_dubdot << " led to\nnegative heliocentric distance or other invalid result: SKIPPING\n";
+      continue;
+    } else if(status==2) {
+      // This is a weirder error case and is fatal.
+      cerr << "Fatal error case from trk2statevec.\n";
+      return(3);
+    }
+    // If we get here, trk2statevec probably ran OK.
+    if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
+    if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
+
+    if(config.use_dbscan == 1 && config.use_rr == 0) {
+      // Use old DBSCAN algorithm in six dimensions for clustering the standard heliolinc parameter space
+      status = form_clusters_uint_lowmem(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], accelct, chartimescale, outclust_lowmem, clust2det_lowmem, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+      if(status!=0) {
+	cerr << "ERROR: form_clusters exited with error code " << status << "\n";
+      }
+    } else if(config.use_dbscan == 0 && config.use_rr == 1) {
+      // Use a KDtree range-query in six dimensions for clustering the heliolinc_RR parameter space
+      status = form_clusters_RR_uint_lowmem(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], accelct, chartimescale, outclust_lowmem, clust2det_lowmem, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+      if(status!=0) {
+	cerr << "ERROR: form_clusters_RR exited with error code " << status << "\n";
+      }
+    } else if(config.use_dbscan == 1 && config.use_rr == 1) {
+      cerr << "ERROR: use_dbscan option is not available in combination with use_rr\n";
+      return(12);
+    } else {
+      // Use a KDtree range-query in six dimensions for clustering the standard heliolinc parameter space
+      status = form_clusters_kd4_uint_lowmem(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], accelct, chartimescale, outclust_lowmem, clust2det_lowmem, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+      if(status!=0) {
+	cerr << "ERROR: form_clusters_kd4 exited with error code " << status << "\n";
+      }
+    }
+  }
+  
+  // De-duplicate the final output set
+  cout << "De-duplicating output set of " << outclust_lowmem.size() << " candidate linkages totalling " << clust2det_lowmem.size() << " detections\n";
+  vector <shortclust> outclust_lowmem2;
+  vector  <uint_pair> outclust2det_lowmem2;
+  link_dedup_lowmem2(outclust_lowmem, clust2det_lowmem, outclust_lowmem2, outclust2det_lowmem2);
+  cout << "De-duplicated set contains " << outclust_lowmem2.size() << " linkages totalling " << outclust2det_lowmem2.size() << " detections.\n";
+
+  // Convert from the low-memory classes uint_pair and shortclust
+  // into the desired output classes longpair and hlclust
+  outclust = {};
+  clust2det = {};
+  cout << "Converting from memory-efficient to normal:\n";
+  cout << "outclust_lowmem2 with size " << outclust_lowmem2.size() << " and outclust2det_lowmem2 with size " <<  outclust2det_lowmem2.size() << "\n";
+  // First step: outclust2det_lowmem2 (uint_pair) into clust2det (longpair)
+  for(i=0; i<long(outclust2det_lowmem2.size()); i++) {
+    onepair = longpair(long(outclust2det_lowmem2[i].i1),long(outclust2det_lowmem2[i].i2));
+    clust2det.push_back(onepair);
+  }
+  cout << "Conversion complete for clust2det: size is " << clust2det.size() << "\n";
+  // Now outclust_lowmem2 (shortclust) to outclust (hlclust)
+  for(clusterct=0; clusterct<long(outclust_lowmem2.size()); clusterct++) {
+    clustind = {};
+    if(long(outclust_lowmem2[clusterct].clusternum) != clusterct) {
+      cerr << "ERROR: cluster count mismatch " << outclust_lowmem2[clusterct].clusternum << " != " << clusterct << "\n";
+      return(4);
+    }
+    clustind = tracklet_lookup(clust2det, long(outclust_lowmem2[clusterct].clusternum));
+    long uniquepoints = clustind.size();
+    // Load vector of detections for this cluster
+    clusterdets={};
+    clustmjd={};
+    for(i=0; i<uniquepoints; i++) {
+      clusterdets.push_back(detvec[clustind[i]]);
+      clustmjd.push_back(detvec[clustind[i]].MJD);
+    }
+    // Sort vector of MJD's
+    sort(clustmjd.begin(), clustmjd.end());
+    timespan = clustmjd[clustmjd.size()-1] - clustmjd[0];
+    // Load vector of MJD steps
+    vector <double> mjdstep;
+    for(i=1; i<long(clustmjd.size()); i++) mjdstep.push_back(clustmjd[i]-clustmjd[i-1]);
+    // Count steps large enough to suggest a daytime period between nights.
+    daysteps=0;
+    for(i=0; i<long(mjdstep.size()); i++) {
+      if(mjdstep[i]>config.nightstep) daysteps++;
+    }
+    obsnights = daysteps+1;
+    // Check whether cluster is composed purely of detections from
+    // a single simulated object (i.e., would be a real discovery) or is a mixture
+    // of detections from two or more different simulated objects (i.e., spurious).
+    rating="PURE";
+    for(long i=1; i<long(clusterdets.size()); i++) {
+      if(stringnmatch01(clusterdets[i].idstring,clusterdets[i-1].idstring,SHORTSTRINGLEN)!=0) rating="MIXED";
+    }
+    // Calculate or assign trivial quantities for hlclust
+    posRMS = outclust_lowmem2[clusterct].posRMS;
+    totRMS = outclust_lowmem2[clusterct].totRMS;
+    if(totRMS>posRMS) velRMS = sqrt(totRMS*totRMS - posRMS*posRMS);
+    else velRMS = 0.0;
+    accelct = outclust_lowmem2[clusterct].hypindex;
+    // Load the new cluster as an item of class hlclust
+    onecluster = hlclust(outclust_lowmem2[clusterct].clusternum, posRMS, velRMS, totRMS, 0.0, outclust_lowmem2[clusterct].pairnum, timespan, uniquepoints, obsnights, outclust_lowmem2[clusterct].metric, rating, config.MJDref, heliodist[accelct]/AU_KM, heliovel[accelct]/SOLARDAY, helioacc[accelct]*1000.0/SOLARDAY/SOLARDAY, outclust_lowmem2[clusterct].posX, outclust_lowmem2[clusterct].posY, outclust_lowmem2[clusterct].posZ, outclust_lowmem2[clusterct].velX, outclust_lowmem2[clusterct].velY,outclust_lowmem2[clusterct].velZ, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0);
+    outclust.push_back(onecluster);
+  }
+  cout << "Conversion complete for outclust: size is " << outclust.size() << "\n";
+  cout << "Final de-duplicated set contains " << outclust.size() << " linkages totalling " << clust2det.size() << " detections\n";
+  if(automjd) {
+    cout << "Automatically calculated reference MJD was " << config.MJDref << "\n";
+  }
+  return(0);    
+}
+
 
 // heliolinc_highgrade: November 24, 2025
 // Using conventions from heliolinc_alg_all, but 
@@ -43335,7 +49916,7 @@ int heliolinc_highgrade(const vector <hlimage> &image_log, const vector <hldet> 
   cout << "Configuration parameters:\n";
   cout << "MJD of reference time: " << config.MJDref << "\n";
   cout << "DBSCAN clustering radius: " << config.clustrad << " km\n";
-  cout << "DBSCAN npt: " << config.dbscan_npt << "\n";
+  cout << "DBSCAN npt: " << config.cluster_minpts << "\n";
   cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
   cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
   cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
@@ -43414,7 +49995,7 @@ int heliolinc_highgrade(const vector <hlimage> &image_log, const vector <hldet> 
       // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
       // Use the Kepler f and g functions for orbit propagation
       // This is faster than the universal variable formulation, but cannot handle hyperbolic
-      status = trk2statevec_fgfuncRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler);
+      status = trk2statevec_fgfuncRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler, config.verbose);
     } else if(use_univar == 3) {
       // Integrate to perform clustering in the parameter space of Ben Engebreth's 
       // heliolinc_RR algorithm, which uses position vectors at two different
@@ -43429,7 +50010,7 @@ int heliolinc_highgrade(const vector <hlimage> &image_log, const vector <hldet> 
       // This is faster than the universal variable formulation, but cannot handle hyperbolic
       // (i.e., unbound, interstellar) orbits. Being fastest for normal orbits, it is the default,
       // and also corresponds to use_univar == 0, 4, or 6
-      status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler);
+      status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler, config.verbose);
     }
 
     if(status==1) {
@@ -43445,7 +50026,7 @@ int heliolinc_highgrade(const vector <hlimage> &image_log, const vector <hldet> 
     if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
     // Use a KDtree range-query in six dimensions for clustering the standard heliolinc parameter space
-    status = highgrade_kdpairs(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, linkdet_temp, config.clustrad, config.clustchangerad, config.dbscan_npt, minobsnum, config.mintimespan, config.mingeodist, config.geologstep, config.maxgeodist, config.verbose);
+    status = highgrade_kdpairs(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, linkdet_temp, config.clustrad, config.clustchangerad, config.cluster_minpts, minobsnum, config.mintimespan, config.mingeodist, config.geologstep, config.maxgeodist, config.verbose);
     if(status!=0) {
       cerr << "ERROR: highgrade_kdpairs exited with error code " << status << "\n";
     }
@@ -43482,7 +50063,7 @@ int heliolinc_highgrade(const vector <hlimage> &image_log, const vector <hldet> 
     }
   }
 
-  cout << "Found clusters with " << config.dbscan_npt << " or more tracklets for " << linkdet_indices.size() << " total detections,\n";
+  cout << "Found clusters with " << config.cluster_minpts << " or more tracklets for " << linkdet_indices.size() << " total detections,\n";
   cout << "out of " << detvec.size() << " detections initially input. Reduction factor is " << double(detvec.size())/double(linkdet_indices.size()) << "\n";
   
   outdet = {};
@@ -43540,7 +50121,7 @@ int heliolinc_highgrade2(const vector <hlimage> &image_log, const vector <hldet>
   cout << "Configuration parameters:\n";
   cout << "MJD of reference time: " << config.MJDref << "\n";
   cout << "DBSCAN clustering radius: " << config.clustrad << " km\n";
-  cout << "DBSCAN npt: " << config.dbscan_npt << "\n";
+  cout << "DBSCAN npt: " << config.cluster_minpts << "\n";
   cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
   cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
   cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
@@ -43619,7 +50200,7 @@ int heliolinc_highgrade2(const vector <hlimage> &image_log, const vector <hldet>
       // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
       // Use the Kepler f and g functions for orbit propagation
       // This is faster than the universal variable formulation, but cannot handle hyperbolic
-      status = trk2statevec_fgfuncRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler);
+      status = trk2statevec_fgfuncRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler, config.verbose);
     } else if(use_univar == 3) {
       // Integrate to perform clustering in the parameter space of Ben Engebreth's 
       // heliolinc_RR algorithm, which uses position vectors at two different
@@ -43634,7 +50215,7 @@ int heliolinc_highgrade2(const vector <hlimage> &image_log, const vector <hldet>
       // This is faster than the universal variable formulation, but cannot handle hyperbolic
       // (i.e., unbound, interstellar) orbits. Being fastest for normal orbits, it is the default,
       // and also corresponds to use_univar == 0, 4, or 6
-      status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler);
+      status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, NotKepler, config.verbose);
     }
 
     if(status==1) {
@@ -43650,7 +50231,7 @@ int heliolinc_highgrade2(const vector <hlimage> &image_log, const vector <hldet>
     if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
     // Use a KDtree range-query in six dimensions for clustering the standard heliolinc parameter space
-    status = highgrade_kdpairs(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, linkdet_temp, config.clustrad, config.clustchangerad, config.dbscan_npt, minobsnum, config.mintimespan, config.mingeodist, config.geologstep, config.maxgeodist, config.verbose);
+    status = highgrade_kdpairs(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, linkdet_temp, config.clustrad, config.clustchangerad, config.cluster_minpts, minobsnum, config.mintimespan, config.mingeodist, config.geologstep, config.maxgeodist, config.verbose);
     if(status!=0) {
       cerr << "ERROR: highgrade_kdpairs exited with error code " << status << "\n";
     }
@@ -43673,7 +50254,7 @@ int heliolinc_highgrade2(const vector <hlimage> &image_log, const vector <hldet>
     cout << "new total w/o dups " << linkdet_indices.size() << "\n";
   }
   
-  cout << "Found clusters with " << config.dbscan_npt << " or more tracklets for " << linkdet_indices.size() << " total detections,\n";
+  cout << "Found clusters with " << config.cluster_minpts << " or more tracklets for " << linkdet_indices.size() << " total detections,\n";
   cout << "out of " << detvec.size() << " detections initially input. Reduction factor is " << double(detvec.size())/double(linkdet_indices.size()) << "\n";
   
   outdet = {};
@@ -43719,7 +50300,7 @@ int heliovane_alg_ompdanby(const vector <hlimage> &image_log, const vector <hlde
   cout << "Configuration parameters:\n";
   cout << "MJD of reference time: " << config.MJDref << "\n";
   cout << "DBSCAN clustering radius: " << config.clustrad << " km\n";
-  cout << "DBSCAN npt: " << config.dbscan_npt << "\n";
+  cout << "DBSCAN npt: " << config.cluster_minpts << "\n";
   cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
   cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
   cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
@@ -43840,7 +50421,7 @@ int heliovane_alg_ompdanby(const vector <hlimage> &image_log, const vector <hlde
       if(config.use_univar >= 1) {
 	status = trk2statevane_univar(image_log, tracklets, lambda[lambdact], lambda_dot[lambdact], lambda_ddot[lambdact], chartimescale, config.minsunelong, config.maxsunelong, min_proj_sine, config.maxheliodist, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.verbose);
       } else {
-	status = trk2statevane_fgfunc(image_log, tracklets, lambda[lambdact], lambda_dot[lambdact], lambda_ddot[lambdact], chartimescale, config.minsunelong, config.maxsunelong, min_proj_sine, config.maxheliodist, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf);
+	status = trk2statevane_fgfunc(image_log, tracklets, lambda[lambdact], lambda_dot[lambdact], lambda_ddot[lambdact], chartimescale, config.minsunelong, config.maxsunelong, min_proj_sine, config.maxheliodist, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.verbose);
       }
       if(status==1) {
 	cerr << "FAILURE IN THREAD " << ithread << "\n";
@@ -43852,7 +50433,7 @@ int heliovane_alg_ompdanby(const vector <hlimage> &image_log, const vector <hlde
 	// trk2statevane probably ran OK, and some clusters possible.
 	if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-	status = form_clusters(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, lambdahyp[lambdact].HelioRad, lambdahyp[lambdact].R_dot, lambdahyp[lambdact].R_dubdot, chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.clustchangerad, config.dbscan_npt, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.verbose);
+	status = form_clusters(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, lambdahyp[lambdact].HelioRad, lambdahyp[lambdact].R_dot, lambdahyp[lambdact].R_dubdot, chartimescale, outclust_mat[ithread], clust2det_mat[ithread], gridpoint_clusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
 	if(status!=0) {
 	  cerr << "ERROR: form_clusters exited with error code " << status << "\n";
 	}
@@ -44962,7 +51543,7 @@ int link_purify(const vector <hlimage> &image_log, const vector <hldet> &detvec,
 	  int obs_this_night=1;
 	  int first_obs_tonight=0;
 	  for(ptct=1;ptct<ptnum;ptct++) {
-	    if((clusterdets[ptct].MJD-clusterdets[ptct-1].MJD)<NIGHTSTEP && (clusterdets[ptct].MJD-clusterdets[first_obs_tonight].MJD)<1.0) {
+	    if((clusterdets[ptct].MJD-clusterdets[ptct-1].MJD)<config.nightstep && (clusterdets[ptct].MJD-clusterdets[first_obs_tonight].MJD)<1.0) {
 	      // Detection ptct is on the same night as ptct-1. Augment the count of observations for this night.
 	      obs_this_night++;
 	    } else {
@@ -45083,7 +51664,7 @@ int link_purify(const vector <hlimage> &image_log, const vector <hldet> &detvec,
 	  // Count steps large enough to suggest a daytime period between nights.
 	  daysteps=0;	
 	  for(long i=0; i<long(mjdstep.size()); i++) {
-	    if(mjdstep[i]>NIGHTSTEP) daysteps++;
+	    if(mjdstep[i]>config.nightstep) daysteps++;
 	  }
 	  obsnights = daysteps+1;
 	  // Does cluster pass the criteria for a linked detection?
@@ -45172,7 +51753,7 @@ int link_purify(const vector <hlimage> &image_log, const vector <hldet> &detvec,
 	      int obs_this_night=1;
 	      int first_obs_tonight=0;
 	      for(ptct=1;ptct<ptnum;ptct++) {
-		if((clusterdets[ptct].MJD-clusterdets[ptct-1].MJD)<NIGHTSTEP && (clusterdets[ptct].MJD-clusterdets[first_obs_tonight].MJD)<1.0) {
+		if((clusterdets[ptct].MJD-clusterdets[ptct-1].MJD)<config.nightstep && (clusterdets[ptct].MJD-clusterdets[first_obs_tonight].MJD)<1.0) {
 		  // Detection ptct is on the same night as ptct-1. Augment the count of observations for this night.
 		  obs_this_night++;
 		} else {
@@ -45633,7 +52214,7 @@ int link_purify2(const vector <hlimage> &image_log, const vector <hldet> &detvec
 	  // Count steps large enough to suggest a daytime period between nights.
 	  daysteps=0;	
 	  for(long i=0; i<long(mjdstep.size()); i++) {
-	    if(mjdstep[i]>NIGHTSTEP) daysteps++;
+	    if(mjdstep[i]>config.nightstep) daysteps++;
 	  }
 	  obsnights = daysteps+1;
 	  // Does cluster pass the criteria for a linked detection?
@@ -46138,7 +52719,7 @@ int link_purify_graddec(const vector <hlimage> &image_log, const vector <hldet> 
 	  // Count steps large enough to suggest a daytime period between nights.
 	  daysteps=0;	
 	  for(long i=0; i<long(mjdstep.size()); i++) {
-	    if(mjdstep[i]>NIGHTSTEP) daysteps++;
+	    if(mjdstep[i]>config.nightstep) daysteps++;
 	  }
 	  obsnights = daysteps+1;
 	  // Does cluster pass the criteria for a linked detection?
@@ -46653,7 +53234,7 @@ int link_purify_quad1(const vector <hlimage> &image_log, const vector <hldet> &d
 	  // Count steps large enough to suggest a daytime period between nights.
 	  daysteps=0;	
 	  for(long i=0; i<long(mjdstep.size()); i++) {
-	    if(mjdstep[i]>NIGHTSTEP) daysteps++;
+	    if(mjdstep[i]>config.nightstep) daysteps++;
 	  }
 	  obsnights = daysteps+1;
 	  // Does cluster pass the criteria for a linked detection?
@@ -47152,7 +53733,7 @@ int link_purify_chisq(const vector <hlimage> &image_log, const vector <hldet> &d
 	      int obs_this_night=1;
 	      int first_obs_tonight=0;
 	      for(ptct=1;ptct<ptnum;ptct++) {
-		if((clusterdets[ptct].MJD-clusterdets[ptct-1].MJD)<NIGHTSTEP && (clusterdets[ptct].MJD-clusterdets[first_obs_tonight].MJD)<1.0) {
+		if((clusterdets[ptct].MJD-clusterdets[ptct-1].MJD)<config.nightstep && (clusterdets[ptct].MJD-clusterdets[first_obs_tonight].MJD)<1.0) {
 		  // Detection ptct is on the same night as ptct-1. Augment the count of observations for this night.
 		  obs_this_night++;
 		} else {
@@ -47275,7 +53856,7 @@ int link_purify_chisq(const vector <hlimage> &image_log, const vector <hldet> &d
 	      // Count steps large enough to suggest a daytime period between nights.
 	      daysteps=0;	
 	      for(long i=0; i<long(mjdstep.size()); i++) {
-		if(mjdstep[i]>NIGHTSTEP) daysteps++;
+		if(mjdstep[i]>config.nightstep) daysteps++;
 	      }
 	      obsnights = daysteps+1;
 	      // Does cluster pass the criteria for a linked detection?
@@ -47387,7 +53968,7 @@ int link_purify_chisq(const vector <hlimage> &image_log, const vector <hldet> &d
 		  int obs_this_night=1;
 		  int first_obs_tonight=0;
 		  for(ptct=1;ptct<ptnum;ptct++) {
-		    if((clusterdets[ptct].MJD-clusterdets[ptct-1].MJD)<NIGHTSTEP && (clusterdets[ptct].MJD-clusterdets[first_obs_tonight].MJD)<1.0) {
+		    if((clusterdets[ptct].MJD-clusterdets[ptct-1].MJD)<config.nightstep && (clusterdets[ptct].MJD-clusterdets[first_obs_tonight].MJD)<1.0) {
 		      // Detection ptct is on the same night as ptct-1. Augment the count of observations for this night.
 		      obs_this_night++;
 		    } else {
@@ -47999,7 +54580,7 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
 	// Count steps large enough to suggest a daytime period between nights.
 	daysteps=0;	
 	for(long i=0; i<long(mjdstep.size()); i++) {
-	  if(mjdstep[i]>NIGHTSTEP) daysteps++;
+	  if(mjdstep[i]>config.nightstep) daysteps++;
 	}
 	obsnights = daysteps+1;
 	// Does cluster pass the criteria for a linked detection?
@@ -48015,7 +54596,7 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
 	  // Count steps large enough to suggest a daytime period between nights.
 	  daysteps=0;	
 	  for(long i=0; i<long(mjdstep.size()); i++) {
-	    if(mjdstep[i]>NIGHTSTEP) daysteps++;
+	    if(mjdstep[i]>config.nightstep) daysteps++;
 	  }
 	  obsnights = daysteps+1;
 	  // Does cluster pass the criteria for a linked detection?
@@ -48229,7 +54810,7 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
 	int obs_this_night=1;
 	int first_obs_tonight=0;
 	for(ptct=1;ptct<ptnum;ptct++) {
-	  if((clusterdets[ptct].MJD-clusterdets[ptct-1].MJD)<NIGHTSTEP && (clusterdets[ptct].MJD-clusterdets[first_obs_tonight].MJD)<1.0) {
+	  if((clusterdets[ptct].MJD-clusterdets[ptct-1].MJD)<config.nightstep && (clusterdets[ptct].MJD-clusterdets[first_obs_tonight].MJD)<1.0) {
 	    // Detection ptct is on the same night as ptct-1. Augment the count of observations for this night.
 	    obs_this_night++;
 	  } else {
@@ -48352,7 +54933,7 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
 	// Count steps large enough to suggest a daytime period between nights.
 	daysteps=0;	
 	for(long i=0; i<long(mjdstep.size()); i++) {
-	  if(mjdstep[i]>NIGHTSTEP) daysteps++;
+	  if(mjdstep[i]>config.nightstep) daysteps++;
 	}
 	obsnights = daysteps+1;
 	// Does cluster pass the criteria for a linked detection?
@@ -48441,7 +55022,7 @@ int link_planarity(const vector <hlimage> &image_log, const vector <hldet> &detv
 	    int obs_this_night=1;
 	    int first_obs_tonight=0;
 	    for(ptct=1;ptct<ptnum;ptct++) {
-	      if((clusterdets[ptct].MJD-clusterdets[ptct-1].MJD)<NIGHTSTEP && (clusterdets[ptct].MJD-clusterdets[first_obs_tonight].MJD)<1.0) {
+	      if((clusterdets[ptct].MJD-clusterdets[ptct-1].MJD)<config.nightstep && (clusterdets[ptct].MJD-clusterdets[first_obs_tonight].MJD)<1.0) {
 		// Detection ptct is on the same night as ptct-1. Augment the count of observations for this night.
 		obs_this_night++;
 	      } else {
@@ -49861,7 +56442,7 @@ int parse_clust2det(const vector <hldet> &detvec, const vector <longpair> &inclu
   long c2dct=0;
   long clustct=0;
   clustdet = {};
-  hldet o1 = hldet(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, "null", "V", "500", 0, 0, 0);
+  hldet o1 = hldet(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, "null", "V", "500", 0, 0, 0);
   
   for(c2dct=0; c2dct<c2dnum; c2dct++) {
     clustct = inclust2det[c2dct].i1;
@@ -58198,5 +64779,3032 @@ int unpack_objstring(string packstring, string &unpackstring) {
   return(0);
 }
 
+// ================================================================
+// omp_streaming branch additions (commit 144d4da), rewritten for Ari's
+// temp02 library: cluster file writers, lowmem_to_hlclust, and
+// trk2statevec_fgfunc_uint through heliolinc_alg_omp_select.
+// ================================================================
+
+// write_clustersum_file: September 2026
+// Writes a cluster summary file in the format read by read_clustersum_file
+// (loop moved from heliolinc_lowmem.cpp; metric now printed with 12 decimals
+// so near-equal metrics survive a write/read round trip).  Returns 1 if the
+// file cannot be opened or fully written.
+int write_clustersum_file(string sumfile, const vector <hlclust> &outclust)
+{
+  long clustct=0;
+  ofstream outstream1(sumfile);
+  if(!outstream1) {
+    cerr << "ERROR: can't open output file " << sumfile << "\n";
+    return(1);
+  }
+  outstream1 << "#clusternum,posRMS,velRMS,totRMS,astromRMS,pairnum,timespan,uniquepoints,obsnights,metric,rating,reference_MJD,heliohyp0,heliohyp1,heliohyp2,posX,posY,posZ,velX,velY,velZ,orbit_a,orbit_e,orbit_incl,orbit_MJD,orbitX,orbitY,orbitZ,orbitVX,orbitVY,orbitVZ,orbit_eval_count\n";
+  for(clustct=0 ; clustct<long(outclust.size()); clustct++) {
+    outstream1 << fixed << setprecision(3) << outclust[clustct].clusternum << "," << outclust[clustct].posRMS << "," << outclust[clustct].velRMS << "," << outclust[clustct].totRMS << ",";
+    outstream1 << fixed << setprecision(4) << outclust[clustct].astromRMS << ",";
+    outstream1 << fixed << setprecision(6) << outclust[clustct].pairnum << "," << outclust[clustct].timespan << "," << outclust[clustct].uniquepoints << "," << outclust[clustct].obsnights << "," << setprecision(12) << outclust[clustct].metric << setprecision(6) << "," << outclust[clustct].rating << ",";
+    outstream1 << fixed << setprecision(6) << outclust[clustct].reference_MJD << "," << outclust[clustct].heliohyp0 << "," << outclust[clustct].heliohyp1 << "," << outclust[clustct].heliohyp2 << ",";
+    outstream1 << fixed << setprecision(1) << outclust[clustct].posX << "," << outclust[clustct].posY << "," << outclust[clustct].posZ << ",";
+    outstream1 << fixed << setprecision(4) << outclust[clustct].velX << "," << outclust[clustct].velY << "," << outclust[clustct].velZ << ",";
+    outstream1 << fixed << setprecision(6) << outclust[clustct].orbit_a << "," << outclust[clustct].orbit_e << "," << outclust[clustct].orbit_incl << "," << outclust[clustct].orbit_MJD << ",";
+    outstream1 << fixed << setprecision(1) << outclust[clustct].orbitX << "," << outclust[clustct].orbitY << "," << outclust[clustct].orbitZ << ",";
+    outstream1 << fixed << setprecision(4) << outclust[clustct].orbitVX << "," << outclust[clustct].orbitVY << "," << outclust[clustct].orbitVZ << "," << outclust[clustct].orbit_eval_count << "\n";
+  }
+  outstream1.close();
+  if(outstream1.fail()) {
+    cerr << "ERROR: failed writing output file " << sumfile << " (disk full or quota?)\n";
+    return(1);
+  }
+  return(0);
+}
+
+// write_clust2det_file: September 2026
+// Writes a cluster-to-detection file (#clusternum,detnum) readable by
+// read_longpair_file (loop moved from heliolinc_lowmem.cpp).  Returns 1 if the
+// file cannot be opened or fully written.
+int write_clust2det_file(string clust2detfile, const vector <longpair> &clust2det)
+{
+  long clustct=0;
+  ofstream outstream1(clust2detfile);
+  if(!outstream1) {
+    cerr << "ERROR: can't open output file " << clust2detfile << "\n";
+    return(1);
+  }
+  outstream1 << "#clusternum,detnum\n";
+  for(clustct=0 ; clustct<long(clust2det.size()); clustct++) {
+    outstream1 << clust2det[clustct].i1 << "," << clust2det[clustct].i2 << "\n";
+  }
+  outstream1.close();
+  if(outstream1.fail()) {
+    cerr << "ERROR: failed writing output file " << clust2detfile << " (disk full or quota?)\n";
+    return(1);
+  }
+  return(0);
+}
+
+// lowmem_to_hlclust: September 2026
+// Converts clusters from the memory-efficient classes shortclust and uint_pair
+// into the output classes hlclust and longpair, deriving timespan, obsnights,
+// and the PURE/MIXED rating from detvec.  Input clusters must be numbered
+// 0..n-1 with clust2det sorted by cluster number, as link_dedup_lowmem2
+// produces.  A copy of the conversion at the end of heliolinc_alg_lowmem, which
+// is left unchanged.
+int lowmem_to_hlclust(const vector <hldet> &detvec, const vector <shortclust> &outclust_lowmem2, const vector <uint_pair> &outclust2det_lowmem2, const vector <double> &heliodist, const vector <double> &heliovel, const vector <double> &helioacc, double MJDref, double nightstep, vector <hlclust> &outclust, vector <longpair> &clust2det)
+{
+  long i=0;
+  long accelct=0;
+  longpair onepair = longpair(0,0);
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  double posRMS,velRMS,totRMS;
+  posRMS = velRMS = totRMS = 0.0;
+  vector <long> clustind;
+  vector <hldet> clusterdets;
+  vector <double> clustmjd;
+  long clusterct=0;
+  long daysteps=0;
+  long obsnights=0;
+  double timespan=0.0;
+  string rating;
+
+  outclust = {};
+  clust2det = {};
+  // First step: outclust2det_lowmem2 (uint_pair) into clust2det (longpair)
+  for(i=0; i<long(outclust2det_lowmem2.size()); i++) {
+    onepair = longpair(long(outclust2det_lowmem2[i].i1),long(outclust2det_lowmem2[i].i2));
+    clust2det.push_back(onepair);
+  }
+  // Now outclust_lowmem2 (shortclust) to outclust (hlclust)
+  for(clusterct=0; clusterct<long(outclust_lowmem2.size()); clusterct++) {
+    clustind = {};
+    if(long(outclust_lowmem2[clusterct].clusternum) != clusterct) {
+      cerr << "ERROR: cluster count mismatch " << outclust_lowmem2[clusterct].clusternum << " != " << clusterct << "\n";
+      return(4);
+    }
+    clustind = tracklet_lookup(clust2det, long(outclust_lowmem2[clusterct].clusternum));
+    long uniquepoints = clustind.size();
+    // Load vector of detections for this cluster
+    clusterdets={};
+    clustmjd={};
+    for(i=0; i<uniquepoints; i++) {
+      clusterdets.push_back(detvec[clustind[i]]);
+      clustmjd.push_back(detvec[clustind[i]].MJD);
+    }
+    // Sort vector of MJD's
+    sort(clustmjd.begin(), clustmjd.end());
+    timespan = clustmjd[clustmjd.size()-1] - clustmjd[0];
+    // Load vector of MJD steps
+    vector <double> mjdstep;
+    for(i=1; i<long(clustmjd.size()); i++) mjdstep.push_back(clustmjd[i]-clustmjd[i-1]);
+    // Count steps large enough to suggest a daytime period between nights.
+    daysteps=0;
+    for(i=0; i<long(mjdstep.size()); i++) {
+      if(mjdstep[i]>nightstep) daysteps++;
+    }
+    obsnights = daysteps+1;
+    // Check whether cluster is composed purely of detections from
+    // a single simulated object (i.e., would be a real discovery) or is a mixture
+    // of detections from two or more different simulated objects (i.e., spurious).
+    rating="PURE";
+    for(long i=1; i<long(clusterdets.size()); i++) {
+      if(stringnmatch01(clusterdets[i].idstring,clusterdets[i-1].idstring,SHORTSTRINGLEN)!=0) rating="MIXED";
+    }
+    // Calculate or assign trivial quantities for hlclust
+    posRMS = outclust_lowmem2[clusterct].posRMS;
+    totRMS = outclust_lowmem2[clusterct].totRMS;
+    if(totRMS>posRMS) velRMS = sqrt(totRMS*totRMS - posRMS*posRMS);
+    else velRMS = 0.0;
+    accelct = outclust_lowmem2[clusterct].hypindex;
+    // Load the new cluster as an item of class hlclust
+    onecluster = hlclust(outclust_lowmem2[clusterct].clusternum, posRMS, velRMS, totRMS, 0.0, outclust_lowmem2[clusterct].pairnum, timespan, uniquepoints, obsnights, outclust_lowmem2[clusterct].metric, rating, MJDref, heliodist[accelct]/AU_KM, heliovel[accelct]/SOLARDAY, helioacc[accelct]*1000.0/SOLARDAY/SOLARDAY, outclust_lowmem2[clusterct].posX, outclust_lowmem2[clusterct].posY, outclust_lowmem2[clusterct].posZ, outclust_lowmem2[clusterct].velX, outclust_lowmem2[clusterct].velY,outclust_lowmem2[clusterct].velZ, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0);
+    outclust.push_back(onecluster);
+  }
+  return(0);
+}
+
+// trk2statevec_fgfunc_uint: trk2statevec_fgfunc for small (uint) tracklets,
+// with the uint changes Ari made in trk2statevec_fgfunc_TNV_uint: RA/Dec read
+// through uint_RAconv/int_Decconv, distradec01_uint for the tracklet arc, and the
+// UINT_MAX tracklet guard. No SAD tracklet rejection. New in the omp_streaming branch.
+int trk2statevec_fgfunc_uint(const vector <hlimage> &image_log, const vector <uint_tracklet> &tracklets, double heliodist, double heliovel, double helioacc, double chartimescale, vector <point6ix2> &allstatevecs, double mjdref, double mingeoobs, double minimpactpar, double max_v_inf, int NotKepler, int verbose)
+{
+  allstatevecs={};
+  long imnum = image_log.size();
+  long imct=0;
+  long pairnum = tracklets.size();
+  if(pairnum>=UINT_MAX) {
+    cerr << "ERROR: too many tracklets (" << pairnum << " > " << UINT_MAX << ") to index with unsigned integers!\n";
+    cerr << "Re-run using a non-uint version of heliolinc!\n";
+    return(1);
+  }
+  long pairct=0;
+  int badpoint=0;
+  int status1=0;
+  int status2=0;
+  int num_dist_solutions=0;
+  int solnct=0;
+  double mjdavg=0l;
+  vector <double> heliodistvec;
+  double delta1 = 0.0l;
+  double RA,Dec;
+  long i1,i2;
+  i1=i2=0;
+  point6dx2 statevec1 = point6dx2(0l,0l,0l,0l,0l,0l,0,0);
+  point6ix2 stateveci = point6ix2(0,0,0,0,0,0,0,0);
+  point3d observerpos1 = point3d(0l,0l,0l);
+  point3d observerpos2 = point3d(0l,0l,0l);
+  point3d targpos1 = point3d(0l,0l,0l);
+  point3d targpos2 = point3d(0l,0l,0l);
+  point3d targvel1 = point3d(0l,0l,0l);
+  point3d targvel2 = point3d(0l,0l,0l);
+  point3d unitbary = point3d(0l,0l,0l);
+  vector <point3d> targposvec1;
+  vector <point3d> targposvec2;
+  int glob_warning=0;
+  vector <double> deltavec1;
+  vector <double> deltavec2;
+  double absvelocity=0l;
+  double impactpar=0l;
+  double timediff=0l;
+  double E = 0.0l;
+  double v_inf = 0.0l;
+  double obstanvel = MAXTANVELCUT;
+  double meanobsdist,trackletarc,trackletangvel;
+  meanobsdist = trackletarc = trackletangvel = 0.0;
+ 
+  // Calculate approximate heliocentric distances from the
+  // input quadratic approximation.
+  // Note: heliodist is in km, heliovel is in km/day, and helioacc is in km/day^2
+  heliodistvec={};
+  if(NotKepler) {
+    // Use the old-style, three-term Taylor Series approximation of heliocentric distance
+    // as a function of time.
+    for(imct=0;imct<imnum;imct++) {
+      delta1 = image_log[imct].MJD - mjdref; // Units are days
+      heliodistvec.push_back(heliodist + heliovel*delta1 + 0.5*helioacc*delta1*delta1);
+      if(heliodistvec[imct]<=0.0l) {
+	badpoint=1;
+	return(1);
+      }
+    }
+  } else {
+    // Use Matt Holman's idea of getting heliocentric distance r(t) from an
+    // actual Keplerian orbit. It turns out that the same parameters (r, r-dot, and r-double-dot)
+    // that specify the old three-term Taylor Series also uniquely determine the Keplerian
+    // r(t) -- that is, they specify enough of the orbit that only one Keplerian solution
+    // for r(t) exists, even though other aspects of the orbit (i.e., orientation) are not
+    // specified.
+    // SOLVE FOR THE SQUARE OF THE TANGENTIAL VELOCITY
+    double localg = GMSUN_KM3_SEC2/DSQUARE(heliodist); // Units are km/sec^2
+    double physacc = helioacc/DSQUARE(SOLARDAY); // Units are km/sec^2
+    double vesc = 2.0*GMSUN_KM3_SEC2/heliodist; // this is the square of the escape velocity in km/sec
+    double tanvel = heliodist*(physacc+localg); // this is the square of the tangential velocity in km/sec
+    // CHECK FOR UNPHYSICAL AND UNBOUND CASES
+    if(tanvel<0.0l) {
+      cerr << fixed << setprecision(6) << "ERROR: hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << " is not possible for any trajectory\n";
+      return(1);
+    }
+    if(vesc < tanvel + LDSQUARE(heliovel/SOLARDAY)) {
+      cerr << fixed << setprecision(6) << "ERROR: hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << " is not possible for a bound orbit\n";
+      cerr << fixed << setprecision(6) << "vesc = " << sqrt(vesc) << ", tanvel = " << sqrt(tanvel) << ", heliovel = " << heliovel/SOLARDAY << ", totvel = " << sqrt(tanvel + LDSQUARE(heliovel/SOLARDAY)) << "\n";
+      return(1);
+    }
+    // If we get here, a sensible bound solution exists. Solve for the true tangential velocity
+    tanvel = sqrt(tanvel);
+    // Construct state vectors producing the required orbit (in the x-y plane, for simplicity).
+    point3d startpos = point3d(heliodist,0l,0l);
+    point3d startvel = point3d(heliovel/SOLARDAY,tanvel,0l);
+    point3d endpos = point3d(0l,0l,0l);
+    point3d endvel = point3d(0l,0l,0l);
+    for(imct=0;imct<imnum;imct++) {
+      // Integrate the orbit to find the heliocentric distance as a function of time.
+      status1 = Kepler_fg_func_int(GMSUN_KM3_SEC2, mjdref, startpos, startvel, image_log[imct].MJD, endpos, endvel,verbose);
+      if(status1!=0) {
+	cerr << "ERROR: Keplerian integration failed for r(t) hypothesis point " << heliodist/AU_KM << ", " << heliovel/AU_KM << ", " << -helioacc/DSQUARE(SOLARDAY)/localg << ", at MJD = " << image_log[imct].MJD << "\n";
+	return(status1);
+      }
+      heliodistvec.push_back(vecabs3d(endpos));
+    }
+  }
+  if(badpoint==0 && long(heliodistvec.size())!=imnum) {
+    cerr << "ERROR: number of heliocentric distance values does\n";
+    cerr << "not match the number of input images!\n";
+    return(2);
+  }
+  for(pairct=0; pairct<pairnum; pairct++) {
+    badpoint=0;
+    // Obtain indices to the image_log and heliocentric distance vectors.
+    i1=tracklets[pairct].Img1;
+    i2=tracklets[pairct].Img2;
+    // Project the first point
+    RA = uint_RAconv(tracklets[pairct].RA1);
+    Dec = int_Decconv(tracklets[pairct].Dec1);
+    celestial_to_stateunit(RA,Dec,unitbary);
+    observerpos1 = point3d(image_log[i1].X,image_log[i1].Y,image_log[i1].Z);
+    targposvec1={};
+    deltavec1={};
+    status1 = helioproj02(unitbary,observerpos1, heliodistvec[i1], deltavec1, targposvec1);
+    RA = uint_RAconv(tracklets[pairct].RA2);
+    Dec = int_Decconv(tracklets[pairct].Dec2);
+    celestial_to_stateunit(RA,Dec,unitbary);
+    observerpos2 = point3d(image_log[i2].X,image_log[i2].Y,image_log[i2].Z);
+    targposvec2={};
+    deltavec2={};
+    status2 = helioproj02(unitbary, observerpos2, heliodistvec[i2], deltavec2, targposvec2);
+    // Calculate the mean distance from the observer over the two points in the tracklet.
+    // If the projection equations had two solutions (meaning the hypothesis distance was
+    // interior to the Earth), use the larger solutions.
+    meanobsdist = (deltavec1[0] + deltavec2[0])/2.0;
+    if(status1==2 && status2==2 &&  deltavec1[1]>deltavec1[0] && deltavec2[1]>deltavec2[0]) meanobsdist = (deltavec1[1] + deltavec2[1])/2.0;
+    if(minimpactpar > 0.0 && minimpactpar < MAXTANVELCUT && meanobsdist < mingeoobs*AU_KM && status1 > 0 && status2 > 0 && badpoint==0) {
+      // New check added May 13, 2026: Calculate observer-centric tangential velocity,
+      // and reject the point if that is too low. The value of minimpactpar is here
+      // interpreted as a tangential velocity in km/sec, since it is nonzero but too small to
+      // make sense as an impact parameter in km.
+      trackletarc = distradec01_uint(tracklets[pairct].RA1, tracklets[pairct].Dec1, tracklets[pairct].RA2, tracklets[pairct].Dec2)/DEGPRAD; // Tracklet arc in radians
+      timediff = (image_log[i2].MJD - image_log[i1].MJD)*SOLARDAY; // Time difference in seconds
+      trackletangvel = trackletarc/timediff; // radians per second
+      obstanvel = trackletangvel*meanobsdist; // km/sec
+      if(obstanvel<minimpactpar) {
+	// Tangential velocity relative to the observer is too low
+	badpoint=1;
+      }
+    }
+    if(status1 > 0 && status2 > 0 && badpoint==0) {
+      // Calculate time difference between the observations
+      timediff = (image_log[i2].MJD - image_log[i1].MJD)*SOLARDAY;
+      // Did helioproj find two solutions in both cases, or only one?
+      num_dist_solutions = status1;
+      if(num_dist_solutions > status2) num_dist_solutions = status2;
+      // Loop over solutions (num_dist_solutions can only be 1 or 2).
+      for(solnct=0; solnct<num_dist_solutions; solnct++) {
+	// Calculate the object's v_inf relative to the sun.
+	targpos1 = targposvec1[solnct];
+	targpos2 = targposvec2[solnct];
+	  
+	targvel1.x = (targpos2.x - targpos1.x)/timediff;
+	targvel1.y = (targpos2.y - targpos1.y)/timediff;
+	targvel1.z = (targpos2.z - targpos1.z)/timediff;
+
+	targpos1.x = 0.5L*targpos2.x + 0.5L*targpos1.x;
+	targpos1.y = 0.5L*targpos2.y + 0.5L*targpos1.y;
+	targpos1.z = 0.5L*targpos2.z + 0.5L*targpos1.z;
+
+	E = 0.5l*dotprod3d(targvel1,targvel1) - GMSUN_KM3_SEC2/vecabs3d(targpos1);
+	if(E>0.0l) v_inf = sqrt(2.0l*E);
+	else if(!isnormal(E)) v_inf=0.0l;
+	else v_inf = -sqrt(-2.0l*E); // This is a bit weird, but we allow the user to
+	                             // set a negative v_inf, if desired, to rule out
+	                             // objects that are barely bound to the sun.
+	if(v_inf>max_v_inf) continue; // Skip further calculation if v_inf is too high.
+
+	// Begin new stuff added to eliminate 'globs'
+	// These are spurious linkages of unreasonably large numbers (typically tens of thousands)
+	// of detections that arise when the hypothetical heliocentric distance at a time when
+	// many observations are acquired is extremely close to, but slightly greater than,
+	// the heliocentric distance of the observer. Then detections over a large area of sky
+	// wind up with projected 3-D positions in an extremely small volume -- and furthermore,
+	// they all have similar velocities because the very small geocentric distance causes
+	// the inferred velocities to be dominated by the observer's motion and the heliocentric
+	// hypothesis, with only a negligible contribution from the on-sky angular velocity.
+	glob_warning=0;
+	if(deltavec1[solnct]<mingeoobs*AU_KM && deltavec2[solnct]<mingeoobs*AU_KM) {
+	  // New-start
+	  // Load target positions
+	  targpos1 = targposvec1[solnct];
+	  targpos2 = targposvec2[solnct];
+	  // Calculate positions relative to observer
+	  targpos1.x -= observerpos1.x;
+	  targpos1.y -= observerpos1.y;
+	  targpos1.z -= observerpos1.z;
+	    
+	  targpos2.x -= observerpos2.x;
+	  targpos2.y -= observerpos2.y;
+	  targpos2.z -= observerpos2.z;
+	    
+	  // Calculate velocity relative to observer
+	  targvel1.x = (targpos2.x - targpos1.x)/timediff;
+	  targvel1.y = (targpos2.y - targpos1.y)/timediff;
+	  targvel1.z = (targpos2.z - targpos1.z)/timediff;
+   
+	  // Calculate impact parameter (past or future).
+	  absvelocity = vecabs3d(targvel1);
+	  impactpar = dotprod3d(targpos1,targvel1)/absvelocity;
+	  // Effectively, we've projected targpos1 onto the velocity
+	  // vector, and impactpar temporarily holds the magnitude of this projection.
+	  // Subtract off the projection of the distance onto the velocity unit vector
+	  targpos1.x -= impactpar*targvel1.x/absvelocity;
+	  targpos1.y -= impactpar*targvel1.y/absvelocity;
+	  targpos1.z -= impactpar*targvel1.z/absvelocity;
+	  // Now targpos1 is the impact parameter vector at projected closest approach.
+	  impactpar  = vecabs3d(targpos1); // Now impactpar is really the impact parameter
+	  if(impactpar<=minimpactpar) {
+	    // The hypothesis implies the object already passed within minimpactpar km of the Earth
+	    // in the likely case that minimpactpar has been set to imply an actual impact,
+	    // it's not our problem anymore.
+	    glob_warning=1;
+	  }
+	}
+	if(!glob_warning) {
+	  targpos1 = targposvec1[solnct];
+	  targpos2 = targposvec2[solnct];
+	  
+	  targvel1.x = (targpos2.x - targpos1.x)/timediff;
+	  targvel1.y = (targpos2.y - targpos1.y)/timediff;
+	  targvel1.z = (targpos2.z - targpos1.z)/timediff;
+
+	  targpos1.x = 0.5L*targpos2.x + 0.5L*targpos1.x;
+	  targpos1.y = 0.5L*targpos2.y + 0.5L*targpos1.y;
+	  targpos1.z = 0.5L*targpos2.z + 0.5L*targpos1.z;
+      
+	  // Integrate orbit to the reference time.
+	  mjdavg = 0.5l*image_log[i1].MJD + 0.5l*image_log[i2].MJD;
+	  status1 = Kepler_fg_func_int(GMSUN_KM3_SEC2,mjdavg,targpos1,targvel1,mjdref,targpos2,targvel2,verbose);
+	  if(status1 == 0 && badpoint==0) {
+	    statevec1 = point6dx2(targpos2.x,targpos2.y,targpos2.z,chartimescale*targvel2.x,chartimescale*targvel2.y,chartimescale*targvel2.z,pairct,0);
+	    // Note that the multiplication by chartimescale converts velocities in km/sec
+	    // to units of km, for apples-to-apples comparison with the positions.
+	    stateveci = conv_6d_to_6i(statevec1,INTEGERIZING_SCALEFAC);
+	    allstatevecs.push_back(stateveci);
+	  } else {
+	    // Kepler integration encountered unphysical situation.
+	    continue;
+	  }
+	}
+      }
+    } else {
+      badpoint=1;
+      // Heliocentric projection found no physical solution.
+      continue;
+    }
+  }
+  return(0);
+}
+
+// ================================================================
+// OpenMP + memory-streaming variants of heliolinc_alg_lowmem
+// (ported from heliolinx-rhs omp_dev @ 2edd53d without its perf-only
+// changes: TrackletProjCache, kdtree_6i01_fast, Halley Kepler).
+// Everything that decides results is upstream code: trk2statevec_*,
+// form_clusters_*_lowmem, link_dedup_lowmem2, lowmem_to_hlclust, and
+// the read/write_clustersum_file formats.
+//
+//   heliolinc_alg_omp_lowmem_streaming  -streaming yes (per-hyp files, memory-bounded)
+//   heliolinc_alg_omp_lowmem            -streaming no  (in RAM, like heliolinc_alg_lowmem)
+//
+// and, on the full hlclust/longpair classes of heliolinc_alg_all (no lowmem, no uint):
+//   heliolinc_alg_omp_rhs_streaming     -streaming yes
+//   heliolinc_alg_omp_rhs               -streaming no  (in RAM, like heliolinc_alg_all)
+// ================================================================
+
+// Which trk2statevec_* and form_clusters_* a hypothesis uses, decoded once per
+// run from HeliolincConfig.  config.use_univar 0|1 combines with the binary
+// flags use_rr, use_dbscan and use_taylor; use_univar 2-15 is the older combined
+// code (+1 universal variables, 2/3 RR, 4/5 position-only k-d tree, 6/7 DBSCAN,
+// +8 Taylor series) and cannot be mixed with those flags.  SAD tracklet
+// rejection is on when tanveltol > 0 (HeliolincConfig keeps upstream's defaults,
+// 1000 km/s and 0.01 AU; the OpenMP programs set both to -1, i.e. off, unless given).  uint inputs and SAD rejection are
+// supported with f and g functions, the Keplerian solver, and r+v matching (the
+// path of Ari's heliolinc_TNV); small tracklets need f and g functions, r+v
+// matching and the k-d tree (Keplerian or Taylor series).
+struct KernelChoice {
+  int univar;     // universal variables instead of f and g functions
+  int rr;         // positions at two reference times (heliolinc_RR) instead of position+velocity
+  int kdR;        // position-only k-d tree (legacy use_univar 4 or 5 only)
+  int dbscan;     // DBSCAN instead of the k-d tree range query
+  int NotKepler;  // Taylor series instead of the Keplerian solver
+  int sad;        // SAD tracklet rejection
+  int use_smalltrk;   // uint_tracklet / uint_pair inputs
+};
+
+static bool is_uint_input(const vector <tracklet> &tracklets) { return(false); }
+static bool is_uint_input(const vector <uint_tracklet> &tracklets) { return(true); }
+
+static int decode_kernel_choice(const HeliolincConfig &config, bool uint_input, long detnum, long trknum, KernelChoice &kc)
+{
+  kc = KernelChoice{0, 0, 0, 0, 0, 0, uint_input ? 1 : 0};
+  int code = config.use_univar;
+  if(code<0 || code>15) {
+    cerr << "ERROR: use_univar must be 0 or 1 (or a legacy combined code 2-15); got " << code << "\n";
+    return(1);
+  }
+  if(code>1 && (config.use_rr || config.use_dbscan || config.use_taylor)) {
+    cerr << "ERROR: legacy use_univar code " << code << " cannot be combined with use_rr, use_dbscan or use_taylor;\n";
+    cerr << "use use_univar 0|1 together with those flags instead\n";
+    return(1);
+  }
+  if(code>=8) {
+    kc.NotKepler = 1;
+    code -= 8;
+  }
+  kc.univar = code%2;
+  kc.rr = (code==2 || code==3);
+  kc.kdR = (code==4 || code==5);
+  kc.dbscan = (code==6 || code==7);
+  if(config.use_rr) kc.rr = 1;
+  if(config.use_dbscan) kc.dbscan = 1;
+  if(config.use_taylor) kc.NotKepler = 1;
+  kc.sad = (config.tanveltol > 0.0) ? 1 : 0;
+
+  if(kc.rr && kc.dbscan) {
+    cerr << "ERROR: use_rr and use_dbscan cannot both be set: there is no RR clustering with DBSCAN\n";
+    return(1);
+  }
+  if((config.use_smalltrk ? 1 : 0) != kc.use_smalltrk) {
+    cerr << "ERROR: use_smalltrk = " << config.use_smalltrk << " but the tracklet inputs are " << (kc.use_smalltrk ? "uint_tracklet" : "tracklet") << "\n";
+    return(1);
+  }
+  if(kc.sad && config.veltol_changerad <= 0.0) {
+    cerr << "ERROR: SAD tracklet rejection (tanveltol = " << config.tanveltol << ") also needs a positive tanvel_changerad (veltol_changerad) in AU\n";
+    return(1);
+  }
+  if(kc.sad && kc.NotKepler) {
+    cerr << "ERROR: SAD tracklet rejection (tanveltol > 0) has no Taylor series version: Ari's TNV kernels are Keplerian only\n";
+    return(1);
+  }
+  if(kc.use_smalltrk && kc.kdR) {
+    cerr << "ERROR: small (uint) tracklets have no position-only k-d tree (kdR) clustering\n";
+    return(1);
+  }
+  if(kc.use_smalltrk && (detnum>=UINT_MAX || trknum>=UINT_MAX)) {
+    cerr << "ERROR: uint inputs need fewer than " << UINT_MAX << " detections and tracklets; got " << detnum << " and " << trknum << "\n";
+    return(1);
+  }
+  return(0);
+}
+
+static void print_kernel_choice(const HeliolincConfig &config, const KernelChoice &kc)
+{
+  cout << "Kernels: " << (kc.univar ? "universal variables" : "f and g functions")
+       << ", " << (kc.NotKepler ? "Taylor series" : "Keplerian solver")
+       << ", " << (kc.rr ? "RR (positions at two reference times)" : "position+velocity")
+       << ", " << (kc.dbscan ? "DBSCAN" : (kc.kdR ? "position-only k-d tree" : "k-d tree"))
+       << ", " << (kc.use_smalltrk ? "small (uint) tracklets" : "standard tracklets") << "\n";
+  if(kc.sad) cout << "SAD tracklet rejection ON: tanveltol " << config.tanveltol << " km/s, veltol_changerad " << config.veltol_changerad << " AU\n";
+  if(config.min_obstanvel > 0.0) cout << "Minimum tangential velocity w.r.t. the observer: " << config.min_obstanvel << " km/s\n";
+  else cout << "SAD tracklet rejection off (tanveltol <= 0)\n";
+}
+
+// Project and cluster one heliocentric hypothesis: one pass of the hypothesis
+// loop in heliolinc_alg_lowmem.  Clusters are numbered from 0, with clust2det
+// rows in cluster order.  Returns the trk2statevec status: 0 = ok,
+// 1 = impossible hypothesis (skipped, no clusters), 2 = fatal.
+static int lowmem_cluster_one_hyp(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const HeliolincConfig &config, const KernelChoice &kc, double chartimescale, const point3d &Earthrefpos, double heliodist, double heliovel, double helioacc, long accelct, vector <shortclust> &outclust, vector <uint_pair> &clust2det)
+{
+  vector <point6ix2> allstatevecs;
+  long realclusternum=0;
+  int status=0;
+
+  outclust.clear();
+  clust2det.clear();
+  if(kc.sad) {
+    // SAD tracklet rejection: Ari's TNV kernels (temp02).  They are Keplerian only
+    // (no NotKepler argument) and take min_obstanvel.
+    if(kc.univar && kc.rr) {
+      status = trk2statevec_univarRR_TNV(image_log, tracklets, heliodist, heliovel, helioacc, chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+    } else if(kc.univar) {
+      status = trk2statevec_univar_TNV(image_log, tracklets, heliodist, heliovel, helioacc, chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+    } else if(kc.rr) {
+      status = trk2statevec_fgfuncRR_TNV(image_log, tracklets, heliodist, heliovel, helioacc, chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+    } else {
+      status = trk2statevec_fgfunc_TNV(image_log, tracklets, heliodist, heliovel, helioacc, chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+    }
+  } else {
+    if(kc.univar && kc.rr) {
+      status = trk2statevec_univarRR(image_log, tracklets, heliodist, heliovel, helioacc, chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, kc.NotKepler, config.verbose);
+    } else if(kc.univar) {
+      status = trk2statevec_univar(image_log, tracklets, heliodist, heliovel, helioacc, chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, kc.NotKepler, config.verbose);
+    } else if(kc.rr) {
+      status = trk2statevec_fgfuncRR(image_log, tracklets, heliodist, heliovel, helioacc, chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, kc.NotKepler, config.verbose);
+    } else {
+      status = trk2statevec_fgfunc(image_log, tracklets, heliodist, heliovel, helioacc, chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, kc.NotKepler, config.verbose);
+    }
+  }
+  if(status==1 || status==2) return(status);
+  if(allstatevecs.size()<=1) return(0); // No clusters possible
+
+  if(kc.dbscan) {
+    status = form_clusters_lowmem(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist, heliovel, helioacc, accelct, chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+  } else if(kc.rr) {
+    status = form_clusters_RR_lowmem(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist, heliovel, helioacc, accelct, chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+  } else if(kc.kdR) {
+    status = form_clusters_kdR_lowmem(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist, heliovel, helioacc, accelct, chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+  } else {
+    status = form_clusters_kd4_lowmem(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist, heliovel, helioacc, accelct, chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+  }
+  if(status!=0) cerr << "ERROR: form_clusters exited with error code " << status << " for hypothesis " << accelct << "\n";
+  return(0);
+}
+
+// uint_tracklet / uint_pair inputs (use_smalltrk = 1): trk2statevec_fgfunc_uint, or one of
+// Ari's four uint TNV kernels with SAD rejection, then his form_clusters_uint_lowmem /
+// form_clusters_RR_uint_lowmem / form_clusters_kd4_uint_lowmem (temp02).
+static int lowmem_cluster_one_hyp(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <uint_tracklet> &tracklets, const vector <uint_pair> &trk2det, const HeliolincConfig &config, const KernelChoice &kc, double chartimescale, const point3d &Earthrefpos, double heliodist, double heliovel, double helioacc, long accelct, vector <shortclust> &outclust, vector <uint_pair> &clust2det)
+{
+  vector <point6ix2> allstatevecs;
+  long realclusternum=0;
+  int status=0;
+
+  outclust.clear();
+  clust2det.clear();
+  if(kc.sad) {
+    // Ari's uint TNV kernels (temp02); Keplerian only, and they take min_obstanvel.
+    if(kc.univar && kc.rr) {
+      status = trk2statevec_univarRR_TNV_uint(image_log, tracklets, heliodist, heliovel, helioacc, chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+    } else if(kc.univar) {
+      status = trk2statevec_univar_TNV_uint(image_log, tracklets, heliodist, heliovel, helioacc, chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+    } else if(kc.rr) {
+      status = trk2statevec_fgfuncRR_TNV_uint(image_log, tracklets, heliodist, heliovel, helioacc, chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+    } else {
+      status = trk2statevec_fgfunc_TNV_uint(image_log, tracklets, heliodist, heliovel, helioacc, chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+    }
+  } else {
+    // New (Oct 19, 2026) non-SAD uint kernels, take NotKepler but not min_obstanvel
+    if(kc.univar && kc.rr) {
+      status = trk2statevec_univarRR_uint(image_log, tracklets, heliodist, heliovel, helioacc, chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, kc.NotKepler, config.verbose);
+    } else if(kc.univar) {
+      status = trk2statevec_univar_uint(image_log, tracklets, heliodist, heliovel, helioacc, chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, kc.NotKepler, config.verbose);
+    } else if(kc.rr) {
+      status = trk2statevec_fgfuncRR_uint(image_log, tracklets, heliodist, heliovel, helioacc, chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, kc.NotKepler, config.verbose);
+    } else {
+      status = trk2statevec_fgfunc_uint(image_log, tracklets, heliodist, heliovel, helioacc, chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, kc.NotKepler, config.verbose);
+    }
+  }
+  if(status==1 || status==2) return(status);
+  if(allstatevecs.size()<=1) return(0); // No clusters possible
+
+  if(kc.dbscan) {
+    status = form_clusters_uint_lowmem(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist, heliovel, helioacc, accelct, chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+  } else if(kc.rr) {
+    status = form_clusters_RR_uint_lowmem(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist, heliovel, helioacc, accelct, chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+  } else {
+    status = form_clusters_kd4_uint_lowmem(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist, heliovel, helioacc, accelct, chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+  }
+  if(status!=0) cerr << "ERROR: form_clusters exited with error code " << status << " for hypothesis " << accelct << "\n";
+  return(0);
+}
+
+// Append clusters 'add' (numbered 0..m-1, clust2det sorted by cluster) after
+// the n clusters already in 'clust', renumbering them n..n+m-1, so the result
+// is again valid input for link_dedup_lowmem2 and lowmem_to_hlclust.
+// 'add' and 'add2det' are emptied.
+static int append_lowmem_clusters(vector <shortclust> &clust, vector <uint_pair> &clust2det, vector <shortclust> &add, vector <uint_pair> &add2det)
+{
+  unsigned long offset = clust.size();
+  if(offset + add.size() >= UINT_MAX) {
+    cerr << "ERROR: append_lowmem_clusters: more than " << UINT_MAX-1 << " clusters\n";
+    return(1);
+  }
+  for(long k=0; k<long(add.size()); k++) {
+    clust.push_back(add[k]);
+    clust.back().clusternum += offset;
+  }
+  for(long k=0; k<long(add2det.size()); k++) {
+    clust2det.push_back(uint_pair(add2det[k].i1 + (unsigned int)offset, add2det[k].i2));
+  }
+  vector <shortclust>().swap(add);
+  vector <uint_pair>().swap(add2det);
+  return(0);
+}
+
+// Full-class counterpart of append_lowmem_clusters, for heliolinc_alg_omp_rhs.
+// Cluster numbers are long, so there is no UINT_MAX limit.
+static int append_clusters(vector <hlclust> &clust, vector <longpair> &clust2det, vector <hlclust> &add, vector <longpair> &add2det)
+{
+  long offset = clust.size();
+  for(long k=0; k<long(add.size()); k++) {
+    clust.push_back(add[k]);
+    clust.back().clusternum += offset;
+  }
+  for(long k=0; k<long(add2det.size()); k++) {
+    clust2det.push_back(longpair(add2det[k].i1 + offset, add2det[k].i2));
+  }
+  vector <hlclust>().swap(add);
+  vector <longpair>().swap(add2det);
+  return(0);
+}
+
+// The dedup tree below is written once for both cluster classes.  These
+// overloads pick the matching append and the matching upstream dedup:
+// link_dedup_lowmem2 for shortclust/uint_pair, link_dedup for hlclust/longpair.
+// Both keep the highest-metric copy of each detection set, check index vectors
+// on hash collisions, and renumber their output 0..n-1 in input order.
+static int append_clusters(vector <shortclust> &clust, vector <uint_pair> &clust2det, vector <shortclust> &add, vector <uint_pair> &add2det)
+{
+  return(append_lowmem_clusters(clust, clust2det, add, add2det));
+}
+
+static int dedup_clusters(const vector <shortclust> &inclust, const vector <uint_pair> &inclust2det, vector <shortclust> &outclust, vector <uint_pair> &outclust2det)
+{
+  return(link_dedup_lowmem2(inclust, inclust2det, outclust, outclust2det));
+}
+
+static int dedup_clusters(const vector <hlclust> &inclust, const vector <longpair> &inclust2det, vector <hlclust> &outclust, vector <longpair> &outclust2det)
+{
+  return(link_dedup(inclust, inclust2det, outclust, outclust2det));
+}
+
+// The bisection tree below is cut into blocks of at most this many hypotheses.
+// Blocks are deduplicated in parallel, one thread each; the merges above them,
+// which handle the largest vectors, run serially.
+static const long DEDUP_BLOCK_HYPS = 256;
+
+// Merge two duplicate-free cluster sets (lower hypotheses first) with
+// dedup_clusters (link_dedup_lowmem2 or link_dedup), which keeps the highest-metric copy of each detection set,
+// checks index vectors on hash collisions, and renumbers its output 0..n-1 in
+// input order.  Its output is therefore valid input to the next merge, and
+// survivors stay in hypothesis order as in heliolinc_alg_lowmem.  The inputs
+// are emptied.
+template <class Clust, class Pair>
+static int dedup_merge_pair(vector <Clust> &lowclust, vector <Pair> &low2det, vector <Clust> &highclust, vector <Pair> &high2det, vector <Clust> &outclust, vector <Pair> &outclust2det)
+{
+  outclust.clear();
+  outclust2det.clear();
+  // An empty side needs no merge: the other side is already duplicate-free.
+  if(highclust.empty()) {
+    outclust.swap(lowclust);
+    outclust2det.swap(low2det);
+    return(0);
+  }
+  if(lowclust.empty()) {
+    outclust.swap(highclust);
+    outclust2det.swap(high2det);
+    return(0);
+  }
+  int status = append_clusters(lowclust, low2det, highclust, high2det);
+  if(status!=0) return(status);
+  status = dedup_clusters(lowclust, low2det, outclust, outclust2det);
+  vector <Clust>().swap(lowclust);
+  vector <Pair>().swap(low2det);
+  return(status);
+}
+
+// Deduplicate hypotheses [lo,hi) on the current thread by recursive bisection:
+// each hypothesis is deduplicated on its own, then halves are merged with
+// dedup_merge_pair.
+//
+// (*load)(i, clust, c2d) must fill hypothesis i's clusters, numbered 0..n-1
+// with clust2det sorted by cluster number, and return 0 on success.
+template <class Loader, class Clust, class Pair>
+static int dedup_hyp_range(long lo, long hi, Loader *load, vector <Clust> &outclust, vector <Pair> &outclust2det)
+{
+  outclust.clear();
+  outclust2det.clear();
+  if(hi<=lo) return(0);
+  if(hi-lo == 1) {
+    vector <Clust> rawclust;
+    vector <Pair> raw2det;
+    int status = (*load)(lo, rawclust, raw2det);
+    if(status!=0 || rawclust.empty()) return(status);
+    return(dedup_clusters(rawclust, raw2det, outclust, outclust2det));
+  }
+  long mid = lo + (hi-lo)/2;
+  vector <Clust> lowclust, highclust;
+  vector <Pair> low2det, high2det;
+  int status = dedup_hyp_range(lo, mid, load, lowclust, low2det);
+  if(status==0) status = dedup_hyp_range(mid, hi, load, highclust, high2det);
+  if(status!=0) return(status);
+  return(dedup_merge_pair(lowclust, low2det, highclust, high2det, outclust, outclust2det));
+}
+
+// Start index of each block: the nodes of the bisection of [lo,hi) that first
+// hold at most DEDUP_BLOCK_HYPS hypotheses, in hypothesis order.
+static void dedup_block_starts(long lo, long hi, vector <long> &starts)
+{
+  if(hi<=lo) return;
+  if(hi-lo <= DEDUP_BLOCK_HYPS) {
+    starts.push_back(lo);
+    return;
+  }
+  long mid = lo + (hi-lo)/2;
+  dedup_block_starts(lo, mid, starts);
+  dedup_block_starts(mid, hi, starts);
+}
+
+// Merge finished blocks up the same bisection tree, consuming blocks in order.
+template <class Clust, class Pair>
+static int dedup_merge_blocks(long lo, long hi, vector <vector <Clust>> &blockclust, vector <vector <Pair>> &block2det, long &nextblock, vector <Clust> &outclust, vector <Pair> &outclust2det)
+{
+  outclust.clear();
+  outclust2det.clear();
+  if(hi<=lo) return(0);
+  if(hi-lo <= DEDUP_BLOCK_HYPS) {
+    outclust.swap(blockclust[nextblock]);
+    outclust2det.swap(block2det[nextblock]);
+    nextblock++;
+    return(0);
+  }
+  long mid = lo + (hi-lo)/2;
+  vector <Clust> lowclust, highclust;
+  vector <Pair> low2det, high2det;
+  int status = dedup_merge_blocks(lo, mid, blockclust, block2det, nextblock, lowclust, low2det);
+  if(status==0) status = dedup_merge_blocks(mid, hi, blockclust, block2det, nextblock, highclust, high2det);
+  if(status!=0) return(status);
+  return(dedup_merge_pair(lowclust, low2det, highclust, high2det, outclust, outclust2det));
+}
+
+// Cross-hypothesis dedup over all hypotheses.  Blocks run in parallel, one
+// thread each; the merges above them run serially on this thread.  Keeping the
+// large merges on one thread stops every OpenMP thread's malloc arena from
+// growing to the size of the survivor set.  The bisection tree does not depend
+// on the thread count, so neither does the result.
+template <class Loader, class Clust, class Pair>
+static int dedup_all_hyps(long accelnum, Loader *load, vector <Clust> &outclust, vector <Pair> &outclust2det)
+{
+  vector <long> blockstart;
+  dedup_block_starts(0, accelnum, blockstart);
+  long blocknum = blockstart.size();
+  blockstart.push_back(accelnum);
+  vector <vector <Clust>> blockclust(blocknum);
+  vector <vector <Pair>> block2det(blocknum);
+  int status=0;
+  #pragma omp parallel for schedule(dynamic)
+  for(long b=0; b<blocknum; b++) {
+    if(status!=0) continue;
+    int blockstatus = dedup_hyp_range(blockstart[b], blockstart[b+1], load, blockclust[b], block2det[b]);
+    if(blockstatus!=0) {
+      #pragma omp atomic write
+      status = blockstatus;
+    }
+  }
+  if(status!=0) return(status);
+  long nextblock=0;
+  return(dedup_merge_blocks(0, accelnum, blockclust, block2det, nextblock, outclust, outclust2det));
+}
+
+// Rebuild the compact per-hypothesis form (shortclust/uint_pair) from a
+// summary/clust2det pair written by write_clustersum_file/write_clust2det_file.
+// Clusters must be numbered 0..n-1 with clust2det sorted by cluster number,
+// which is how per-hypothesis files are written.
+static int lowmem_from_hlclust(const vector <hlclust> &inclust, const vector <longpair> &inclust2det, long hypindex, vector <shortclust> &outclust, vector <uint_pair> &outclust2det)
+{
+  outclust.clear();
+  outclust2det.clear();
+  for(long k=0; k<long(inclust.size()); k++) {
+    if(inclust[k].clusternum != k) {
+      cerr << "ERROR: cluster number " << inclust[k].clusternum << " found at row " << k << " of the output for hypothesis " << hypindex << "\n";
+      return(5);
+    }
+    outclust.push_back(shortclust(k, inclust[k].posRMS, inclust[k].totRMS, inclust[k].pairnum, inclust[k].metric, int(hypindex), inclust[k].posX, inclust[k].posY, inclust[k].posZ, inclust[k].velX, inclust[k].velY, inclust[k].velZ));
+  }
+  for(long k=0; k<long(inclust2det.size()); k++) {
+    outclust2det.push_back(uint_pair(inclust2det[k].i1, inclust2det[k].i2));
+  }
+  return(0);
+}
+
+// Clusters read back from one per-hypothesis file pair, in the class being
+// deduplicated: converted to shortclust/uint_pair for the lowmem path, or kept
+// as hlclust/longpair (after the same numbering check) for heliolinc_alg_omp_rhs.
+static int clusters_from_file_pair(vector <hlclust> &inclust, vector <longpair> &inclust2det, long hypindex, vector <shortclust> &outclust, vector <uint_pair> &outclust2det)
+{
+  return(lowmem_from_hlclust(inclust, inclust2det, hypindex, outclust, outclust2det));
+}
+
+static int clusters_from_file_pair(vector <hlclust> &inclust, vector <longpair> &inclust2det, long hypindex, vector <hlclust> &outclust, vector <longpair> &outclust2det)
+{
+  for(long k=0; k<long(inclust.size()); k++) {
+    if(inclust[k].clusternum != k) {
+      cerr << "ERROR: cluster number " << inclust[k].clusternum << " found at row " << k << " of the output for hypothesis " << hypindex << "\n";
+      return(5);
+    }
+  }
+  outclust.swap(inclust);
+  outclust2det.swap(inclust2det);
+  return(0);
+}
+
+// Write an hlclust/longpair output pair with write_clustersum_file and
+// write_clust2det_file.  If either write fails, both files are removed so that
+// neither a downstream step nor a resume can pick up a truncated pair.
+static int write_output_pair(const vector <hlclust> &outclust, const vector <longpair> &outclust2det, const string &sumfile, const string &c2dfile)
+{
+  int status = write_clustersum_file(sumfile, outclust);
+  if(status==0) status = write_clust2det_file(c2dfile, outclust2det);
+  if(status!=0) {
+    cerr << "Removing incomplete output pair " << sumfile << " / " << c2dfile << "\n";
+    remove(sumfile.c_str());
+    remove(c2dfile.c_str());
+  }
+  return(status);
+}
+
+// Convert compact clusters with lowmem_to_hlclust, then write_output_pair.
+static int write_lowmem_bundle(const vector <hldet> &detvec, const vector <shortclust> &clust, const vector <uint_pair> &clust2det, const vector <double> &heliodist, const vector <double> &heliovel, const vector <double> &helioacc, double MJDref, double nightstep, const string &sumfile, const string &c2dfile)
+{
+  vector <hlclust> outclust;
+  vector <longpair> outclust2det;
+  int status = lowmem_to_hlclust(detvec, clust, clust2det, heliodist, heliovel, helioacc, MJDref, nightstep, outclust, outclust2det);
+  if(status!=0) return(status);
+  return(write_output_pair(outclust, outclust2det, sumfile, c2dfile));
+}
+
+// Write a cluster set in either class: compact clusters go through
+// write_lowmem_bundle; full hlclust records only get reference_MJD set, as
+// heliolinc_alg_all does after link_dedup, then write_output_pair.
+static int write_cluster_bundle(const vector <hldet> &detvec, const vector <shortclust> &clust, const vector <uint_pair> &clust2det, const vector <double> &heliodist, const vector <double> &heliovel, const vector <double> &helioacc, double MJDref, double nightstep, const string &sumfile, const string &c2dfile)
+{
+  return(write_lowmem_bundle(detvec, clust, clust2det, heliodist, heliovel, helioacc, MJDref, nightstep, sumfile, c2dfile));
+}
+
+static int write_cluster_bundle(const vector <hldet> &detvec, vector <hlclust> &clust, const vector <longpair> &clust2det, const vector <double> &heliodist, const vector <double> &heliovel, const vector <double> &helioacc, double MJDref, double nightstep, const string &sumfile, const string &c2dfile)
+{
+  for(long i=0; i<long(clust.size()); i++) clust[i].reference_MJD = MJDref;
+  return(write_output_pair(clust, clust2det, sumfile, c2dfile));
+}
+
+// Per-hypothesis file names used by -streaming yes.
+// ================================================================
+// Per-worker streaming output (September 2026)
+//
+// Each OpenMP worker appends the clusters it finds to its own pair of files,
+//   {outsum}_w<N>.csv  and  {clust2det}_w<N>.csv
+// so no two threads ever write the same file and the bulk output needs no locking.
+// One shared index file, {outsum}_index.csv, records where each hypothesis landed:
+//   hypno worker sum_offset sum_length c2d_offset c2d_length
+// This replaces one file pair per hypothesis, which cost about ten metadata
+// operations per hypothesis (create, rename, and later unlink) and produced over a
+// million files on a 500,000-hypothesis run.  It is now 2*nthreads+1 files, which
+// matters most on a networked or parallel filesystem, where every one of those
+// operations is a round trip (NFS) or a lock handoff (GPFS).
+//
+// The block text is exactly what the per-hypothesis files used to contain, and the
+// dedup tree still sees one hypothesis at a time, so the final output is unchanged.
+//
+// Resume: the index is the record of completed work.  A killed run can leave a
+// partial block at the end of a worker file, so recover_worker_files() keeps only
+// index records lying wholly inside their files, truncates each worker's files back
+// to that high-water mark, and rewrites the index before new work is appended.
+// ================================================================
+#include <unistd.h>
+#include <sstream>
+
+static string perworker_sumfile(const string &outsum_prefix, int w) { return(outsum_prefix + "_w" + to_string(w) + ".csv"); }
+static string perworker_c2dfile(const string &clust2det_prefix, int w) { return(clust2det_prefix + "_w" + to_string(w) + ".csv"); }
+static string perworker_indexfile(const string &outsum_prefix) { return(outsum_prefix + "_index.csv"); }
+
+// Where one hypothesis's output lives inside the worker files.
+class hypblock{
+public:
+  long hypno;
+  int worker;
+  long sum_off;
+  long sum_len;
+  long c2d_off;
+  long c2d_len;
+  hypblock() :hypno(-1), worker(-1), sum_off(0), sum_len(0), c2d_off(0), c2d_len(0) { }
+};
+
+// Open output streams and running offsets, one set per worker.
+class worker_output{
+public:
+  vector <ofstream> sumstream;
+  vector <ofstream> c2dstream;
+  vector <long> sumpos;
+  vector <long> c2dpos;
+  ofstream indexstream;
+};
+
+static long file_size_bytes(const string &path)
+{
+  ifstream instream1(path.c_str(), std::ios::binary | std::ios::ate);
+  if(!instream1) return(-1);
+  return(long(instream1.tellg()));
+}
+
+// Serialize clusters exactly as write_clustersum_file/write_clust2det_file do, minus the header.
+static void append_clustersum_block(ostream &outstream1, const vector <hlclust> &outclust)
+{
+  long clustct=0;
+  for(clustct=0 ; clustct<long(outclust.size()); clustct++) {
+    outstream1 << fixed << setprecision(3) << outclust[clustct].clusternum << "," << outclust[clustct].posRMS << "," << outclust[clustct].velRMS << "," << outclust[clustct].totRMS << ",";
+    outstream1 << fixed << setprecision(4) << outclust[clustct].astromRMS << ",";
+    outstream1 << fixed << setprecision(6) << outclust[clustct].pairnum << "," << outclust[clustct].timespan << "," << outclust[clustct].uniquepoints << "," << outclust[clustct].obsnights << "," << setprecision(12) << outclust[clustct].metric << setprecision(6) << "," << outclust[clustct].rating << ",";
+    outstream1 << fixed << setprecision(6) << outclust[clustct].reference_MJD << "," << outclust[clustct].heliohyp0 << "," << outclust[clustct].heliohyp1 << "," << outclust[clustct].heliohyp2 << ",";
+    outstream1 << fixed << setprecision(1) << outclust[clustct].posX << "," << outclust[clustct].posY << "," << outclust[clustct].posZ << ",";
+    outstream1 << fixed << setprecision(4) << outclust[clustct].velX << "," << outclust[clustct].velY << "," << outclust[clustct].velZ << ",";
+    outstream1 << fixed << setprecision(6) << outclust[clustct].orbit_a << "," << outclust[clustct].orbit_e << "," << outclust[clustct].orbit_incl << "," << outclust[clustct].orbit_MJD << ",";
+    outstream1 << fixed << setprecision(1) << outclust[clustct].orbitX << "," << outclust[clustct].orbitY << "," << outclust[clustct].orbitZ << ",";
+    outstream1 << fixed << setprecision(4) << outclust[clustct].orbitVX << "," << outclust[clustct].orbitVY << "," << outclust[clustct].orbitVZ << "," << outclust[clustct].orbit_eval_count << "\n";
+  }
+}
+
+static void append_clust2det_block(ostream &outstream1, const vector <longpair> &clust2det)
+{
+  long clustct=0;
+  for(clustct=0 ; clustct<long(clust2det.size()); clustct++) {
+    outstream1 << clust2det[clustct].i1 << "," << clust2det[clustct].i2 << "\n";
+  }
+}
+
+// Parse one line of the cluster summary format, field for field as read_clustersum_file does.
+static int parse_clustersum_line(const string &lnfromfile, hlclust &onecluster)
+{
+  string stest;
+  int startpoint = 0;
+  int endpoint = 0;
+  int badread = 0;
+  auto nextfield = [&]() -> bool {
+    if(badread!=0) return(false);
+    endpoint = get_csv_string01(lnfromfile, stest, startpoint);
+    startpoint = endpoint + 1;
+    if(endpoint<=0) { badread = 1; return(false); }
+    return(true);
+  };
+  auto getd = [&]() -> double { double v=0.0l; if(nextfield()) { try { v = stod(stest); } catch(...) { badread=1; } } return(v); };
+  auto geti = [&]() -> int { int v=0; if(nextfield()) { try { v = stoi(stest); } catch(...) { badread=1; } } return(v); };
+  auto getl = [&]() -> long { long v=0; if(nextfield()) { try { v = stol(stest); } catch(...) { badread=1; } } return(v); };
+
+  long clusternum = getl();
+  double posRMS = getd();
+  double velRMS = getd();
+  double totRMS = getd();
+  double astromRMS = getd();
+  int pairnum = geti();
+  double timespan = getd();
+  int uniquepoints = geti();
+  int obsnights = geti();
+  double metric = getd();
+  string rating = "NULL";
+  if(nextfield()) rating = stest;
+  double reference_MJD = getd();
+  double heliohyp0 = getd();
+  double heliohyp1 = getd();
+  double heliohyp2 = getd();
+  double posX = getd();
+  double posY = getd();
+  double posZ = getd();
+  double velX = getd();
+  double velY = getd();
+  double velZ = getd();
+  double orbit_a = getd();
+  double orbit_e = getd();
+  double orbit_incl = getd();
+  double orbit_MJD = getd();
+  double orbitX = getd();
+  double orbitY = getd();
+  double orbitZ = getd();
+  double orbitVX = getd();
+  double orbitVY = getd();
+  double orbitVZ = getd();
+  long orbit_eval_count = getl();
+  if(badread!=0) {
+    cerr << "ERROR: cannot parse cluster summary line: " << lnfromfile << "\n";
+    return(1);
+  }
+  onecluster = hlclust(clusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, metric, rating, reference_MJD, heliohyp0, heliohyp1, heliohyp2, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_incl, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
+  return(0);
+}
+
+static int parse_longpair_line(const string &lnfromfile, longpair &onepair)
+{
+  string stest;
+  long i1=0;
+  long i2=0;
+  int startpoint = 0;
+  int endpoint = get_csv_string01(lnfromfile, stest, startpoint);
+  if(endpoint<=0) { cerr << "ERROR: cannot parse clust2det line: " << lnfromfile << "\n"; return(1); }
+  try { i1 = stol(stest); } catch(...) { cerr << "ERROR: cannot parse clusternum from: " << lnfromfile << "\n"; return(1); }
+  startpoint = endpoint + 1;
+  endpoint = get_csv_string01(lnfromfile, stest, startpoint);
+  if(endpoint<=0) { cerr << "ERROR: cannot parse clust2det line: " << lnfromfile << "\n"; return(1); }
+  try { i2 = stol(stest); } catch(...) { cerr << "ERROR: cannot parse detnum from: " << lnfromfile << "\n"; return(1); }
+  onepair = longpair(i1,i2);
+  return(0);
+}
+
+static int read_worker_block(const string &path, long off, long len, string &buf)
+{
+  buf.clear();
+  if(len<=0) return(0);
+  ifstream instream1(path.c_str(), std::ios::binary);
+  if(!instream1) { cerr << "ERROR: can't open worker file " << path << "\n"; return(1); }
+  instream1.seekg(off);
+  buf.resize(size_t(len));
+  instream1.read(&buf[0], std::streamsize(len));
+  if(instream1.gcount() != std::streamsize(len)) {
+    cerr << "ERROR: short read of " << len << " bytes at offset " << off << " in " << path << "\n";
+    return(1);
+  }
+  return(0);
+}
+
+static int parse_block_clusters(const string &buf, vector <hlclust> &hl)
+{
+  hlclust onecluster;
+  size_t start = 0;
+  hl.clear();
+  while(start < buf.size()) {
+    size_t nl = buf.find('\n', start);
+    if(nl==string::npos) nl = buf.size();
+    if(nl>start) {
+      if(parse_clustersum_line(buf.substr(start, nl-start), onecluster)!=0) return(1);
+      hl.push_back(onecluster);
+    }
+    start = nl+1;
+  }
+  return(0);
+}
+
+static int parse_block_pairs(const string &buf, vector <longpair> &lp)
+{
+  longpair onepair;
+  size_t start = 0;
+  lp.clear();
+  while(start < buf.size()) {
+    size_t nl = buf.find('\n', start);
+    if(nl==string::npos) nl = buf.size();
+    if(nl>start) {
+      if(parse_longpair_line(buf.substr(start, nl-start), onepair)!=0) return(1);
+      lp.push_back(onepair);
+    }
+    start = nl+1;
+  }
+  return(0);
+}
+
+// Read the index, drop records whose blocks did not survive, truncate each worker's files
+// back to the surviving high-water mark, and rewrite the index.  Also used after the run to
+// re-read the complete index for dedup.
+static int recover_worker_files(const string &outsum_prefix, const string &clust2det_prefix, long accelnum, int nworkers, vector <hypblock> &blockindex, vector <char> &hyp_done, int verbose)
+{
+  vector <hypblock> raw;
+  hypblock b;
+  string lnfromfile;
+  blockindex.clear();
+  hyp_done.assign(size_t(accelnum), 0);
+  string idxfile = perworker_indexfile(outsum_prefix);
+  ifstream instream1(idxfile.c_str());
+  if(instream1) {
+    while(getline(instream1, lnfromfile)) {
+      if(lnfromfile.size()==0) continue;
+      std::istringstream iss(lnfromfile);
+      if(!(iss >> b.hypno >> b.worker >> b.sum_off >> b.sum_len >> b.c2d_off >> b.c2d_len)) continue; // partial final line
+      if(b.hypno<0 || b.hypno>=accelnum || b.worker<0 || b.sum_off<0 || b.sum_len<0 || b.c2d_off<0 || b.c2d_len<0) continue;
+      raw.push_back(b);
+    }
+    instream1.close();
+  }
+  int maxworker = nworkers-1;
+  for(long k=0; k<long(raw.size()); k++) if(raw[k].worker>maxworker) maxworker = raw[k].worker;
+  if(maxworker<0) maxworker = 0;
+  vector <long> ssize(size_t(maxworker+1), -1);
+  vector <long> csize(size_t(maxworker+1), -1);
+  for(int w=0; w<=maxworker; w++) {
+    ssize[w] = file_size_bytes(perworker_sumfile(outsum_prefix, w));
+    csize[w] = file_size_bytes(perworker_c2dfile(clust2det_prefix, w));
+  }
+  vector <long> shigh(size_t(maxworker+1), 0);
+  vector <long> chigh(size_t(maxworker+1), 0);
+  for(long k=0; k<long(raw.size()); k++) {
+    const hypblock &r = raw[k];
+    if(r.worker>maxworker) continue;
+    if(ssize[r.worker]<0 || csize[r.worker]<0) continue;                              // worker files gone
+    if(r.sum_off+r.sum_len > ssize[r.worker] || r.c2d_off+r.c2d_len > csize[r.worker]) continue; // block lost to a kill
+    if(hyp_done[r.hypno]) continue;                                                   // duplicate record
+    hyp_done[r.hypno] = 1;
+    blockindex.push_back(r);
+    if(r.sum_off+r.sum_len > shigh[r.worker]) shigh[r.worker] = r.sum_off+r.sum_len;
+    if(r.c2d_off+r.c2d_len > chigh[r.worker]) chigh[r.worker] = r.c2d_off+r.c2d_len;
+  }
+  // Throw away anything past the last complete block, so new output appends to clean files.
+  for(int w=0; w<=maxworker; w++) {
+    if(ssize[w]>shigh[w] && truncate(perworker_sumfile(outsum_prefix, w).c_str(), shigh[w])!=0) {
+      cerr << "ERROR: cannot truncate " << perworker_sumfile(outsum_prefix, w) << " to " << shigh[w] << " bytes\n";
+      return(1);
+    }
+    if(csize[w]>chigh[w] && truncate(perworker_c2dfile(clust2det_prefix, w).c_str(), chigh[w])!=0) {
+      cerr << "ERROR: cannot truncate " << perworker_c2dfile(clust2det_prefix, w) << " to " << chigh[w] << " bytes\n";
+      return(1);
+    }
+  }
+  if(long(blockindex.size()) != long(raw.size())) {
+    ofstream outstream1(idxfile.c_str(), std::ios::trunc);
+    if(!outstream1) { cerr << "ERROR: cannot rewrite the streaming index file " << idxfile << "\n"; return(1); }
+    for(long k=0; k<long(blockindex.size()); k++) {
+      outstream1 << blockindex[k].hypno << " " << blockindex[k].worker << " " << blockindex[k].sum_off << " " << blockindex[k].sum_len << " " << blockindex[k].c2d_off << " " << blockindex[k].c2d_len << "\n";
+    }
+    outstream1.close();
+    if(outstream1.fail()) { cerr << "ERROR: failed rewriting the streaming index file " << idxfile << "\n"; return(1); }
+  }
+  long ndone = long(blockindex.size());
+  if(ndone>0 && ndone<accelnum) {
+    cout << "Resuming: " << ndone << " hypotheses already recorded in " << idxfile << "; " << (accelnum-ndone) << " left to do\n";
+  }
+  if(verbose>=1) cout << "Streaming index: " << ndone << " complete hypothesis blocks over " << (maxworker+1) << " worker file pairs\n";
+  return(0);
+}
+
+static int open_worker_files(const string &outsum_prefix, const string &clust2det_prefix, int nworkers, worker_output &wout)
+{
+  wout.sumstream.resize(size_t(nworkers));
+  wout.c2dstream.resize(size_t(nworkers));
+  wout.sumpos.assign(size_t(nworkers), 0);
+  wout.c2dpos.assign(size_t(nworkers), 0);
+  for(int w=0; w<nworkers; w++) {
+    string sf = perworker_sumfile(outsum_prefix, w);
+    string cf = perworker_c2dfile(clust2det_prefix, w);
+    long ssize = file_size_bytes(sf);
+    long csize = file_size_bytes(cf);
+    wout.sumstream[w].open(sf.c_str(), std::ios::binary | std::ios::app);
+    wout.c2dstream[w].open(cf.c_str(), std::ios::binary | std::ios::app);
+    if(!wout.sumstream[w] || !wout.c2dstream[w]) {
+      cerr << "ERROR: can't open worker output files " << sf << " / " << cf << "\n";
+      return(1);
+    }
+    if(ssize<=0) {
+      wout.sumstream[w] << "#clusternum,posRMS,velRMS,totRMS,astromRMS,pairnum,timespan,uniquepoints,obsnights,metric,rating,reference_MJD,heliohyp0,heliohyp1,heliohyp2,posX,posY,posZ,velX,velY,velZ,orbit_a,orbit_e,orbit_incl,orbit_MJD,orbitX,orbitY,orbitZ,orbitVX,orbitVY,orbitVZ,orbit_eval_count\n";
+      wout.sumstream[w].flush();
+      ssize = long(string("#clusternum,posRMS,velRMS,totRMS,astromRMS,pairnum,timespan,uniquepoints,obsnights,metric,rating,reference_MJD,heliohyp0,heliohyp1,heliohyp2,posX,posY,posZ,velX,velY,velZ,orbit_a,orbit_e,orbit_incl,orbit_MJD,orbitX,orbitY,orbitZ,orbitVX,orbitVY,orbitVZ,orbit_eval_count\n").size());
+    }
+    if(csize<=0) {
+      wout.c2dstream[w] << "#clusternum,detnum\n";
+      wout.c2dstream[w].flush();
+      csize = long(string("#clusternum,detnum\n").size());
+    }
+    wout.sumpos[w] = ssize;
+    wout.c2dpos[w] = csize;
+  }
+  wout.indexstream.open(perworker_indexfile(outsum_prefix).c_str(), std::ios::app);
+  if(!wout.indexstream) { cerr << "ERROR: can't open the streaming index file " << perworker_indexfile(outsum_prefix) << "\n"; return(1); }
+  return(0);
+}
+
+static void close_worker_files(worker_output &wout)
+{
+  for(size_t w=0; w<wout.sumstream.size(); w++) if(wout.sumstream[w].is_open()) wout.sumstream[w].close();
+  for(size_t w=0; w<wout.c2dstream.size(); w++) if(wout.c2dstream[w].is_open()) wout.c2dstream[w].close();
+  if(wout.indexstream.is_open()) wout.indexstream.close();
+}
+
+// Append one hypothesis's clusters to the calling worker's files and record the index entry.
+static int write_worker_block_hl(worker_output &wout, const vector <hlclust> &hl, const vector <longpair> &lp, long hypno)
+{
+  int w = omp_get_thread_num();
+  if(w<0 || w>=long(wout.sumstream.size())) {
+    cerr << "ERROR: worker index " << w << " is outside the " << wout.sumstream.size() << " open worker files\n";
+    return(1);
+  }
+  std::ostringstream sumblk;
+  std::ostringstream c2dblk;
+  append_clustersum_block(sumblk, hl);
+  append_clust2det_block(c2dblk, lp);
+  string sbuf = sumblk.str();
+  string cbuf = c2dblk.str();
+  long soff = wout.sumpos[w];
+  long coff = wout.c2dpos[w];
+  wout.sumstream[w].write(sbuf.data(), std::streamsize(sbuf.size()));
+  wout.c2dstream[w].write(cbuf.data(), std::streamsize(cbuf.size()));
+  wout.sumstream[w].flush();
+  wout.c2dstream[w].flush();
+  if(wout.sumstream[w].fail() || wout.c2dstream[w].fail()) {
+    cerr << "ERROR: failed writing worker output for hypothesis " << hypno << " (disk full or quota?)\n";
+    return(1);
+  }
+  wout.sumpos[w] = soff + long(sbuf.size());
+  wout.c2dpos[w] = coff + long(cbuf.size());
+  // The index is the only shared file; one short line per hypothesis.
+  #pragma omp critical(perworker_index)
+  {
+    wout.indexstream << hypno << " " << w << " " << soff << " " << long(sbuf.size()) << " " << coff << " " << long(cbuf.size()) << "\n";
+    wout.indexstream.flush();
+  }
+  if(wout.indexstream.fail()) {
+    cerr << "ERROR: failed writing the streaming index entry for hypothesis " << hypno << "\n";
+    return(1);
+  }
+  return(0);
+}
+
+static int write_worker_block(worker_output &wout, const vector <hldet> &detvec, const vector <shortclust> &clust, const vector <uint_pair> &clust2det, const vector <double> &heliodist, const vector <double> &heliovel, const vector <double> &helioacc, double MJDref, double nightstep, long hypno)
+{
+  vector <hlclust> hl;
+  vector <longpair> lp;
+  int status = lowmem_to_hlclust(detvec, clust, clust2det, heliodist, heliovel, helioacc, MJDref, nightstep, hl, lp);
+  if(status!=0) return(status);
+  return(write_worker_block_hl(wout, hl, lp, hypno));
+}
+
+static int write_worker_block(worker_output &wout, const vector <hldet> &detvec, vector <hlclust> &clust, const vector <longpair> &clust2det, const vector <double> &heliodist, const vector <double> &heliovel, const vector <double> &helioacc, double MJDref, long hypno)
+{
+  for(long i=0; i<long(clust.size()); i++) clust[i].reference_MJD = MJDref;
+  return(write_worker_block_hl(wout, clust, clust2det, hypno));
+}
+
+// Cross-hypothesis dedup reading hypothesis blocks out of the worker files.
+template <class Clust, class Pair>
+static int dedup_perworker_files(long accelnum, const string &outsum_prefix, const string &clust2det_prefix, const vector <hypblock> &blockindex, const vector <hldet> &detvec, const vector <double> &heliodist, const vector <double> &heliovel, const vector <double> &helioacc, const HeliolincConfig &config)
+{
+  double t_dedup0 = omp_get_wtime();
+  long total_raw_links = 0;
+  long missing = 0;
+  int maxworker = 0;
+  vector <long> where(size_t(accelnum), -1);
+  for(long k=0; k<long(blockindex.size()); k++) {
+    where[blockindex[k].hypno] = k;
+    if(blockindex[k].worker>maxworker) maxworker = blockindex[k].worker;
+  }
+  for(long i=0; i<accelnum; i++) if(where[i]<0) missing++;
+  if(missing>0) {
+    cerr << "ERROR: " << missing << " of " << accelnum << " hypotheses have no block in the streaming index; cannot dedup\n";
+    return(1);
+  }
+  cout << "\nStarting parallel cross-hypothesis dedup over " << accelnum << " hypothesis blocks in " << (maxworker+1) << " worker file pairs\n";
+  auto load_hyp_blocks = [&](long i, vector <Clust> &clust, vector <Pair> &c2d) -> int {
+    const hypblock &b = blockindex[where[i]];
+    string sbuf;
+    string cbuf;
+    vector <hlclust> hl;
+    vector <longpair> lp;
+    if(read_worker_block(perworker_sumfile(outsum_prefix, b.worker), b.sum_off, b.sum_len, sbuf)!=0) return(1);
+    if(read_worker_block(perworker_c2dfile(clust2det_prefix, b.worker), b.c2d_off, b.c2d_len, cbuf)!=0) return(1);
+    if(parse_block_clusters(sbuf, hl)!=0 || parse_block_pairs(cbuf, lp)!=0) {
+      cerr << "ERROR: cannot parse the streaming output block for hypothesis " << i << "\n";
+      return(1);
+    }
+    #pragma omp atomic
+    total_raw_links += long(hl.size());
+    return(clusters_from_file_pair(hl, lp, i, clust, c2d));
+  };
+  vector <Clust> finalclust;
+  vector <Pair> final2det;
+  int status = dedup_all_hyps(accelnum, &load_hyp_blocks, finalclust, final2det);
+  if(status!=0) {
+    cerr << "ERROR: cross-hypothesis dedup failed; the worker files and index are kept for resume\n";
+    return(status);
+  }
+  if(total_raw_links > 0) {
+    cout << "Dedup kept " << finalclust.size() << " of " << total_raw_links << " raw linkages ("
+         << fixed << setprecision(1) << (100.0*finalclust.size()/double(total_raw_links)) << "%)\n";
+  }
+  cout << "Parallel dedup read+merge wall time: " << fixed << setprecision(2) << (omp_get_wtime() - t_dedup0) << " s\n";
+
+  string sumfile_out = outsum_prefix    + ".csv";
+  string c2dfile_out = clust2det_prefix + ".csv";
+  cout << "Writing " << finalclust.size() << " linkages to " << sumfile_out << " and " << c2dfile_out << "\n";
+  status = write_cluster_bundle(detvec, finalclust, final2det, heliodist, heliovel, helioacc, config.MJDref, config.nightstep, sumfile_out, c2dfile_out);
+  if(status!=0) return(status); // bundle not written: worker files stay for resume
+
+  long removed = 0;
+  for(int w=0; w<=maxworker; w++) {
+    if(remove(perworker_sumfile(outsum_prefix, w).c_str()) == 0) removed++;
+    if(remove(perworker_c2dfile(clust2det_prefix, w).c_str()) == 0) removed++;
+  }
+  if(remove(perworker_indexfile(outsum_prefix).c_str()) == 0) removed++;
+  cout << "Removed " << removed << " per-worker intermediate files after bundle write\n";
+  return(0);
+}
+
+// heliolinc_alg_omp_lowmem: OpenMP version of heliolinc_alg_lowmem (-streaming no).
+// Hypotheses run in parallel and each keeps its clusters in RAM, as in
+// heliolinc_alg_lowmem; one output pair is written after the parallel region:
+//   {outsum_prefix}.csv  and  {clust2det_prefix}.csv
+// With do_dedup, cross-hypothesis duplicates are removed first (dedup_all_hyps).
+// Peak memory includes every raw cluster from every hypothesis; use
+// heliolinc_alg_omp_lowmem_streaming when that does not fit.
+template <class Trk, class T2D>
+static int heliolinc_alg_omp_lowmem_impl(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <Trk> &tracklets, const vector <T2D> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, const string &outsum_prefix, const string &clust2det_prefix, bool do_dedup)
+{
+  long detnum = detvec.size();
+  if(detnum>=UINT_MAX) {
+    cerr << "ERROR: heliolinc_alg_omp_lowmem called with too long a detection catalog!\n";
+    cerr << "Catalog contains " << detnum << " detections when no more than " << UINT_MAX-1 << " are allowed\n";
+    return(10);
+  }
+
+  point3d Earthrefpos = point3d(0l,0l,0l);
+  long imnum = image_log.size();
+  long pairnum = tracklets.size();
+  long trk2detnum = trk2det.size();
+  long accelnum = radhyp.size();
+
+  vector <double> heliodist;
+  vector <double> heliovel;
+  vector <double> helioacc;
+  int automjd=0;
+  long accelct=0;
+
+  KernelChoice kc;
+  if(decode_kernel_choice(config, is_uint_input(tracklets), long(detvec.size()), long(tracklets.size()), kc)!=0) return(1);
+  print_kernel_choice(config, kc);
+
+  // Echo config struct
+  cout << "Configuration parameters:\n";
+  cout << "MJD of reference time: " << config.MJDref << "\n";
+  cout << "DBSCAN clustering radius: " << config.clustrad << " km\n";
+  cout << "DBSCAN npt: " << config.cluster_minpts << "\n";
+  cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
+  cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
+  cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
+  cout << "Max geocentric distance (will be exceeded by center only of the outermost bin): " << config.maxgeodist << " AU\n";
+  cout << "Logarthmic step size (and bin width) for geocentric distance bins: " << config.geologstep << "\n";
+  cout << "Minimum inferred geocentric distance for a valid tracklet: " << config.mingeoobs << " AU\n";
+  cout << "Minimum inferred impact parameter (w.r.t. Earth) for a valid tracklet: " << config.minimpactpar << " km\n";
+  if(config.verbose) cout << "Verbose output selected\n";
+
+  if(imnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty image catalog\n";
+    return(1);
+  } else if(pairnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty tracklet array\n";
+    return(1);
+  } else if(trk2detnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty trk2det array\n";
+    return(1);
+  } else if(accelnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty heliocentric hypothesis array\n";
+    return(1);
+  }
+
+  // Find MJD range for auto-MJDref
+  double minMJD = detvec[0].MJD;
+  double maxMJD = detvec[0].MJD;
+  for(long i=0; i<long(detvec.size()); i++) {
+    if(minMJD > detvec[i].MJD) minMJD = detvec[i].MJD;
+    if(maxMJD < detvec[i].MJD) maxMJD = detvec[i].MJD;
+  }
+  if(!isnormal(config.MJDref) || config.MJDref < minMJD || config.MJDref > maxMJD) {
+    if(config.autorun<=0) {
+      cout << "\nERROR: input positive-valued reference MJD is required\n";
+      cout << "MJD range is " << minMJD << " to " << maxMJD << "\n";
+      cout << fixed << setprecision(2) << "Suggested reference value is " << minMJD*0.5L + maxMJD*0.5L << "\n";
+      return(1);
+    } else {
+      cout << "\nUser did not input a positive-valued reference MJD in the\n";
+      cout << "acceptable range, so heliolinc will generate one internally\n";
+      cout << "MJD range is " << minMJD << " to " << maxMJD << "\n";
+      cout << fixed << setprecision(2) << "Suggested reference value is " << minMJD*0.5L + maxMJD*0.5L << "\n";
+      config.MJDref = round(minMJD*50.0l + maxMJD*50.0l)/100.0l;
+      cout << fixed << setprecision(2) << "Adopting reference MJD = " << config.MJDref << "\n";
+      automjd=1;
+    }
+  }
+
+  double chartimescale = (maxMJD - minMJD)*SOLARDAY/TIMECONVSCALE;
+  Earthrefpos = earthpos01(earthpos, config.MJDref);
+
+  // Convert heliocentric radial motion hypothesis matrix to km/day units
+  heliodist = heliovel = helioacc = {};
+  for(accelct=0; accelct<accelnum; accelct++) {
+    heliodist.push_back(radhyp[accelct].HelioRad * AU_KM);
+    heliovel.push_back(radhyp[accelct].R_dot * AU_KM);
+    helioacc.push_back(radhyp[accelct].R_dubdot * (-GMSUN_KM3_SEC2*SOLARDAY*SOLARDAY/heliodist[accelct]/heliodist[accelct]));
+  }
+
+  if(automjd) {
+    cout << "Reference MJD = " << config.MJDref << "\n";
+  }
+
+  // Shared error flag; set nonzero by any thread on fatal error
+  int global_error = 0;
+
+  int nt = 0;
+  #pragma omp parallel
+  { nt = omp_get_num_threads(); }
+  cout << "nthreads = " << nt << "\n";
+  cout << "Processing " << accelnum << " hypotheses with dynamic scheduling\n";
+
+  // One slot per hypothesis; each thread writes only its own slot.
+  vector <vector <shortclust>> hyp_clust_bufs(accelnum);
+  vector <vector <uint_pair>> hyp_c2d_bufs(accelnum);
+
+  #pragma omp parallel for schedule(dynamic)
+  for(long thread_accelct=0; thread_accelct<accelnum; thread_accelct++) {
+    if(global_error) continue; // skip remaining work if a fatal error occurred
+    int thread_status = lowmem_cluster_one_hyp(image_log, detvec, tracklets, trk2det, config, kc, chartimescale, Earthrefpos, heliodist[thread_accelct], heliovel[thread_accelct], helioacc[thread_accelct], thread_accelct, hyp_clust_bufs[thread_accelct], hyp_c2d_bufs[thread_accelct]);
+    if(thread_status==2) {
+      cerr << "Fatal error from trk2statevec for hypothesis " << thread_accelct << "\n";
+      #pragma omp atomic write
+      global_error = thread_status;
+      continue;
+    }
+    #pragma omp critical
+    {
+      if(thread_status==1) cerr << "WARNING: hypothesis " << thread_accelct << ": " << radhyp[thread_accelct].HelioRad << " " << radhyp[thread_accelct].R_dot << " " << radhyp[thread_accelct].R_dubdot << " led to\nnegative heliocentric distance or other invalid result: SKIPPING\n";
+      cout << "Hypothesis " << thread_accelct << " (" << radhyp[thread_accelct].HelioRad << " AU, " << radhyp[thread_accelct].R_dot*AU_KM/SOLARDAY << " km/sec): " << hyp_clust_bufs[thread_accelct].size() << " linkages\n";
+    }
+  } // end parallel for
+
+  if(global_error) return(global_error);
+
+  long total_raw_links = 0;
+  for(long i=0; i<accelnum; i++) total_raw_links += long(hyp_clust_bufs[i].size());
+  vector <shortclust> finalclust;
+  vector <uint_pair> final2det;
+
+  if(do_dedup) {
+    double t_dedup0 = omp_get_wtime();
+    // Leaves take (and thereby free) each hypothesis's buffers.
+    auto take_hyp_buffers = [&](long i, vector <shortclust> &clust, vector <uint_pair> &c2d) -> int {
+      clust.swap(hyp_clust_bufs[i]);
+      c2d.swap(hyp_c2d_bufs[i]);
+      return(0);
+    };
+    int status = dedup_all_hyps(accelnum, &take_hyp_buffers, finalclust, final2det);
+    if(status!=0) return(status);
+    if(total_raw_links > 0) {
+      cout << "Dedup kept " << finalclust.size() << " of " << total_raw_links << " raw linkages ("
+           << fixed << setprecision(1) << (100.0*finalclust.size()/double(total_raw_links)) << "%)\n";
+    }
+    cout << "Parallel dedup wall time: " << fixed << setprecision(2) << (omp_get_wtime() - t_dedup0) << " s\n";
+  } else {
+    // No cross-hyp dedup: concatenate hypotheses in order with global cluster numbers.
+    for(long i=0; i<accelnum; i++) {
+      int status = append_lowmem_clusters(finalclust, final2det, hyp_clust_bufs[i], hyp_c2d_bufs[i]);
+      if(status!=0) return(status);
+    }
+  }
+
+  string sumfile_out = outsum_prefix    + ".csv";
+  string c2dfile_out = clust2det_prefix + ".csv";
+  cout << "Writing " << finalclust.size() << " linkages to " << sumfile_out << " and " << c2dfile_out << "\n";
+  return(write_lowmem_bundle(detvec, finalclust, final2det, heliodist, heliovel, helioacc, config.MJDref, config.nightstep, sumfile_out, c2dfile_out));
+}
+
+int heliolinc_alg_omp_lowmem(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, const string &outsum_prefix, const string &clust2det_prefix, bool do_dedup)
+{
+  return(heliolinc_alg_omp_lowmem_impl(image_log, detvec, tracklets, trk2det, radhyp, earthpos, config, outsum_prefix, clust2det_prefix, do_dedup));
+}
+
+// uint_tracklet / uint_pair inputs (use_smalltrk = 1)
+int heliolinc_alg_omp_lowmem(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <uint_tracklet> &tracklets, const vector <uint_pair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, const string &outsum_prefix, const string &clust2det_prefix, bool do_dedup)
+{
+  return(heliolinc_alg_omp_lowmem_impl(image_log, detvec, tracklets, trk2det, radhyp, earthpos, config, outsum_prefix, clust2det_prefix, do_dedup));
+}
 
 
+// heliolinc_alg_omp_lowmem_streaming: memory-bounded streaming output (-streaming yes).
+// Each hypothesis writes its own output pair as soon as it is clustered, so a
+// thread holds at most one hypothesis's state vectors and clusters:
+//   {outsum_prefix}_w{W}.csv  and  {clust2det_prefix}_w{W}.csv, one pair per worker
+// Each worker appends to its own files, and {outsum_prefix}_index.csv records
+// hypno/worker/offsets for every completed hypothesis, so a killed run resumes from
+// the index with the same command and only 2*nthreads+1 files are ever created.
+// If do_dedup is true, dedup_perworker_files then writes the bundled pair and removes
+// the worker files; if false, the worker files and their index are the output.
+template <class Trk, class T2D>
+static int heliolinc_alg_omp_lowmem_streaming_impl(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <Trk> &tracklets, const vector <T2D> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, const string &outsum_prefix, const string &clust2det_prefix, bool do_dedup)
+{
+  long detnum = detvec.size();
+  if(detnum>=UINT_MAX) {
+    cerr << "ERROR: heliolinc_alg_omp_lowmem_streaming called with too long a detection catalog!\n";
+    cerr << "Catalog contains " << detnum << " detections when no more than " << UINT_MAX-1 << " are allowed\n";
+    return(10);
+  }
+
+  point3d Earthrefpos = point3d(0l,0l,0l);
+  long imnum = image_log.size();
+  long pairnum = tracklets.size();
+  long trk2detnum = trk2det.size();
+  long accelnum = radhyp.size();
+
+  vector <double> heliodist;
+  vector <double> heliovel;
+  vector <double> helioacc;
+  int automjd=0;
+  long accelct=0;
+
+  KernelChoice kc;
+  if(decode_kernel_choice(config, is_uint_input(tracklets), long(detvec.size()), long(tracklets.size()), kc)!=0) return(1);
+  print_kernel_choice(config, kc);
+
+  // Echo config struct
+  cout << "Configuration parameters:\n";
+  cout << "MJD of reference time: " << config.MJDref << "\n";
+  cout << "DBSCAN clustering radius: " << config.clustrad << " km\n";
+  cout << "DBSCAN npt: " << config.cluster_minpts << "\n";
+  cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
+  cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
+  cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
+  cout << "Max geocentric distance (will be exceeded by center only of the outermost bin): " << config.maxgeodist << " AU\n";
+  cout << "Logarthmic step size (and bin width) for geocentric distance bins: " << config.geologstep << "\n";
+  cout << "Minimum inferred geocentric distance for a valid tracklet: " << config.mingeoobs << " AU\n";
+  cout << "Minimum inferred impact parameter (w.r.t. Earth) for a valid tracklet: " << config.minimpactpar << " km\n";
+  if(config.verbose) cout << "Verbose output selected\n";
+
+  if(imnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty image catalog\n";
+    return(1);
+  } else if(pairnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty tracklet array\n";
+    return(1);
+  } else if(trk2detnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty trk2det array\n";
+    return(1);
+  } else if(accelnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty heliocentric hypothesis array\n";
+    return(1);
+  }
+
+  // Find MJD range for auto-MJDref
+  double minMJD = detvec[0].MJD;
+  double maxMJD = detvec[0].MJD;
+  for(long i=0; i<long(detvec.size()); i++) {
+    if(minMJD > detvec[i].MJD) minMJD = detvec[i].MJD;
+    if(maxMJD < detvec[i].MJD) maxMJD = detvec[i].MJD;
+  }
+  if(!isnormal(config.MJDref) || config.MJDref < minMJD || config.MJDref > maxMJD) {
+    if(config.autorun<=0) {
+      cout << "\nERROR: input positive-valued reference MJD is required\n";
+      cout << "MJD range is " << minMJD << " to " << maxMJD << "\n";
+      cout << fixed << setprecision(2) << "Suggested reference value is " << minMJD*0.5L + maxMJD*0.5L << "\n";
+      return(1);
+    } else {
+      cout << "\nUser did not input a positive-valued reference MJD in the\n";
+      cout << "acceptable range, so heliolinc will generate one internally\n";
+      cout << "MJD range is " << minMJD << " to " << maxMJD << "\n";
+      cout << fixed << setprecision(2) << "Suggested reference value is " << minMJD*0.5L + maxMJD*0.5L << "\n";
+      config.MJDref = round(minMJD*50.0l + maxMJD*50.0l)/100.0l;
+      cout << fixed << setprecision(2) << "Adopting reference MJD = " << config.MJDref << "\n";
+      automjd=1;
+    }
+  }
+
+  double chartimescale = (maxMJD - minMJD)*SOLARDAY/TIMECONVSCALE;
+  Earthrefpos = earthpos01(earthpos, config.MJDref);
+
+  // Convert heliocentric radial motion hypothesis matrix to km/day units
+  heliodist = heliovel = helioacc = {};
+  for(accelct=0; accelct<accelnum; accelct++) {
+    heliodist.push_back(radhyp[accelct].HelioRad * AU_KM);
+    heliovel.push_back(radhyp[accelct].R_dot * AU_KM);
+    helioacc.push_back(radhyp[accelct].R_dubdot * (-GMSUN_KM3_SEC2*SOLARDAY*SOLARDAY/heliodist[accelct]/heliodist[accelct]));
+  }
+
+  if(automjd) {
+    cout << "Reference MJD = " << config.MJDref << "\n";
+  }
+
+  // Shared error flag; set nonzero by any thread on fatal error
+  int global_error = 0;
+
+  int nt = 0;
+  #pragma omp parallel
+  { nt = omp_get_num_threads(); }
+  cout << "nthreads = " << nt << "\n";
+  cout << "Processing " << accelnum << " hypotheses with dynamic scheduling (per-worker streaming output)\n";
+
+  // Per-worker streaming output: recover anything a previous run completed, then open one
+  // pair of files per worker.  Only the small index file is shared between threads.
+  vector <hypblock> blockindex;
+  vector <char> hyp_done;
+  worker_output wout;
+  if(recover_worker_files(outsum_prefix, clust2det_prefix, accelnum, nt, blockindex, hyp_done, config.verbose)!=0) return(1);
+  if(open_worker_files(outsum_prefix, clust2det_prefix, nt, wout)!=0) return(1);
+
+  #pragma omp parallel for schedule(dynamic)
+  for(long thread_accelct=0; thread_accelct<accelnum; thread_accelct++) {
+    if(global_error) continue; // skip remaining work if a fatal error occurred
+    if(hyp_done[thread_accelct]) {
+      #pragma omp critical
+      { cout << "Hypothesis " << thread_accelct << ": resume-skip (already in the worker files)\n"; }
+      continue;
+    }
+
+    vector <shortclust> thread_clust;
+    vector <uint_pair> thread_c2d;
+    int thread_status = lowmem_cluster_one_hyp(image_log, detvec, tracklets, trk2det, config, kc, chartimescale, Earthrefpos, heliodist[thread_accelct], heliovel[thread_accelct], helioacc[thread_accelct], thread_accelct, thread_clust, thread_c2d);
+    if(thread_status==2) {
+      cerr << "Fatal error from trk2statevec for hypothesis " << thread_accelct << "\n";
+      #pragma omp atomic write
+      global_error = thread_status;
+      continue;
+    }
+
+    int wstat = write_worker_block(wout, detvec, thread_clust, thread_c2d, heliodist, heliovel, helioacc, config.MJDref, config.nightstep, thread_accelct);
+    if(wstat!=0) {
+      cerr << "ERROR: output for hypothesis " << thread_accelct << " was not written; stopping. Completed hypotheses are kept for resume.\n";
+      #pragma omp atomic write
+      global_error = wstat;
+      continue;
+    }
+
+    #pragma omp critical
+    {
+      if(thread_status==1) cerr << "WARNING: hypothesis " << thread_accelct << ": " << radhyp[thread_accelct].HelioRad << " " << radhyp[thread_accelct].R_dot << " " << radhyp[thread_accelct].R_dubdot << " led to\nnegative heliocentric distance or other invalid result: SKIPPING\n";
+      cout << "Hypothesis " << thread_accelct << " (" << radhyp[thread_accelct].HelioRad << " AU, " << radhyp[thread_accelct].R_dot*AU_KM/SOLARDAY << " km/sec): " << thread_clust.size() << " linkages -> worker " << omp_get_thread_num() << "\n";
+    }
+  } // end parallel for
+
+  close_worker_files(wout);
+  if(global_error) return(global_error);
+  if(!do_dedup) return(0); // The worker files and their index are the final product.
+  // Re-read the index so dedup sees this run's blocks as well as any recovered ones.
+  if(recover_worker_files(outsum_prefix, clust2det_prefix, accelnum, nt, blockindex, hyp_done, config.verbose)!=0) return(1);
+  return(dedup_perworker_files<shortclust, uint_pair>(accelnum, outsum_prefix, clust2det_prefix, blockindex, detvec, heliodist, heliovel, helioacc, config));
+}
+
+int heliolinc_alg_omp_lowmem_streaming(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, const string &outsum_prefix, const string &clust2det_prefix, bool do_dedup)
+{
+  return(heliolinc_alg_omp_lowmem_streaming_impl(image_log, detvec, tracklets, trk2det, radhyp, earthpos, config, outsum_prefix, clust2det_prefix, do_dedup));
+}
+
+// uint_tracklet / uint_pair inputs (use_smalltrk = 1)
+int heliolinc_alg_omp_lowmem_streaming(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <uint_tracklet> &tracklets, const vector <uint_pair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, const string &outsum_prefix, const string &clust2det_prefix, bool do_dedup)
+{
+  return(heliolinc_alg_omp_lowmem_streaming_impl(image_log, detvec, tracklets, trk2det, radhyp, earthpos, config, outsum_prefix, clust2det_prefix, do_dedup));
+}
+
+
+// Project and cluster one heliocentric hypothesis on the full hlclust/longpair
+// classes: one pass of the hypothesis loop in heliolinc_alg_all (the full-class
+// counterpart of lowmem_cluster_one_hyp).  Clusters are numbered from 0, with
+// clust2det rows in cluster order.  Returns the trk2statevec status: 0 = ok,
+// 1 = impossible hypothesis (skipped, no clusters), 2 = fatal.
+static int cluster_one_hyp(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const HeliolincConfig &config, const KernelChoice &kc, double chartimescale, const point3d &Earthrefpos, double heliodist, double heliovel, double helioacc, vector <hlclust> &outclust, vector <longpair> &clust2det)
+{
+  vector <point6ix2> allstatevecs;
+  long realclusternum=0;
+  int status=0;
+
+  outclust.clear();
+  clust2det.clear();
+  if(kc.sad) {
+    // SAD tracklet rejection: Ari's TNV kernels (temp02).  They are Keplerian only
+    // (no NotKepler argument) and take min_obstanvel.
+    if(kc.univar && kc.rr) {
+      status = trk2statevec_univarRR_TNV(image_log, tracklets, heliodist, heliovel, helioacc, chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+    } else if(kc.univar) {
+      status = trk2statevec_univar_TNV(image_log, tracklets, heliodist, heliovel, helioacc, chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+    } else if(kc.rr) {
+      status = trk2statevec_fgfuncRR_TNV(image_log, tracklets, heliodist, heliovel, helioacc, chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+    } else {
+      status = trk2statevec_fgfunc_TNV(image_log, tracklets, heliodist, heliovel, helioacc, chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+    }
+  } else {
+    if(kc.univar && kc.rr) {
+      status = trk2statevec_univarRR(image_log, tracklets, heliodist, heliovel, helioacc, chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, kc.NotKepler, config.verbose);
+    } else if(kc.univar) {
+      status = trk2statevec_univar(image_log, tracklets, heliodist, heliovel, helioacc, chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, kc.NotKepler, config.verbose);
+    } else if(kc.rr) {
+      status = trk2statevec_fgfuncRR(image_log, tracklets, heliodist, heliovel, helioacc, chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, kc.NotKepler, config.verbose);
+    } else {
+      status = trk2statevec_fgfunc(image_log, tracklets, heliodist, heliovel, helioacc, chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, kc.NotKepler, config.verbose);
+    }
+  }
+  if(status==1 || status==2) return(status);
+  if(allstatevecs.size()<=1) return(0); // No clusters possible
+
+  if(kc.dbscan) {
+    status = form_clusters(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist, heliovel, helioacc, chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+  } else if(kc.rr) {
+    status = form_clusters_RR(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist, heliovel, helioacc, chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+  } else if(kc.kdR) {
+    status = form_clusters_kdR(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist, heliovel, helioacc, chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+  } else {
+    status = form_clusters_kd4(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist, heliovel, helioacc, chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+  }
+  if(status!=0) cerr << "ERROR: form_clusters exited with error code " << status << "\n";
+  return(0);
+}
+
+// uint_tracklet / uint_pair inputs (use_smalltrk = 1): trk2statevec_fgfunc_uint, or one of
+// Ari's four uint TNV kernels with SAD rejection, then his form_clusters_uint /
+// form_clusters_RR_uint / form_clusters_kd4_uint (temp02).
+static int cluster_one_hyp(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <uint_tracklet> &tracklets, const vector <uint_pair> &trk2det, const HeliolincConfig &config, const KernelChoice &kc, double chartimescale, const point3d &Earthrefpos, double heliodist, double heliovel, double helioacc, vector <hlclust> &outclust, vector <longpair> &clust2det)
+{
+  vector <point6ix2> allstatevecs;
+  long realclusternum=0;
+  int status=0;
+
+  outclust.clear();
+  clust2det.clear();
+  if(kc.sad) {
+    // Ari's uint TNV kernels (temp02); Keplerian only, and they take min_obstanvel.
+    if(kc.univar && kc.rr) {
+      status = trk2statevec_univarRR_TNV_uint(image_log, tracklets, heliodist, heliovel, helioacc, chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+    } else if(kc.univar) {
+      status = trk2statevec_univar_TNV_uint(image_log, tracklets, heliodist, heliovel, helioacc, chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+    } else if(kc.rr) {
+      status = trk2statevec_fgfuncRR_TNV_uint(image_log, tracklets, heliodist, heliovel, helioacc, chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+    } else {
+      status = trk2statevec_fgfunc_TNV_uint(image_log, tracklets, heliodist, heliovel, helioacc, chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+    }
+  } else {
+    // temp02 has no non-SAD uint kernel, so this stays our own f and g version.
+    if(kc.univar && kc.rr) {
+      status = trk2statevec_univarRR_uint(image_log, tracklets, heliodist, heliovel, helioacc, chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, kc.NotKepler, config.verbose);
+    } else if(kc.univar) {
+      status = trk2statevec_univar_uint(image_log, tracklets, heliodist, heliovel, helioacc, chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, kc.NotKepler, config.verbose);
+    } else if(kc.rr) {
+      status = trk2statevec_fgfuncRR_uint(image_log, tracklets, heliodist, heliovel, helioacc, chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, kc.NotKepler, config.verbose);
+    } else {
+      status = trk2statevec_fgfunc_uint(image_log, tracklets, heliodist, heliovel, helioacc, chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, kc.NotKepler, config.verbose);
+    }
+  }
+  if(status==1 || status==2) return(status);
+  if(allstatevecs.size()<=1) return(0); // No clusters possible
+
+  if(kc.dbscan) {
+    status = form_clusters_uint(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist, heliovel, helioacc, chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+  } else if(kc.rr) {
+    status = form_clusters_RR_uint(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist, heliovel, helioacc, chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+  } else {
+    status = form_clusters_kd4_uint(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist, heliovel, helioacc, chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+  }
+  if(status!=0) cerr << "ERROR: form_clusters exited with error code " << status << "\n";
+  return(0);
+}
+
+// heliolinc_alg_omp_rhs: OpenMP version of heliolinc_alg_all (-streaming no).
+// The same parallel loop and dedup tree as heliolinc_alg_omp_lowmem, but on the
+// full hlclust/longpair classes: hypotheses are clustered by the form_clusters_*
+// functions heliolinc_alg_all uses, and duplicates are removed with link_dedup.
+// No lowmem classes and no uint.  One output pair is written at the end:
+//   {outsum_prefix}.csv  and  {clust2det_prefix}.csv
+// Peak memory includes every raw cluster from every hypothesis, in the full
+// classes; use heliolinc_alg_omp_rhs_streaming when that does not fit.
+template <class Trk, class T2D>
+static int heliolinc_alg_omp_rhs_impl(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <Trk> &tracklets, const vector <T2D> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, const string &outsum_prefix, const string &clust2det_prefix, bool do_dedup)
+{
+  point3d Earthrefpos = point3d(0l,0l,0l);
+  long imnum = image_log.size();
+  long pairnum = tracklets.size();
+  long trk2detnum = trk2det.size();
+  long accelnum = radhyp.size();
+
+  vector <double> heliodist;
+  vector <double> heliovel;
+  vector <double> helioacc;
+  int automjd=0;
+  long accelct=0;
+
+  KernelChoice kc;
+  if(decode_kernel_choice(config, is_uint_input(tracklets), long(detvec.size()), long(tracklets.size()), kc)!=0) return(1);
+  print_kernel_choice(config, kc);
+
+  // Echo config struct
+  cout << "Configuration parameters:\n";
+  cout << "MJD of reference time: " << config.MJDref << "\n";
+  cout << "DBSCAN clustering radius: " << config.clustrad << " km\n";
+  cout << "DBSCAN npt: " << config.cluster_minpts << "\n";
+  cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
+  cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
+  cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
+  cout << "Max geocentric distance (will be exceeded by center only of the outermost bin): " << config.maxgeodist << " AU\n";
+  cout << "Logarthmic step size (and bin width) for geocentric distance bins: " << config.geologstep << "\n";
+  cout << "Minimum inferred geocentric distance for a valid tracklet: " << config.mingeoobs << " AU\n";
+  cout << "Minimum inferred impact parameter (w.r.t. Earth) for a valid tracklet: " << config.minimpactpar << " km\n";
+  if(config.verbose) cout << "Verbose output selected\n";
+
+  if(imnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty image catalog\n";
+    return(1);
+  } else if(pairnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty tracklet array\n";
+    return(1);
+  } else if(trk2detnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty trk2det array\n";
+    return(1);
+  } else if(accelnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty heliocentric hypothesis array\n";
+    return(1);
+  }
+
+  // Find MJD range for auto-MJDref
+  double minMJD = detvec[0].MJD;
+  double maxMJD = detvec[0].MJD;
+  for(long i=0; i<long(detvec.size()); i++) {
+    if(minMJD > detvec[i].MJD) minMJD = detvec[i].MJD;
+    if(maxMJD < detvec[i].MJD) maxMJD = detvec[i].MJD;
+  }
+  if(!isnormal(config.MJDref) || config.MJDref < minMJD || config.MJDref > maxMJD) {
+    if(config.autorun<=0) {
+      cout << "\nERROR: input positive-valued reference MJD is required\n";
+      cout << "MJD range is " << minMJD << " to " << maxMJD << "\n";
+      cout << fixed << setprecision(2) << "Suggested reference value is " << minMJD*0.5L + maxMJD*0.5L << "\n";
+      return(1);
+    } else {
+      cout << "\nUser did not input a positive-valued reference MJD in the\n";
+      cout << "acceptable range, so heliolinc will generate one internally\n";
+      cout << "MJD range is " << minMJD << " to " << maxMJD << "\n";
+      cout << fixed << setprecision(2) << "Suggested reference value is " << minMJD*0.5L + maxMJD*0.5L << "\n";
+      config.MJDref = round(minMJD*50.0l + maxMJD*50.0l)/100.0l;
+      cout << fixed << setprecision(2) << "Adopting reference MJD = " << config.MJDref << "\n";
+      automjd=1;
+    }
+  }
+
+  double chartimescale = (maxMJD - minMJD)*SOLARDAY/TIMECONVSCALE;
+  Earthrefpos = earthpos01(earthpos, config.MJDref);
+
+  // Convert heliocentric radial motion hypothesis matrix to km/day units
+  heliodist = heliovel = helioacc = {};
+  for(accelct=0; accelct<accelnum; accelct++) {
+    heliodist.push_back(radhyp[accelct].HelioRad * AU_KM);
+    heliovel.push_back(radhyp[accelct].R_dot * AU_KM);
+    helioacc.push_back(radhyp[accelct].R_dubdot * (-GMSUN_KM3_SEC2*SOLARDAY*SOLARDAY/heliodist[accelct]/heliodist[accelct]));
+  }
+
+  if(automjd) {
+    cout << "Reference MJD = " << config.MJDref << "\n";
+  }
+
+  // Shared error flag; set nonzero by any thread on fatal error
+  int global_error = 0;
+
+  int nt = 0;
+  #pragma omp parallel
+  { nt = omp_get_num_threads(); }
+  cout << "nthreads = " << nt << "\n";
+  cout << "Processing " << accelnum << " hypotheses with dynamic scheduling\n";
+
+  // One slot per hypothesis; each thread writes only its own slot.
+  vector <vector <hlclust>> hyp_clust_bufs(accelnum);
+  vector <vector <longpair>> hyp_c2d_bufs(accelnum);
+
+  #pragma omp parallel for schedule(dynamic)
+  for(long thread_accelct=0; thread_accelct<accelnum; thread_accelct++) {
+    if(global_error) continue; // skip remaining work if a fatal error occurred
+    int thread_status = cluster_one_hyp(image_log, detvec, tracklets, trk2det, config, kc, chartimescale, Earthrefpos, heliodist[thread_accelct], heliovel[thread_accelct], helioacc[thread_accelct], hyp_clust_bufs[thread_accelct], hyp_c2d_bufs[thread_accelct]);
+    if(thread_status==2) {
+      cerr << "Fatal error from trk2statevec for hypothesis " << thread_accelct << "\n";
+      #pragma omp atomic write
+      global_error = thread_status;
+      continue;
+    }
+    #pragma omp critical
+    {
+      if(thread_status==1) cerr << "WARNING: hypothesis " << thread_accelct << ": " << radhyp[thread_accelct].HelioRad << " " << radhyp[thread_accelct].R_dot << " " << radhyp[thread_accelct].R_dubdot << " led to\nnegative heliocentric distance or other invalid result: SKIPPING\n";
+      cout << "Hypothesis " << thread_accelct << " (" << radhyp[thread_accelct].HelioRad << " AU, " << radhyp[thread_accelct].R_dot*AU_KM/SOLARDAY << " km/sec): " << hyp_clust_bufs[thread_accelct].size() << " linkages\n";
+    }
+  } // end parallel for
+
+  if(global_error) return(global_error);
+
+  long total_raw_links = 0;
+  for(long i=0; i<accelnum; i++) total_raw_links += long(hyp_clust_bufs[i].size());
+  vector <hlclust> finalclust;
+  vector <longpair> final2det;
+
+  if(do_dedup) {
+    double t_dedup0 = omp_get_wtime();
+    // Leaves take (and thereby free) each hypothesis's buffers.
+    auto take_hyp_buffers = [&](long i, vector <hlclust> &clust, vector <longpair> &c2d) -> int {
+      clust.swap(hyp_clust_bufs[i]);
+      c2d.swap(hyp_c2d_bufs[i]);
+      return(0);
+    };
+    int status = dedup_all_hyps(accelnum, &take_hyp_buffers, finalclust, final2det);
+    if(status!=0) return(status);
+    if(total_raw_links > 0) {
+      cout << "Dedup kept " << finalclust.size() << " of " << total_raw_links << " raw linkages ("
+           << fixed << setprecision(1) << (100.0*finalclust.size()/double(total_raw_links)) << "%)\n";
+    }
+    cout << "Parallel dedup wall time: " << fixed << setprecision(2) << (omp_get_wtime() - t_dedup0) << " s\n";
+  } else {
+    // No cross-hyp dedup: concatenate hypotheses in order with global cluster numbers.
+    for(long i=0; i<accelnum; i++) {
+      int status = append_clusters(finalclust, final2det, hyp_clust_bufs[i], hyp_c2d_bufs[i]);
+      if(status!=0) return(status);
+    }
+  }
+
+  string sumfile_out = outsum_prefix    + ".csv";
+  string c2dfile_out = clust2det_prefix + ".csv";
+  cout << "Writing " << finalclust.size() << " linkages to " << sumfile_out << " and " << c2dfile_out << "\n";
+  return(write_cluster_bundle(detvec, finalclust, final2det, heliodist, heliovel, helioacc, config.MJDref, config.nightstep, sumfile_out, c2dfile_out));
+}
+
+int heliolinc_alg_omp_rhs(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, const string &outsum_prefix, const string &clust2det_prefix, bool do_dedup)
+{
+  return(heliolinc_alg_omp_rhs_impl(image_log, detvec, tracklets, trk2det, radhyp, earthpos, config, outsum_prefix, clust2det_prefix, do_dedup));
+}
+
+// uint_tracklet / uint_pair inputs (use_smalltrk = 1)
+int heliolinc_alg_omp_rhs(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <uint_tracklet> &tracklets, const vector <uint_pair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, const string &outsum_prefix, const string &clust2det_prefix, bool do_dedup)
+{
+  return(heliolinc_alg_omp_rhs_impl(image_log, detvec, tracklets, trk2det, radhyp, earthpos, config, outsum_prefix, clust2det_prefix, do_dedup));
+}
+
+
+// heliolinc_alg_omp_rhs_streaming: streaming output (-streaming yes) on the full
+// hlclust/longpair path of heliolinc_alg_all; otherwise the same as
+// heliolinc_alg_omp_lowmem_streaming.  Each hypothesis writes its own output
+// pair as soon as it is clustered, so a thread holds at most one hypothesis's
+// state vectors and clusters:
+//   {outsum_prefix}_w{W}.csv  and  {clust2det_prefix}_w{W}.csv, one pair per worker
+// Each worker appends to its own files, and {outsum_prefix}_index.csv records
+// hypno/worker/offsets for every completed hypothesis, so a killed run resumes from
+// the index with the same command and only 2*nthreads+1 files are ever created.
+// If do_dedup is true, dedup_perworker_files then writes the bundled pair and removes
+// the worker files; if false, the worker files and their index are the output.
+template <class Trk, class T2D>
+static int heliolinc_alg_omp_rhs_streaming_impl(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <Trk> &tracklets, const vector <T2D> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, const string &outsum_prefix, const string &clust2det_prefix, bool do_dedup)
+{
+  point3d Earthrefpos = point3d(0l,0l,0l);
+  long imnum = image_log.size();
+  long pairnum = tracklets.size();
+  long trk2detnum = trk2det.size();
+  long accelnum = radhyp.size();
+
+  vector <double> heliodist;
+  vector <double> heliovel;
+  vector <double> helioacc;
+  int automjd=0;
+  long accelct=0;
+
+  KernelChoice kc;
+  if(decode_kernel_choice(config, is_uint_input(tracklets), long(detvec.size()), long(tracklets.size()), kc)!=0) return(1);
+  print_kernel_choice(config, kc);
+
+  // Echo config struct
+  cout << "Configuration parameters:\n";
+  cout << "MJD of reference time: " << config.MJDref << "\n";
+  cout << "DBSCAN clustering radius: " << config.clustrad << " km\n";
+  cout << "DBSCAN npt: " << config.cluster_minpts << "\n";
+  cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
+  cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
+  cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
+  cout << "Max geocentric distance (will be exceeded by center only of the outermost bin): " << config.maxgeodist << " AU\n";
+  cout << "Logarthmic step size (and bin width) for geocentric distance bins: " << config.geologstep << "\n";
+  cout << "Minimum inferred geocentric distance for a valid tracklet: " << config.mingeoobs << " AU\n";
+  cout << "Minimum inferred impact parameter (w.r.t. Earth) for a valid tracklet: " << config.minimpactpar << " km\n";
+  if(config.verbose) cout << "Verbose output selected\n";
+
+  if(imnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty image catalog\n";
+    return(1);
+  } else if(pairnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty tracklet array\n";
+    return(1);
+  } else if(trk2detnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty trk2det array\n";
+    return(1);
+  } else if(accelnum<=0) {
+    cerr << "ERROR: heliolinc supplied with empty heliocentric hypothesis array\n";
+    return(1);
+  }
+
+  // Find MJD range for auto-MJDref
+  double minMJD = detvec[0].MJD;
+  double maxMJD = detvec[0].MJD;
+  for(long i=0; i<long(detvec.size()); i++) {
+    if(minMJD > detvec[i].MJD) minMJD = detvec[i].MJD;
+    if(maxMJD < detvec[i].MJD) maxMJD = detvec[i].MJD;
+  }
+  if(!isnormal(config.MJDref) || config.MJDref < minMJD || config.MJDref > maxMJD) {
+    if(config.autorun<=0) {
+      cout << "\nERROR: input positive-valued reference MJD is required\n";
+      cout << "MJD range is " << minMJD << " to " << maxMJD << "\n";
+      cout << fixed << setprecision(2) << "Suggested reference value is " << minMJD*0.5L + maxMJD*0.5L << "\n";
+      return(1);
+    } else {
+      cout << "\nUser did not input a positive-valued reference MJD in the\n";
+      cout << "acceptable range, so heliolinc will generate one internally\n";
+      cout << "MJD range is " << minMJD << " to " << maxMJD << "\n";
+      cout << fixed << setprecision(2) << "Suggested reference value is " << minMJD*0.5L + maxMJD*0.5L << "\n";
+      config.MJDref = round(minMJD*50.0l + maxMJD*50.0l)/100.0l;
+      cout << fixed << setprecision(2) << "Adopting reference MJD = " << config.MJDref << "\n";
+      automjd=1;
+    }
+  }
+
+  double chartimescale = (maxMJD - minMJD)*SOLARDAY/TIMECONVSCALE;
+  Earthrefpos = earthpos01(earthpos, config.MJDref);
+
+  // Convert heliocentric radial motion hypothesis matrix to km/day units
+  heliodist = heliovel = helioacc = {};
+  for(accelct=0; accelct<accelnum; accelct++) {
+    heliodist.push_back(radhyp[accelct].HelioRad * AU_KM);
+    heliovel.push_back(radhyp[accelct].R_dot * AU_KM);
+    helioacc.push_back(radhyp[accelct].R_dubdot * (-GMSUN_KM3_SEC2*SOLARDAY*SOLARDAY/heliodist[accelct]/heliodist[accelct]));
+  }
+
+  if(automjd) {
+    cout << "Reference MJD = " << config.MJDref << "\n";
+  }
+
+  // Shared error flag; set nonzero by any thread on fatal error
+  int global_error = 0;
+
+  int nt = 0;
+  #pragma omp parallel
+  { nt = omp_get_num_threads(); }
+  cout << "nthreads = " << nt << "\n";
+  cout << "Processing " << accelnum << " hypotheses with dynamic scheduling (per-worker streaming output)\n";
+
+  // Per-worker streaming output: recover anything a previous run completed, then open one
+  // pair of files per worker.  Only the small index file is shared between threads.
+  vector <hypblock> blockindex;
+  vector <char> hyp_done;
+  worker_output wout;
+  if(recover_worker_files(outsum_prefix, clust2det_prefix, accelnum, nt, blockindex, hyp_done, config.verbose)!=0) return(1);
+  if(open_worker_files(outsum_prefix, clust2det_prefix, nt, wout)!=0) return(1);
+
+  #pragma omp parallel for schedule(dynamic)
+  for(long thread_accelct=0; thread_accelct<accelnum; thread_accelct++) {
+    if(global_error) continue; // skip remaining work if a fatal error occurred
+    if(hyp_done[thread_accelct]) {
+      #pragma omp critical
+      { cout << "Hypothesis " << thread_accelct << ": resume-skip (already in the worker files)\n"; }
+      continue;
+    }
+
+    vector <hlclust> thread_clust;
+    vector <longpair> thread_c2d;
+    int thread_status = cluster_one_hyp(image_log, detvec, tracklets, trk2det, config, kc, chartimescale, Earthrefpos, heliodist[thread_accelct], heliovel[thread_accelct], helioacc[thread_accelct], thread_clust, thread_c2d);
+    if(thread_status==2) {
+      cerr << "Fatal error from trk2statevec for hypothesis " << thread_accelct << "\n";
+      #pragma omp atomic write
+      global_error = thread_status;
+      continue;
+    }
+
+    int wstat = write_worker_block(wout, detvec, thread_clust, thread_c2d, heliodist, heliovel, helioacc, config.MJDref, thread_accelct);
+    if(wstat!=0) {
+      cerr << "ERROR: output for hypothesis " << thread_accelct << " was not written; stopping. Completed hypotheses are kept for resume.\n";
+      #pragma omp atomic write
+      global_error = wstat;
+      continue;
+    }
+
+    #pragma omp critical
+    {
+      if(thread_status==1) cerr << "WARNING: hypothesis " << thread_accelct << ": " << radhyp[thread_accelct].HelioRad << " " << radhyp[thread_accelct].R_dot << " " << radhyp[thread_accelct].R_dubdot << " led to\nnegative heliocentric distance or other invalid result: SKIPPING\n";
+      cout << "Hypothesis " << thread_accelct << " (" << radhyp[thread_accelct].HelioRad << " AU, " << radhyp[thread_accelct].R_dot*AU_KM/SOLARDAY << " km/sec): " << thread_clust.size() << " linkages -> worker " << omp_get_thread_num() << "\n";
+    }
+  } // end parallel for
+
+  close_worker_files(wout);
+  if(global_error) return(global_error);
+  if(!do_dedup) return(0); // The worker files and their index are the final product.
+  // Re-read the index so dedup sees this run's blocks as well as any recovered ones.
+  if(recover_worker_files(outsum_prefix, clust2det_prefix, accelnum, nt, blockindex, hyp_done, config.verbose)!=0) return(1);
+  return(dedup_perworker_files<hlclust, longpair>(accelnum, outsum_prefix, clust2det_prefix, blockindex, detvec, heliodist, heliovel, helioacc, config));
+}
+
+int heliolinc_alg_omp_rhs_streaming(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, const string &outsum_prefix, const string &clust2det_prefix, bool do_dedup)
+{
+  return(heliolinc_alg_omp_rhs_streaming_impl(image_log, detvec, tracklets, trk2det, radhyp, earthpos, config, outsum_prefix, clust2det_prefix, do_dedup));
+}
+
+// uint_tracklet / uint_pair inputs (use_smalltrk = 1)
+int heliolinc_alg_omp_rhs_streaming(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <uint_tracklet> &tracklets, const vector <uint_pair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, const string &outsum_prefix, const string &clust2det_prefix, bool do_dedup)
+{
+  return(heliolinc_alg_omp_rhs_streaming_impl(image_log, detvec, tracklets, trk2det, radhyp, earthpos, config, outsum_prefix, clust2det_prefix, do_dedup));
+}
+
+
+// heliolinc_alg_omp_select: OpenMP heliolinc in the mode chosen by config:
+//   use_smallclust 0|1  full hlclust/longpair records (heliolinc_alg_omp_rhs*) or
+//                       small shortclust/uint_pair records (heliolinc_alg_omp_lowmem*)
+//   use_streaming  0|1  all clusters in RAM, or per-hypothesis files deduplicated at the end
+// Cross-hypothesis duplicates are always removed.  The kernel flags (use_univar,
+// use_dbscan, use_rr, use_taylor, tanveltol, use_smalltrk) are read by the entry
+// point it calls.  Output: {outsum_prefix}.csv and {clust2det_prefix}.csv.
+template <class Trk, class T2D>
+static int heliolinc_alg_omp_select_impl(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <Trk> &tracklets, const vector <T2D> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, const string &outsum_prefix, const string &clust2det_prefix)
+{
+  if(config.use_smallclust) {
+    if(config.use_streaming) return(heliolinc_alg_omp_lowmem_streaming(image_log, detvec, tracklets, trk2det, radhyp, earthpos, config, outsum_prefix, clust2det_prefix, true));
+    return(heliolinc_alg_omp_lowmem(image_log, detvec, tracklets, trk2det, radhyp, earthpos, config, outsum_prefix, clust2det_prefix, true));
+  }
+  if(config.use_streaming) return(heliolinc_alg_omp_rhs_streaming(image_log, detvec, tracklets, trk2det, radhyp, earthpos, config, outsum_prefix, clust2det_prefix, true));
+  return(heliolinc_alg_omp_rhs(image_log, detvec, tracklets, trk2det, radhyp, earthpos, config, outsum_prefix, clust2det_prefix, true));
+}
+
+int heliolinc_alg_omp_select(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, const string &outsum_prefix, const string &clust2det_prefix)
+{
+  return(heliolinc_alg_omp_select_impl(image_log, detvec, tracklets, trk2det, radhyp, earthpos, config, outsum_prefix, clust2det_prefix));
+}
+
+// Small (uint) tracklet storage (use_smalltrk = 1)
+int heliolinc_alg_omp_select(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <uint_tracklet> &tracklets, const vector <uint_pair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, const string &outsum_prefix, const string &clust2det_prefix)
+{
+  return(heliolinc_alg_omp_select_impl(image_log, detvec, tracklets, trk2det, radhyp, earthpos, config, outsum_prefix, clust2det_prefix));
+}
+
+void write_hldetline(ofstream &outstream1, hldet thisdet, int precstandard)
+{
+  if(precstandard==0) {
+    // Print output with lower precision
+    outstream1 << fixed << setprecision(6) << thisdet.MJD << "," << thisdet.RA << "," << thisdet.Dec << ",";
+    outstream1 << fixed << setprecision(3) << thisdet.mag << ",";
+    outstream1 << fixed << setprecision(2) << thisdet.trail_len << "," << thisdet.trail_PA << ",";
+    outstream1 << fixed << setprecision(3) << thisdet.sigmag << ",";
+    outstream1 << fixed << setprecision(3) << thisdet.sig_across << "," << thisdet.sig_along << ",";
+    outstream1 << fixed << setprecision(3) << thisdet.sig_RA << "," << thisdet.sig_Dec << ",";
+    outstream1 << fixed << setprecision(6) << thisdet.radec_covar << ",";
+    outstream1 << thisdet.image << "," << thisdet.idstring << "," << thisdet.band << ",";
+    outstream1 << thisdet.obscode << "," << thisdet.known_obj << ","; 
+    outstream1 << thisdet.det_qual << "," << thisdet.index << "\n"; 
+  }
+  else if(precstandard==2) {
+    // Print output with very high precision.
+    outstream1 << fixed << setprecision(10) << thisdet.MJD << "," << thisdet.RA << "," << thisdet.Dec << ",";
+    outstream1 << fixed << setprecision(6) << thisdet.mag << ",";
+    outstream1 << fixed << setprecision(5) << thisdet.trail_len << "," << thisdet.trail_PA << ",";
+    outstream1 << fixed << setprecision(6) << thisdet.sigmag << ",";
+    outstream1 << fixed << setprecision(6) << thisdet.sig_across << "," << thisdet.sig_along << ",";
+    outstream1 << fixed << setprecision(6) << thisdet.sig_RA << "," << thisdet.sig_Dec << ",";
+    outstream1 << fixed << setprecision(12) << thisdet.radec_covar << ",";
+    outstream1 << thisdet.image << "," << thisdet.idstring << "," << thisdet.band << ",";
+    outstream1 << thisdet.obscode << "," << thisdet.known_obj << ","; 
+    outstream1 << thisdet.det_qual << "," << thisdet.index << "\n"; 
+  }
+  else {
+    // Print output with standard, intermediate precision.
+    outstream1 << fixed << setprecision(7) << thisdet.MJD << "," << thisdet.RA << "," << thisdet.Dec << ",";
+    outstream1 << fixed << setprecision(4) << thisdet.mag << ",";
+    outstream1 << fixed << setprecision(3) << thisdet.trail_len << "," << thisdet.trail_PA << ",";
+    outstream1 << fixed << setprecision(4) << thisdet.sigmag << ",";
+    outstream1 << fixed << setprecision(4) << thisdet.sig_across << "," << thisdet.sig_along << ",";
+    outstream1 << fixed << setprecision(4) << thisdet.sig_RA << "," << thisdet.sig_Dec << ",";
+    outstream1 << fixed << setprecision(8) << thisdet.radec_covar << ",";
+    outstream1 << thisdet.image << "," << thisdet.idstring << "," << thisdet.band << ",";
+    outstream1 << thisdet.obscode << "," << thisdet.known_obj << ","; 
+    outstream1 << thisdet.det_qual << "," << thisdet.index << "\n"; 
+  }
+  // Note option to add other levels of precision here later, if desired.
+}
+
+// print_hldetline: October 15, 2026:
+// Like write_hldetline, but goes to stdout (cout) rather than an output file stream.
+void print_hldetline(hldet thisdet, int precstandard)
+{
+  if(precstandard==0) {
+    // Print output with lower precision
+    cout << fixed << setprecision(6) << thisdet.MJD << "," << thisdet.RA << "," << thisdet.Dec << ",";
+    cout << fixed << setprecision(3) << thisdet.mag << ",";
+    cout << fixed << setprecision(2) << thisdet.trail_len << "," << thisdet.trail_PA << ",";
+    cout << fixed << setprecision(3) << thisdet.sigmag << ",";
+    cout << fixed << setprecision(3) << thisdet.sig_across << "," << thisdet.sig_along << ",";
+    cout << fixed << setprecision(3) << thisdet.sig_RA << "," << thisdet.sig_Dec << ",";
+    cout << fixed << setprecision(6) << thisdet.radec_covar << ",";
+    cout << thisdet.image << "," << thisdet.idstring << "," << thisdet.band << ",";
+    cout << thisdet.obscode << "," << thisdet.known_obj << ","; 
+    cout << thisdet.det_qual << "," << thisdet.index << "\n"; 
+  }
+  else if(precstandard==2) {
+    // Print output with very high precision.
+    cout << fixed << setprecision(10) << thisdet.MJD << "," << thisdet.RA << "," << thisdet.Dec << ",";
+    cout << fixed << setprecision(6) << thisdet.mag << ",";
+    cout << fixed << setprecision(5) << thisdet.trail_len << "," << thisdet.trail_PA << ",";
+    cout << fixed << setprecision(6) << thisdet.sigmag << ",";
+    cout << fixed << setprecision(6) << thisdet.sig_across << "," << thisdet.sig_along << ",";
+    cout << fixed << setprecision(6) << thisdet.sig_RA << "," << thisdet.sig_Dec << ",";
+    cout << fixed << setprecision(12) << thisdet.radec_covar << ",";
+    cout << thisdet.image << "," << thisdet.idstring << "," << thisdet.band << ",";
+    cout << thisdet.obscode << "," << thisdet.known_obj << ","; 
+    cout << thisdet.det_qual << "," << thisdet.index << "\n"; 
+  }
+  else {
+    // Print output with standard, intermediate precision.
+    cout << fixed << setprecision(7) << thisdet.MJD << "," << thisdet.RA << "," << thisdet.Dec << ",";
+    cout << fixed << setprecision(4) << thisdet.mag << ",";
+    cout << fixed << setprecision(3) << thisdet.trail_len << "," << thisdet.trail_PA << ",";
+    cout << fixed << setprecision(4) << thisdet.sigmag << ",";
+    cout << fixed << setprecision(4) << thisdet.sig_across << "," << thisdet.sig_along << ",";
+    cout << fixed << setprecision(4) << thisdet.sig_RA << "," << thisdet.sig_Dec << ",";
+    cout << fixed << setprecision(8) << thisdet.radec_covar << ",";
+    cout << thisdet.image << "," << thisdet.idstring << "," << thisdet.band << ",";
+    cout << thisdet.obscode << "," << thisdet.known_obj << ","; 
+    cout << thisdet.det_qual << "," << thisdet.index << "\n"; 
+  }
+  // Note option to add other levels of precision here later, if desired.
+}
+
+// ================================================================
+// link_purify_chisq_omp (October 2026): first, naive OpenMP version of
+// link_purify_chisq.  Only the per-cluster orbit fitting/purification runs in
+// parallel.  The exact-duplicate cull is link_dedup_omp (the heliolinc_omp_rhs
+// dedup tree), and the final greedy detection-conflict pass is the serial code
+// unchanged.  purify_chisq_one_cluster and the greedy pass are generated
+// verbatim from link_purify_chisq (cout/cerr go to per-cluster buffers).
+#define DIDNOT 0
+
+// link_dedup_omp: link_dedup run through the same bisection tree that
+// heliolinc_omp_rhs uses for its cross-hypothesis dedup (dedup_all_hyps).
+// The input is cut into units of DEDUP_UNIT_CLUSTERS consecutive clusters,
+// which play the role of hypotheses: each unit is deduplicated with link_dedup,
+// then units are merged up the tree (blocks of DEDUP_BLOCK_HYPS units in
+// parallel, merges above them serial).  Like link_dedup, it keeps the
+// highest-metric copy of each detection set and numbers the survivors 0..n-1 in
+// input order.  inclust2det must be sorted by cluster number, as link_dedup's
+// tracklet_lookup already requires.
+static const long DEDUP_UNIT_CLUSTERS = 1024;
+
+int link_dedup_omp(const vector <hlclust> &inclust, const vector  <longpair> &inclust2det, vector <hlclust> &outclust, vector  <longpair> &outclust2det)
+{
+  outclust.clear();
+  outclust2det.clear();
+  long clusternum = inclust.size();
+  if(clusternum<=0) return(0);
+  for(long k=1; k<long(inclust2det.size()); k++) {
+    if(inclust2det[k].i1 < inclust2det[k-1].i1) {
+      cerr << "ERROR: link_dedup_omp: clust2det is not sorted by cluster number at row " << k << "\n";
+      return(5);
+    }
+  }
+  long unitnum = (clusternum + DEDUP_UNIT_CLUSTERS - 1)/DEDUP_UNIT_CLUSTERS;
+  // Unit u: clusters [lo,hi), renumbered from 0, with their clust2det rows.
+  auto load_unit = [&](long u, vector <hlclust> &clust, vector <longpair> &c2d) -> int {
+    long lo = u*DEDUP_UNIT_CLUSTERS;
+    long hi = min(clusternum, lo+DEDUP_UNIT_CLUSTERS);
+    clust.assign(inclust.begin()+lo, inclust.begin()+hi);
+    for(long k=0; k<long(clust.size()); k++) {
+      if(clust[k].clusternum != lo+k) {
+        cerr << "ERROR: cluster index mismatch " << lo+k << " != " << clust[k].clusternum << " at input cluster " << lo+k << "\n";
+        return(5);
+      }
+      clust[k].clusternum = k;
+    }
+    auto first = lower_bound(inclust2det.begin(), inclust2det.end(), lo, [](const longpair &p, long v) { return(p.i1 < v); });
+    auto last = lower_bound(first, inclust2det.end(), hi, [](const longpair &p, long v) { return(p.i1 < v); });
+    c2d.clear();
+    for(auto it=first; it!=last; ++it) c2d.push_back(longpair(it->i1 - lo, it->i2));
+    return(0);
+  };
+  return(dedup_all_hyps(unitnum, &load_unit, outclust, outclust2det));
+}
+
+// One pass of the link_purify_chisq master loop for input cluster inclustct:
+// fit, and if needed purify, the cluster.  On success accepted=1 and the
+// purified cluster and its detection indices are returned in outcluster and
+// outclustind (what the serial code pushes onto holdclust and clustindmat).
+// Returns nonzero on the same fatal errors as the serial loop.
+static int purify_chisq_one_cluster(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <hlclust> &inclust, const vector  <longpair> &inclust2det, const LinkPurifyConfig &config, long inclustct, long inclustnum, int &accepted, hlclust &outcluster, vector <long> &outclustind, ostream &log, ostream &errlog)
+{
+  long i=0;
+  long imnum = image_log.size();
+  long imct=0;
+  double clustmetric = 0.0l;
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  vector <long> clustind;
+  vector <hldet> clusterdets;
+  vector <hldet> clusterdets2;
+  int ptnum,ptct,istimedup,detsused;
+  long rejmax,rejnum;
+  ptnum=ptct=istimedup=detsused=0;
+  point3d onepoint = point3d(0.0L,0.0L,0.0L);
+  vector <point3d> observerpos;
+  vector <point3d> observervel;
+  vector <double> obsMJD, obsRA, obsDec, crosstrack, alongtrack, fitRA, fitDec;
+  vector <double> resid, crossresid, alongresid, orbit, mjdstep, statevec;
+  double geodist1,geodist2, astromrms, chisq;
+  double ftol = FTOL_HERGET_SIMPLEX;
+  double simplex_scale = SIMPLEX_SCALEFAC;
+  double X, Y, Z, dt;
+  X = Y = Z = dt = 0l;
+  point3d startpos = point3d(0.0l,0.0l,0.0l);
+  point3d startvel = point3d(0.0l,0.0l,0.0l);
+  point3d endpos = point3d(0.0l,0.0l,0.0l);
+  point3d endvel = point3d(0.0l,0.0l,0.0l);
+  int is_identical=0;
+  int failed_cluster=0;
+  double maxvel = HERGET_MAXVEL*SOLARDAY/AU_KM; // maxvel has units of AU/day
+  double timediff = 1.0;
+  long daysteps,obsnights;
+  daysteps = obsnights=0;
+
+  accepted=0;
+    failed_cluster=0;
+    onecluster = inclust[inclustct];
+    if(inclustct!=onecluster.clusternum) {
+      errlog << "ERROR: cluster index mismatch " << inclustct << " != " << onecluster.clusternum << " at input cluster " << inclustct << "\n";
+      return(5);
+    }
+    if(onecluster.totRMS<=config.maxrms && onecluster.obsnights>=config.minobsnights && onecluster.uniquepoints>=config.minpointnum) {
+      // This cluster passes the initial cut. Analyze it.
+      // Load a vector with the indices to detvec
+      clustind = {};
+      clustind = tracklet_lookup(inclust2det, onecluster.clusternum); //CHANGED from inclustct to onecluster.clusternum
+      ptnum = clustind.size();
+      if(ptnum!=onecluster.uniquepoints) {
+	errlog << "ERROR: point number mismatch " << ptnum << " != " << onecluster.uniquepoints << " at input cluster " << inclustct << "\n";
+	return(6);
+      }
+      // Load vector of detections for this cluster
+      clusterdets={};
+      for(i=0; i<ptnum; i++) {
+	clusterdets.push_back(detvec[clustind[i]]);
+	clusterdets[i].index=clustind[i]; // Saves indices, to track later sorting.
+      }
+      sort(clusterdets.begin(), clusterdets.end(), early_hldet());
+      // Change added on April 15, 2025: remove exact duplicates
+      clusterdets2 = clusterdets;
+      clusterdets={};
+      clustind = {};
+      ptct=0;
+      clusterdets.push_back(clusterdets2[ptct]);
+      clustind.push_back(clusterdets2[ptct].index);
+      for(ptct=1;ptct<ptnum;ptct++) {
+	i=clusterdets.size()-1;
+	is_identical=0;
+	// Loop back through already-loaded points in clusterdets,
+	// terminating the loop as soon as we either find an identical
+	// line or get out of the regime in the sorted list where
+	// identical lines would be possible.
+	while(i>=0 && fabs(clusterdets[i].MJD-clusterdets2[ptct].MJD)<=IMAGETIMETOL/SOLARDAY && stringnmatch01(clusterdets[i].obscode,clusterdets2[ptct].obscode,3)==0 && clusterdets[i].RA==clusterdets2[ptct].RA && is_identical==0) {
+	  // RA and obscode are already confirmed to be identical; check Dec and MJD to see if point i is truly identical to ptct. 
+	  if(clusterdets[i].MJD==clusterdets2[ptct].MJD && clusterdets[i].Dec==clusterdets2[ptct].Dec) is_identical=1;
+	  i--;
+	}
+	if(is_identical==0) {
+	  // Detection ptct is unique; add it to the operation vector
+	  clusterdets.push_back(clusterdets2[ptct]);
+	  clustind.push_back(clusterdets2[ptct].index);
+	}
+      }
+      // Re-define ptnum based on de-duplicated vector
+      ptnum = clusterdets.size();
+      onecluster.uniquepoints = ptnum;
+      // Finished removing exact duplicates; end new code added April 15.
+      // Check for time duplicates (which now, logically, must differ in RA, Dec, and/or obscode).
+      istimedup=0;
+      for(ptct=1; ptct<ptnum; ptct++) {
+	if(clusterdets[ptct-1].MJD == clusterdets[ptct].MJD && stringnmatch01(clusterdets[ptct-1].obscode,clusterdets[ptct].obscode,3)==0) istimedup=1;
+      }
+	    
+      // Perform orbit fitting using the method of Herget, to get astrometric residuals
+      // Load observational vectors
+      observerpos = observervel = {};
+      obsMJD = obsRA = obsDec = crosstrack = alongtrack = fitRA = fitDec = resid = crossresid = alongresid = orbit = {};
+      for(ptct=0; ptct<ptnum; ptct++) {
+	obsMJD.push_back(clusterdets[ptct].MJD);
+	obsRA.push_back(clusterdets[ptct].RA);
+	obsDec.push_back(clusterdets[ptct].Dec);
+	if(clusterdets[ptct].sig_across <= 0.0 || !isnormal(clusterdets[ptct].sig_across)) {
+	  // No valid cross-track uncertainty given; load dummy value
+	  crosstrack.push_back(SQRT2INV);
+	} else crosstrack.push_back(clusterdets[ptct].sig_across);
+	if(clusterdets[ptct].sig_along <= 0.0 || !isnormal(clusterdets[ptct].sig_along)) {
+	  // No valid cross-track uncertainty given; load dummy value
+	  alongtrack.push_back(SQRT2INV);
+	} else alongtrack.push_back(clusterdets[ptct].sig_along);
+	imct = clusterdets[ptct].image;
+	if(imct>=imnum) {
+	  errlog << "ERROR: attempting to access image " << imct << " of only " << imnum << " available\n";
+	  return(8);
+	}
+	X = image_log[imct].X;
+	Y = image_log[imct].Y;
+	Z = image_log[imct].Z;
+	if(image_log[imct].MJD!=clusterdets[ptct].MJD) {
+	  // A shutter-travel correction must have been applied to the
+	  // detection time relative to the image time. Use the stored
+	  // velocity info from the image log to apply a correction to
+	  // the observer position.
+	  dt = clusterdets[ptct].MJD - image_log[imct].MJD;
+	  if(dt*SOLARDAY > MAX_SHUTTER_CORR) {
+	    errlog << "ERROR: detection vs. image time mismatch of " << dt*SOLARDAY << " seconds.\n";
+	    errlog << "Something has gone wrong: no shutter is that slow\n";
+	    return(4);
+	  }
+	  X += image_log[imct].VX*dt;
+	  Y += image_log[imct].VY*dt;
+	  Z += image_log[imct].VZ*dt;
+	}
+	onepoint = point3d(X,Y,Z);
+	observerpos.push_back(onepoint);
+	onepoint = point3d(image_log[imct].VX,image_log[imct].VY,image_log[imct].VZ);
+	observervel.push_back(onepoint);
+      }
+      // All points now loaded; set up for orbit-fitting
+      if(config.useorbMJD>0 && onecluster.orbit_MJD>0.0) {
+	// A previous execution of link_purify or link_planarity has fit
+	// an orbit and supplied us with a value for MJD at the epoch.
+	// Use state vectors from the orbit fit
+	startpos.x = onecluster.orbitX;
+	startpos.y = onecluster.orbitY;
+	startpos.z = onecluster.orbitZ;
+	startvel.x = onecluster.orbitVX;
+	startvel.y = onecluster.orbitVY;
+	startvel.z = onecluster.orbitVZ;
+	// Use the MJD at the orbit epoch as the reference MJD.
+	// Calculate position at first observation
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, obsMJD[0], endpos, endvel, config.verbose);
+      } else {
+	// Use mean state vectors to estimate positions
+	startpos.x = onecluster.posX;
+	startpos.y = onecluster.posY;
+	startpos.z = onecluster.posZ;
+	startvel.x = onecluster.velX;
+	startvel.y = onecluster.velY;
+	startvel.z = onecluster.velZ;
+	// There used to be a check against solar escape velocity here,
+	// but it isn't needed since we are using the universal variables
+	// formulation, able to handle unbound as well as bound orbits.
+	// Calculate position at first observation
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, obsMJD[0], endpos, endvel, config.verbose);
+      }
+      
+      // Find vector relative to the observer by subtracting off the observer's position.
+      endpos.x -= observerpos[0].x;
+      endpos.y -= observerpos[0].y;
+      endpos.z -= observerpos[0].z;
+      geodist1 = vecabs3d(endpos)/AU_KM;
+      if(config.useorbMJD>0 && onecluster.orbit_MJD>0.0) {
+	// Calculate position at last observation
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.orbit_MJD, startpos, startvel, obsMJD[ptnum-1], endpos, endvel, config.verbose);
+      } else {
+	// Calculate position at last observation
+	Kepler_univ_int(GMSUN_KM3_SEC2, onecluster.reference_MJD, startpos, startvel, obsMJD[ptnum-1], endpos, endvel, config.verbose);
+      }
+      endpos.x -= observerpos[ptnum-1].x;
+      endpos.y -= observerpos[ptnum-1].y;
+      endpos.z -= observerpos[ptnum-1].z;
+      geodist2 = vecabs3d(endpos)/AU_KM;
+      simplex_scale = SIMPLEX_SCALEFAC;
+      if(config.verbose>=2) {
+	log << "Calling Hergetfit_vstar_chisq with dists " << geodist1 << " and " << geodist2 << "\n";
+      }
+      if(config.verbose>=2) {
+	log << "Launching Hergetfit_vstar_chisq for cluster " << inclustct << ":\n";
+	for(i=0;i<=ptnum;i++) {
+	  log << "Point " << i << ": " << obsMJD[i] << " " << obsRA[i] << " "  << obsDec[i] << " " << crosstrack[i] << " " << alongtrack[i] << "\n";
+	}
+      }
+      // Determine if the cluster is worth orbit-fitting with Hergetfit_vstar_chisq
+      failed_cluster=0;
+      maxvel = HERGET_MAXVEL*SOLARDAY/AU_KM; // maxvel has units of AU/day
+      timediff = obsMJD[ptnum-1] - obsMJD[0];
+      if(!isnormal(geodist1) || !isnormal(geodist2) || geodist1<=MINHERGETDIST || geodist2<=MINHERGETDIST || geodist1>=MAXORBDIST_AU || geodist2>=MAXORBDIST_AU) {
+	// The calculated geodist values are out of the (very generous) fitting range allowed by Hergetfit_vstar_chisq
+	failed_cluster=1;
+	if(config.verbose>=1 || inclustct%1000==0) log << "Cluster " << inclustct << " of " << inclustnum << " cannot be fit: out-of-range distances " << geodist1 << " and " << geodist2 << "\n";
+      }
+      if(fabs(geodist2-geodist1)/timediff >= maxvel) {
+	// The radial velocity implied by the calculated geodist values is implausibly high
+	failed_cluster=1;
+	if(config.verbose>=1 || inclustct%1000==0) log << "Cluster " << inclustct << " of " << inclustnum << " cannot be fit: distances " << geodist1 << " and " << geodist2 << " with timediff " << timediff << " imply an unreasonably high velocity of " << fabs(geodist2-geodist1)/timediff*AU_KM/SOLARDAY << " km/sec\n";
+      }
+      if(failed_cluster==0) {
+	if(config.verbose>=2) log << "Cluster " << inclustct << " of " << inclustnum << " is good: ";
+	if(config.verbose>=2) log << "\n";
+	if(config.verbose>=1 || inclustct%1000==0) log << "Fitting cluster " << inclustct << " of " << inclustnum << ": ";
+	chisq = Hergetfit_vstar_chisq(geodist1, geodist2, simplex_scale, config.simptype, ftol, 1, ptnum, observerpos, observervel, obsMJD, obsRA, obsDec, crosstrack, alongtrack, config.ecc_penalty, fitRA, fitDec, crossresid, alongresid, orbit, config.verbose);
+	if(chisq>=LARGERR3) {
+	  errlog << "WARNING: Hergetfit_vstar_chisq() returned error code on input " << geodist1 << ", " << geodist2 << "\n";
+	  if(config.verbose>=1 || inclustct%1000==0) log << "Herget fit failed for cluster " << inclustct << " of " << inclustnum << "\n";
+	  failed_cluster=1;
+	}
+	if(failed_cluster==0) {
+	  // orbit vector contains: semimajor axis [0], eccentricity [1],
+	  // mjd at epoch [2], the state vectors [3-8], and the number of
+	  // orbit evaluations (~iterations) required to reach convergence [9].
+
+	  // Load a residual vector containing the contribution that each point makes to
+	  // the chi-square value. This is needed to enable identification of the worst points.
+	  resid = {};
+	  for(ptct=0;ptct<ptnum;ptct++) resid.push_back(DSQUARE(crossresid[ptct]/crosstrack[ptct]) + DSQUARE(alongresid[ptct]/alongtrack[ptct]));
+	  if(DIDNOT) {
+	    for(ptct=0;ptct<ptnum;ptct++) {
+	      log << "obs,calc,resid,uncert: " << obsMJD[ptct] << " " << obsRA[ptct] << " " << obsDec[ptct] << " " << fitRA[ptct] << " " << fitDec[ptct] << " " << crossresid[ptct] << " " << alongresid[ptct] << " " << crosstrack[ptct] << " " << alongtrack[ptct] << " " << resid[ptct] << "\n";
+	    }
+	  }
+	  chisq /= double(ptnum); // Now it's the reduced chi square value
+	  astromrms = sqrt(chisq); // This gives the actual astrometric RMS in arcseconds if crosstrack
+	  // and alongtrack errors are all 1/sqrt(2.0) arcsec. Otherwise it's a measure of the
+	  // RMS in units of the typical uncertainty.
+	  if(config.verbose>=1 || inclustct%1000==0) log << " astromrms = " << astromrms << " arcsec, dup=" << istimedup << "\n";
+
+	  // If good, just write it out.
+	  if(astromrms <= config.max_astrom_rms && istimedup==0) {
+	    // CLUSTER IS GOOD
+	    if(config.verbose>=1 || inclustct%1000==0) log << "Writing out good cluster " << inclustct << "\n";
+	    // Recalculate clustermetric
+	    if(config.ptpow>=0 && config.nightpow>=0) {
+	      // Calculate the cluster metric normally
+	      clustmetric = intpowD(double(onecluster.uniquepoints),config.ptpow)*intpowD(double(onecluster.obsnights),config.nightpow)*intpowD(onecluster.timespan,config.timepow);
+	    } else {
+	      // New option added April 16, 2025:
+	      // Setting config.ptpow or config.nightpow to any negative value
+	      // triggers a new sort of metric, equal to the products of all
+	      // the observations per night multiplied together.
+	      vector <int> obs_per_night;
+	      int obs_this_night=1;
+	      int first_obs_tonight=0;
+	      for(ptct=1;ptct<ptnum;ptct++) {
+		if((clusterdets[ptct].MJD-clusterdets[ptct-1].MJD)<config.nightstep && (clusterdets[ptct].MJD-clusterdets[first_obs_tonight].MJD)<1.0) {
+		  // Detection ptct is on the same night as ptct-1. Augment the count of observations for this night.
+		  obs_this_night++;
+		} else {
+		  // We've transitioned to a new night. Record the number of observations on the last night
+		  obs_per_night.push_back(obs_this_night);
+		  obs_this_night=1;
+		  first_obs_tonight=ptct;
+		}
+	      }
+	      // Handle a final night
+	      obs_per_night.push_back(obs_this_night);
+	      clustmetric = double(obs_per_night[0]);
+	      for(i=1;i<long(obs_per_night.size());i++) clustmetric*=double(obs_per_night[i]);
+	      clustmetric*=intpowD(onecluster.timespan,config.timepow);
+	    }
+	    // Include the astrometric RMS value in the cluster metric and the RMS vector
+	    onecluster.astromRMS = astromrms; // rmsvec[3]: astrometric rms in arcsec.
+	    onecluster.metric = clustmetric/intpowD(astromrms,config.rmspow); // Under the default value rmspow=2, this is equivalent
+	                                                                      // to dividing by the chi-square value rather than just
+	                                                                      // the astrometric RMS, which has the desireable effect of
+	                                                                      // prioritizing low astrometric error even more.
+	    onecluster.orbit_a = orbit[0]/AU_KM;
+	    onecluster.orbit_e = orbit[1];
+	    statevec={};
+	    for(i=0;i<6;i++) statevec.push_back(orbit[3+i]);
+	    onecluster.orbit_incl = statevec2kep_incl(statevec);
+	    onecluster.orbit_MJD = orbit[2];
+	    onecluster.orbitX = orbit[3];
+	    onecluster.orbitY = orbit[4];
+	    onecluster.orbitZ = orbit[5];
+	    onecluster.orbitVX = orbit[6];
+	    onecluster.orbitVY = orbit[7];
+	    onecluster.orbitVZ = orbit[8];
+	    onecluster.orbit_eval_count = long(round(orbit[9]));
+	    // Return the accepted cluster (serial code: push on to holdclust)
+	    accepted=1;
+	    outcluster=onecluster;
+	    outclustind=clustind;
+	  } else if((astromrms>config.max_astrom_rms || istimedup>0) && ptnum>config.minpointnum) {
+	    // CLUSTER IS NOT GOOD, BUT MIGHT BE FIXABLE
+	    if(config.verbose>=1 || inclustct%1000==0) log << "Trying to purify cluster " << inclustct << " with " << ptnum << " points\n";
+	    // Iteratively remove astrometric outliers, or remove time duplicates
+	    // Setup for the main while loop:
+	    rejnum = 0;
+	    rejmax = config.rejfrac*ptnum;
+	    if(rejmax > ptnum-config.minpointnum) rejmax = ptnum - config.minpointnum;
+	    if(rejmax > config.maxrejnum) rejmax=config.maxrejnum; // Insurance policy against excessive runtimes in pathological cases.
+	    // Main while loop, which iteratively removes outliers
+	    while(rejnum<rejmax && ptnum>config.minpointnum && failed_cluster==0) {
+	      if(astromrms>config.max_astrom_rms) {
+		// The reason the cluster is not good is that the astrometric RMS is too high.
+		// Identify the worst point.
+		int wp=0;
+		double wresid = resid[0];
+		for(i=1;i<ptnum;i++) {
+		  if(resid[i]>wresid) {
+		    wresid=resid[i];
+		    wp = i;
+		  }
+		}
+		// Remove worst point from clusterdets and associated vectors
+		clusterdets.erase(clusterdets.begin()+wp);
+		obsMJD.erase(obsMJD.begin()+wp);
+		obsRA.erase(obsRA.begin()+wp);
+		obsDec.erase(obsDec.begin()+wp);
+		crosstrack.erase(crosstrack.begin()+wp);
+		alongtrack.erase(alongtrack.begin()+wp);
+		observerpos.erase(observerpos.begin()+wp);
+		ptnum--;
+		rejnum++;
+		if(long(obsMJD.size())!=ptnum) {
+		  errlog << "Vector trim count error: " << obsMJD.size() << "!=" << ptnum << "\n";
+		  return(9);
+		}
+		// Worst outlier rejected, ready for new round of orbit-fitting.
+	      } else if(astromrms <= config.max_astrom_rms && istimedup>0) {
+		// The reason the cluster is not good is that it still contains
+		// time-duplicates, even though the astrometric RMS is OK.
+		vector <long> badpoints = {};
+		for(ptct=1; ptct<ptnum; ptct++) {
+		  if(clusterdets[ptct-1].MJD == clusterdets[ptct].MJD && stringnmatch01(clusterdets[ptct-1].obscode,clusterdets[ptct].obscode,3)==0) {
+		    // Points ptct-1 and ptct are time-duplicates.
+		    // Mark for rejection whichever point has the larger RMS.
+		    if(resid[ptct-1]>resid[ptct]) badpoints.push_back(ptct-1);
+		    else badpoints.push_back(ptct);
+		  }
+		}
+		if(badpoints.size()<=0) {
+		  errlog << "ERROR: link_purify in duplicate-rejection loop, found no time-duplicates to reject\n";
+		}
+		// sort the badpoints vector
+		sort(badpoints.begin(), badpoints.end());
+		// Erase the bad points, starting from the end of the vectors
+		for(i=long(badpoints.size()-1); i>=0; i--) {
+		  clusterdets.erase(clusterdets.begin()+badpoints[i]);
+		  obsMJD.erase(obsMJD.begin()+badpoints[i]);
+		  obsRA.erase(obsRA.begin()+badpoints[i]);
+		  obsDec.erase(obsDec.begin()+badpoints[i]);
+		  crosstrack.erase(crosstrack.begin()+badpoints[i]);
+		  alongtrack.erase(alongtrack.begin()+badpoints[i]);
+		  observerpos.erase(observerpos.begin()+badpoints[i]);
+		  ptnum--;
+		  rejnum++;
+		}
+		if(long(obsMJD.size())!=ptnum) {
+		  errlog << "Vector timedupe trim count error: " << obsMJD.size() << "!=" << ptnum << "\n";
+		  return(9);
+		}
+		// All time-duplicates rejected, ready for next round of orbit-fitting.
+	      } else {
+		// This is a weird, illogical case, and probably the reason we got here
+		// has to do with NANs. In any case, the cluster is very unlikely to be
+		// salvageable.
+		if(config.verbose>=1 || inclustct%1000==0) log << "Weird cluster case, REJECTING\n";
+		break; // Break out of the point-culling while loop, abandoning this cluster.
+	      }
+	      // Check if cluster is still valid
+	      // load vector of MJD steps
+	      mjdstep={};
+	      for(long i=1; i<ptnum; i++) mjdstep.push_back(obsMJD[i]-obsMJD[i-1]);
+	      // Count steps large enough to suggest a daytime period between nights.
+	      daysteps=0;	
+	      for(long i=0; i<long(mjdstep.size()); i++) {
+		if(mjdstep[i]>config.nightstep) daysteps++;
+	      }
+	      obsnights = daysteps+1;
+	      // Does cluster pass the criteria for a linked detection?
+	      if(obsnights < config.minobsnights || ptnum < config.minpointnum) {
+		// This cluster became invalid when we rejected the outlier(s).
+		if(config.verbose>=1 || inclustct%1000==0) log << "Cluster became invalid, REJECTING\n";
+		break; // Break out of point-culling while loop, since
+		       // this cluster is unredeemable.
+	      }
+	      // If we get here, rejection of the point didn't make the cluster invalid.
+	      // Begin analysis by loading new clustind vector.
+	      clustind = {};
+	      for(i=0;i<ptnum;i++) clustind.push_back(clusterdets[i].index);
+	      // Check for time-duplicates
+	      istimedup=0;
+	      for(ptct=1; ptct<ptnum; ptct++) {
+		if(clusterdets[ptct-1].MJD == clusterdets[ptct].MJD && stringnmatch01(clusterdets[ptct-1].obscode,clusterdets[ptct].obscode,3)==0) istimedup=1;
+	      }
+	      // Use state vectors from previous fit to estimate beginning and ending geocentric distances.
+	      startpos.x = orbit[3];
+	      startpos.y = orbit[4];
+	      startpos.z = orbit[5];
+	      startvel.x = orbit[6];
+	      startvel.y = orbit[7];
+	      startvel.z = orbit[8];
+	      // Note that orbit[2] is MJD at the epoch.
+	      // Calculate position at first observation
+	      Kepler_univ_int(GMSUN_KM3_SEC2, orbit[2], startpos, startvel, obsMJD[0], endpos, endvel, config.verbose);
+	      // Find vector relative to the observer by subtracting off the observer's position.
+	      endpos.x -= observerpos[0].x;
+	      endpos.y -= observerpos[0].y;
+	      endpos.z -= observerpos[0].z;
+	      geodist1 = vecabs3d(endpos)/AU_KM;
+	      // Calculate position at last observation
+	      Kepler_univ_int(GMSUN_KM3_SEC2, orbit[2], startpos, startvel, obsMJD[ptnum-1], endpos, endvel, config.verbose);
+	      endpos.x -= observerpos[ptnum-1].x;
+	      endpos.y -= observerpos[ptnum-1].y;
+	      endpos.z -= observerpos[ptnum-1].z;
+	      geodist2 = vecabs3d(endpos)/AU_KM;
+	      
+	      maxvel = HERGET_MAXVEL*SOLARDAY/AU_KM; // maxvel has units of AU/day
+	      timediff = obsMJD[ptnum-1] - obsMJD[0];
+	      if(!isnormal(geodist1) || !isnormal(geodist2) || geodist1<=MINHERGETDIST || geodist2<=MINHERGETDIST || geodist1>=MAXORBDIST_AU || geodist2>=MAXORBDIST_AU) {
+		// The calculated geodist values are out of the (very generous) fitting range allowed by Hergetfit_vstar_chisq
+		failed_cluster=1;
+		if(config.verbose>=1 || inclustct%1000==0) log << "Partially culled cluster " << inclustct << " of " << inclustnum << " cannot be fit: out-of-range distances " << geodist1 << " and " << geodist2 << "\n";
+		break;
+	      }
+	      if(fabs(geodist2-geodist1)/timediff >= maxvel) {
+		// The radial velocity implied by the calculated geodist values is implausibly high
+		failed_cluster=1;
+		if(config.verbose>=1 || inclustct%1000==0) log << "Partially culled cluster " << inclustct << " of " << inclustnum << " cannot be fit: distances " << geodist1 << " and " << geodist2 << " with timediff " << timediff << " imply an unreasonably high velocity of " << fabs(geodist2-geodist1)/timediff*AU_KM/SOLARDAY << " km/sec\n";
+		break;
+	      }
+	      simplex_scale = SIMPLEX_SCALEFAC;
+	      if(config.verbose>=2) {
+		log << "Calling Hergetfit_vstar_chisq with dists " << geodist1 << " and " << geodist2 << "\n";
+	      }
+	      if(config.verbose>=2) {
+		log << "Launching Hergetfit_vstar_chisq for cluster " << inclustct << ":\n";
+		for(i=0;i<=ptnum;i++) {
+		  log << "Point " << i << ": " << obsMJD[i] << " " << obsRA[i] << " "  << obsDec[i] << " " << crosstrack[i] << " " << alongtrack[i] << "\n";
+		}
+	      }
+	      if(config.verbose>=1 || inclustct%1000==0) log << "Fitting cluster " << inclustct << " of " << inclustnum << " minus " << rejnum << " outliers: ";
+	      chisq = Hergetfit_vstar_chisq(geodist1, geodist2, simplex_scale, config.simptype, ftol, 1, ptnum, observerpos, observervel, obsMJD, obsRA, obsDec, crosstrack, alongtrack, config.ecc_penalty, fitRA, fitDec, crossresid, alongresid, orbit, config.verbose);
+	      if(chisq>=LARGERR3) {
+		errlog << "WARNING: Hergetfit_vstar_chisq() returned error code on input " << geodist1 << ", " << geodist2 << "\n";
+		if(config.verbose>=1 || inclustct%1000==0) log << "Herget fit failed for partially culled cluster " << inclustct << " of " << inclustnum << "\n";
+		failed_cluster=1;
+		break;
+	      }
+	      // orbit vector contains: semimajor axis [0], eccentricity [1],
+	      // mjd at epoch [2], the state vectors [3-8], and the number of
+	      // orbit evaluations (~iterations) required to reach convergence [9].
+	  
+	      // Load a residual vector containing the contribution that each point makes to
+	      // the chi-square value. This is needed to enable identification of the worst points.
+	      resid = {};
+	      for(ptct=0;ptct<ptnum;ptct++) resid.push_back(DSQUARE(crossresid[ptct]/crosstrack[ptct]) + DSQUARE(alongresid[ptct]/alongtrack[ptct]));
+      
+	      chisq /= double(ptnum); // Now it's the reduced chi square value
+	      astromrms = sqrt(chisq); // This gives the actual astrometric RMS in arcseconds if all the
+	      // crosstrack and alongtrack uncertainties are 1/sqrt(2). Otherwise it's a measure of the
+	      // RMS in units of the typical uncertainty.
+
+	      if(config.verbose>=1 || inclustct%1000==0) log << " astromrms = " << astromrms << " arcsec, dup=" << istimedup << "\n";
+	  
+	      // Check if the astrometric RMS has dropped to the acceptable range,
+	      // and no time-duplicates remain.
+	      if(astromrms <= config.max_astrom_rms && istimedup==0 && failed_cluster==0) {
+		if(config.verbose>=1 || inclustct%1000==0) log << "astromrms success: " << astromrms << " <= " << config.max_astrom_rms << ", dup=" << istimedup << ": writing out purified cluster " << inclustct << "\n";
+		// CLUSTER HAS BEEN SUCCESSFULLY PURIFIED.
+		// The cluster is good and should be written out.
+		// Revise onecluster to reflect the deleted points
+		onecluster.timespan = obsMJD[ptnum-1]-obsMJD[0];
+		onecluster.uniquepoints = ptnum;
+		onecluster.obsnights = obsnights;
+		// Recalculate clustermetric
+		if(config.ptpow>=0 && config.nightpow>=0) {
+		  // Calculate the cluster metric normally
+		  clustmetric = intpowD(double(onecluster.uniquepoints),config.ptpow)*intpowD(double(onecluster.obsnights),config.nightpow)*intpowD(onecluster.timespan,config.timepow);
+		} else {
+		  // New option added April 16, 2025:
+		  // Setting config.ptpow or config.nightpow to any negative value
+		  // triggers a new sort of metric, equal to the products of all
+		  // the observations per night multiplied together.
+		  vector <int> obs_per_night;
+		  int obs_this_night=1;
+		  int first_obs_tonight=0;
+		  for(ptct=1;ptct<ptnum;ptct++) {
+		    if((clusterdets[ptct].MJD-clusterdets[ptct-1].MJD)<config.nightstep && (clusterdets[ptct].MJD-clusterdets[first_obs_tonight].MJD)<1.0) {
+		      // Detection ptct is on the same night as ptct-1. Augment the count of observations for this night.
+		      obs_this_night++;
+		    } else {
+		      // We've transitioned to a new night. Record the number of observations on the last night
+		      obs_per_night.push_back(obs_this_night);
+		      obs_this_night=1;
+		      first_obs_tonight=ptct;
+		    }
+		  }
+		  // Handle a final night
+		  obs_per_night.push_back(obs_this_night);
+		  clustmetric = double(obs_per_night[0]);
+		  for(i=1;i<long(obs_per_night.size());i++) clustmetric*=double(obs_per_night[i]);
+		  clustmetric*=intpowD(onecluster.timespan,config.timepow);
+		}
+		// Include the astrometric RMS value in the cluster metric and the RMS vector
+		onecluster.astromRMS = astromrms; // rmsvec[3]: astrometric rms in arcsec.
+		onecluster.metric = clustmetric/intpowD(astromrms,config.rmspow); // Under the default value rmspow=2, this is equivalent
+	                                                                          // to dividing by the chi-square value rather than just
+	                                                                          // the astrometric RMS, which has the desireable effect of
+	                                                                          // prioritizing low astrometric error even more.
+		onecluster.orbit_a = orbit[0]/AU_KM;
+		onecluster.orbit_e = orbit[1];
+		statevec={};
+		for(i=0;i<6;i++) statevec.push_back(orbit[3+i]);
+		onecluster.orbit_incl = statevec2kep_incl(statevec);
+		onecluster.orbit_MJD = orbit[2];
+		onecluster.orbitX = orbit[3];
+		onecluster.orbitY = orbit[4];
+		onecluster.orbitZ = orbit[5];
+		onecluster.orbitVX = orbit[6];
+		onecluster.orbitVY = orbit[7];
+		onecluster.orbitVZ = orbit[8];
+		onecluster.orbit_eval_count = long(round(orbit[9]));
+		// Return the accepted cluster (serial code: push on to holdclust)
+		accepted=1;
+		outcluster=onecluster;
+		outclustind=clustind;
+		break; // Break out of point-culling while loop, since we have
+	               // successfully purified the cluster.
+	      } // Closes successful purification case.
+	      if((config.verbose>0 || inclustct%1000==0) && (rejnum>=rejmax || ptnum<=config.minpointnum)) log << "Cluster became too small: REJECTED.\n";
+	    } // Closes point-culling while loop.
+	    // Close else if case that astrometric RMS was too high, the cluster needed purifying.
+	  } else if (ptnum<=config.minpointnum) {
+	    if(config.verbose>0 || inclustct%1000==0) log << "Cluster is too small: REJECTED.\n";
+	  }
+	  // Closes case of failed_cluster=1 from initial Herget fit
+	}
+	// Closes case of failed_cluster=1 from unreasonable geodist1 and geodist2 values that could not be fed to Herget fitting
+      }
+    } // Closes initial if case that physical RMS is too high, cluster is rejected immediately.
+  return(0);
+}
+
+int link_purify_chisq_omp(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <hlclust> &inclust1, const vector  <longpair> &inclust2det1, LinkPurifyConfig config, vector <hlclust> &outclust, vector <longpair> &outclust2det)
+{
+  vector <hlclust> inclust;
+  vector  <longpair> inclust2det;
+  long i=0;
+  long detnum = detvec.size();
+  long inclustnum = inclust1.size();
+  long inclustct=0;
+  long clusternum=0;
+  hlclust onecluster = hlclust(0, 0.0l, 0.0l, 0.0l, 0.0l, 0, 0.0l, 0, 0, 0.0l, "NULL", 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0.0l, 0);
+  vector <long> clustind;
+  vector <hldet> clusterdets;
+  vector <hldet> clusterdets2;
+  vector <hlclust> holdclust;
+  int ptnum,ptct,istimedup,detsused;
+  ptnum=ptct=istimedup=detsused=0;
+  vector <point3d> observerpos;
+  vector <point3d> observervel;
+  vector <double> obsMJD, obsRA, obsDec, crosstrack, alongtrack, fitRA, fitDec;
+  vector <double> resid, crossresid, alongresid, orbit, mjdstep, statevec;
+  vector <int> detusedvec = {};
+  vector <vector <long>> clustindmat = {};
+  vector <double_index> metric_index;
+  long clusterct,clusterct2,goodclusternum,daysteps,obsnights;
+  clusterct = clusterct2 = goodclusternum = daysteps = obsnights = 0;
+  double_index dindex = double_index(0l,0);
+  vector <double_index> sortclust;
+  longpair c2d = longpair(0,0);
+  char rating[SHORTSTRINGLEN];
+  int status=1;
+  
+  make_ivec(detnum, detusedvec); // All the entries are guaranteed to be 0.
+
+  // Wipe output arrays
+  holdclust={};
+  clustindmat={};
+  outclust={};
+  outclust2det={};
+ 
+  cout << "Launching link_purify_chisq_omp()\n";
+  if(config.useorbMJD>0) cout << "Epoch-of-orbit MJD will be used as MJDref, if available.\n";
+  else  cout << "Old reference MJD from heliolinc will be used as MJDref\n";
+  cout << "Maximum RMS in km: " << config.maxrms << "\n";
+  if(config.ptpow>=0 && config.nightpow>=0) {
+    cout << "In calculating the cluster quality metric, the number of\nunique points will be raised to the power of " << config.ptpow << " and\n";
+    cout << "the number of unique nights will be raised to the power of " << config.nightpow << ".\n";
+  } else {
+    cout << "Because the cluster-metric exponent for the number of unique points (which is set to " << config.ptpow << ") and/or\n";
+    cout << "the corresponding exponent for the number of unique nights (which is set to " << config.nightpow << ") is negative,\n";
+    cout << "a special (and recommended) case is triggered in which the cluster metric\n";
+    cout << "will be the product of the numbers of unique detections on every night that had some detections.\n";
+    cout << "E.g., an object observed twice per night on three nights would get a metric of 2*2*2 = 8.\n";
+  }
+  cout << "The total timespan will be raised to the power of " << config.timepow << ",\n";
+  cout << "and the astrometric RMS will be raised to the power of (negative) " << config.rmspow << "\n";
+  if(config.verbose>=1) cout << "verbose output has been selected\n";
+  
+  // Cull out exact duplicates using link_dedup_omp() (the heliolinc_omp_rhs dedup tree).
+  status =  link_dedup_omp(inclust1, inclust2det1, inclust, inclust2det);
+  if(status!=0) {
+    cerr << "ERROR: link_dedup_omp returned status " << status << "\n";
+    cerr << "link_purify aborting\n";
+    return(status);
+  }
+  inclustnum = inclust.size();
+  
+  cout << "Duplicate-culled cluster summary vector has length " << inclustnum << ",\n";
+
+  // Parallel master loop over the input clusters.  Each thread keeps the
+  // clusters it accepts; they are put back in input order afterwards, so
+  // holdclust and clustindmat are exactly what the serial loop builds.
+  struct PurifiedCluster {
+    long inclustct;
+    hlclust clust;
+    vector <long> clustind;
+  };
+  int nthreads = 1;
+  #pragma omp parallel
+  {
+    #pragma omp single
+    nthreads = omp_get_num_threads();
+  }
+  cout << "Fitting " << inclustnum << " clusters on " << nthreads << " OpenMP threads\n";
+  double t_fit0 = omp_get_wtime();
+  vector <vector <PurifiedCluster>> thread_kept(nthreads);
+  int global_error = 0;
+  #pragma omp parallel for schedule(dynamic)
+  for(long ct=0; ct<inclustnum; ct++) {
+    if(global_error) continue;
+    ostringstream log, errlog;
+    int accepted=0;
+    PurifiedCluster pc;
+    pc.inclustct = ct;
+    int thread_status = purify_chisq_one_cluster(image_log, detvec, inclust, inclust2det, config, ct, inclustnum, accepted, pc.clust, pc.clustind, log, errlog);
+    if(accepted) thread_kept[omp_get_thread_num()].push_back(pc);
+    if(log.tellp()>0 || errlog.tellp()>0) {
+      #pragma omp critical(purify_chisq_log)
+      {
+        cout << log.str();
+        cerr << errlog.str();
+      }
+    }
+    if(thread_status!=0) {
+      #pragma omp atomic write
+      global_error = thread_status;
+    }
+  }
+  if(global_error) return(global_error);
+  vector <PurifiedCluster> kept;
+  for(int t=0; t<nthreads; t++) {
+    for(long k=0; k<long(thread_kept[t].size()); k++) kept.push_back(thread_kept[t][k]);
+    vector <PurifiedCluster>().swap(thread_kept[t]);
+  }
+  sort(kept.begin(), kept.end(), [](const PurifiedCluster &a, const PurifiedCluster &b) { return(a.inclustct < b.inclustct); });
+  for(long k=0; k<long(kept.size()); k++) {
+    holdclust.push_back(kept[k].clust);
+    clustindmat.push_back(kept[k].clustind);
+  }
+  vector <PurifiedCluster>().swap(kept);
+  ostringstream fittime;
+  fittime << fixed << setprecision(2) << (omp_get_wtime() - t_fit0);
+  cout << "Parallel orbit-fitting wall time: " << fittime.str() << " s\n";
+
+  clusternum = holdclust.size();
+  cout << "Finished loading input clusters: " << clusternum << " out of " << inclustnum << " passed initial screening.\n";
+  
+  // Load just clustermetric values and indices from
+  // clustanvec into metric_index
+  metric_index = {};
+  // Record indices so information won't be lost on sort
+  for(clusterct=0; clusterct<clusternum; clusterct++) {
+    dindex = double_index(holdclust[clusterct].metric,clusterct);
+    metric_index.push_back(dindex);
+  }
+  // Sort metric_index
+  sort(metric_index.begin(), metric_index.end(), lower_double_index());
+  
+  // Loop on clusters, starting with the best (highest metric),
+  // and eliminating duplicates
+  goodclusternum=0;
+  for(clusterct2=clusternum-1; clusterct2>=0; clusterct2--) {
+    // Look up the correct cluster from metric_index
+    clusterct = metric_index[clusterct2].index;
+    inclustct = holdclust[clusterct].clusternum;
+    onecluster = holdclust[clusterct];
+    // Pull out the vector of detection indices from clustindmat
+    clustind = clustindmat[clusterct];
+    ptnum = clustind.size();
+    // Sanity-check the count of unique detections in this cluster
+    if(onecluster.uniquepoints>0 && ptnum!=onecluster.uniquepoints) {
+      cerr << "ERROR: 2nd-stage point number mismatch " << ptnum << " != " << onecluster.uniquepoints << " at input cluster " << inclustct << " (" << clusterct << ")\n";
+      return(7);
+    }
+    // See if all of them are still unused
+    detsused = 0;
+    for(ptct=1; ptct<ptnum; ptct++) {
+      if(detusedvec[clustind[ptct]]!=0) detsused+=1;
+    }
+    if(onecluster.uniquepoints>0 && onecluster.totRMS<=config.maxrms && detsused==0) {
+      // This is a good cluster not already marked as used.
+      goodclusternum++;
+      cout << "Accepted good cluster " << goodclusternum << " with metric " << onecluster.metric << "\n";
+      // See whether cluster is pure or mixed.
+      stringncopy01(rating,"PURE",SHORTSTRINGLEN);
+      for(ptct=1; ptct<ptnum; ptct++) {
+	if(stringnmatch01(detvec[clustind[ptct]].idstring,detvec[clustind[ptct-1]].idstring,SHORTSTRINGLEN) != 0) {
+	  stringncopy01(rating,"MIXED",SHORTSTRINGLEN);
+	}
+      }
+      for(i=0;i<SHORTSTRINGLEN;i++) onecluster.rating[i] = rating[i];
+      //      assert(rating.size() < sizeof(onecluster.rating));
+      //strncpy(onecluster.rating, rating.c_str(), sizeof(onecluster.rating));
+      //onecluster.rating[sizeof(onecluster.rating)-1] = 0;
+
+      // Figure out the time order of cluster points, so we can write them out in order.
+      sortclust = {};
+      for(ptct=0; ptct<ptnum; ptct++) {
+	dindex = double_index(detvec[clustind[ptct]].MJD,clustind[ptct]);
+	sortclust.push_back(dindex);
+	// Also mark each detection as used
+	detusedvec[clustind[ptct]]=1;
+      }
+      sort(sortclust.begin(), sortclust.end(), lower_double_index());
+      // Load new clusternumber for onecluster
+      onecluster.clusternum = outclust.size();
+      // Push back the new, vetted cluster on to outclust
+      outclust.push_back(onecluster);
+      // Push back the detection indices 
+      for(ptct=0; ptct<ptnum; ptct++) {
+	c2d = longpair(onecluster.clusternum,sortclust[ptct].index);
+	outclust2det.push_back(c2d);
+      }
+      // Close if-statement checking if this is a good, non-duplicated cluster
+    }
+    // Close loop on all clusters passing the initial cuts
+  }
+  return(0);
+}
+
+#undef DIDNOT

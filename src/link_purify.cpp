@@ -27,7 +27,7 @@
 
 static void show_usage()
 {
-  cerr << "Usage: link_purify -imgs imfile -pairdet pairdet_file -lflist link_file_list -simptype simplex_type -rejfrac max fraction of points that can be rejected -rejnum max number of points that can be rejected -max_astrom_rms max astrometric RMS (arcsec) -minobsnights min number of distinct nights -minpointnum min number of individual detections -useorbMJD 1=use_orbitMJD_if_available -ptpow point_num_exponent -nightpow night_num_exponent -timepow timespan_exponent -rmspow astrom_rms_exponent -maxrms maxrms -ecc_penalty ecc_penalty -outsum summary_file -clust2det clust2detfile -verbose verbosity\n\nOR, at minimum:\nlink_purify -imgs imfile -pairdet pairdet_file -lflist link_file_list\n";
+  cerr << "Usage: link_purify -imgs imfile -pairdet pairdet_file -lflist link_file_list -simptype simplex_type -rejfrac max fraction of points that can be rejected -rejnum max number of points that can be rejected -max_astrom_rms max astrometric RMS (arcsec) -nightstep nightstep -minobsnights min number of distinct nights -minpointnum min number of individual detections -useorbMJD 1=use_orbitMJD_if_available -ptpow point_num_exponent -nightpow night_num_exponent -timepow timespan_exponent -rmspow astrom_rms_exponent -maxrms maxrms -ecc_penalty ecc_penalty -outsum summary_file -clust2det clust2detfile -verbose verbosity\n\nOR, at minimum:\nlink_purify -imgs imfile -pairdet pairdet_file -lflist link_file_list\n";
 }
 
 int main(int argc, char *argv[])
@@ -156,6 +156,18 @@ int main(int argc, char *argv[])
 	return(1);
       }
     } else if(string(argv[i]) == "-max_astrom_rms" || string(argv[i]) == "-maxastromrms" || string(argv[i]) == "-astrom_rms" || string(argv[i]) == "-arms" || string(argv[i]) == "-marms" || string(argv[i]) == "-max_astrometric_rms" || string(argv[i]) == "--max_arms" ) {
+      if(i+1 < argc) {
+	//There is still something to read;
+	config.max_astrom_rms=stod(argv[++i]);
+	default_max_astrom_rms=0;
+	i++;
+      }
+      else {
+	cerr << "Max astrometric RMS keyword supplied with no corresponding argument\n";
+	show_usage();
+	return(1);
+      }
+    } else if(string(argv[i]) == "-nightstep" || string(argv[i]) == "-night_step" || string(argv[i]) == "-astrom_rms" || string(argv[i]) == "-arms" || string(argv[i]) == "-marms" || string(argv[i]) == "-max_astrometric_rms" || string(argv[i]) == "--max_arms" ) {
       if(i+1 < argc) {
 	//There is still something to read;
 	config.max_astrom_rms=stod(argv[++i]);
@@ -399,7 +411,8 @@ int main(int argc, char *argv[])
 
   // Read paired detection file
   detvec={};
-  status=read_pairdet_file(pairdetfile, detvec, config.verbose);
+  int headerlines=1;
+  status=read_hldet_file(pairdetfile, detvec, headerlines, config.verbose);
   if(status!=0) {
     cerr << "ERROR: could not successfully read paired detection file " << pairdetfile << "\n";
     cerr << "read_pairdet_file returned status = " << status << ".\n";
