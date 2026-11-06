@@ -39158,7 +39158,7 @@ point3d earthpos01(const vector <EarthState> &earthpos, double mjd)
   }
 }
 
-int form_clusters(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
+int form_clusters(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double cluster_minpts, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
 {
   int geobinct = 0;
   long detnum = detvec.size();
@@ -39240,7 +39240,7 @@ int form_clusters(const vector <point6ix2> &allstatevecs, const vector <hldet> &
       }
     }
     if(verbose>=1) cout << "Found " << binstatevecs.size() << " state vectors in geocentric bin from " << georadmin << " to " << georadmax << " AU\n";
-    if(binstatevecs.size()<dbscan_npt) {
+    if(binstatevecs.size()<cluster_minpts) {
       geobinct++;
       continue; // No clusters possible, skip to the next step.
     } else {      
@@ -39264,7 +39264,7 @@ int form_clusters(const vector <point6ix2> &allstatevecs, const vector <hldet> &
 	clustrad = cluster_radius*(clustchangerad/REF_GEODIST);
       }
  
-      long clusternum = DBSCAN_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, dbscan_npt, INTEGERIZING_SCALEFAC, kdclust, verbose);
+      long clusternum = DBSCAN_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, cluster_minpts, INTEGERIZING_SCALEFAC, kdclust, verbose);
       if(verbose>=1) cout << "DBSCAN_6i01 finished, with " << clusternum << " = " << kdclust.size() << " clusters found\n";
       if(clusternum<0) return(8);
       for(clusterct=0; clusterct<long(kdclust.size()); clusterct++) {
@@ -39397,7 +39397,7 @@ int form_clusters(const vector <point6ix2> &allstatevecs, const vector <hldet> &
 // form_clusters_lowmem: July 11, 2025:
 // Uses the DBSCAN algorithm, like form_clusters, but
 // with lower memory output.
-int form_clusters_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
+int form_clusters_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double cluster_minpts, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
 {
   long detnum = detvec.size();
   if(detnum>=UINT_MAX) {
@@ -39480,7 +39480,7 @@ int form_clusters_lowmem(const vector <point6ix2> &allstatevecs, const vector <h
       }
     }
     if(verbose>=1) cout << "Found " << binstatevecs.size() << " state vectors in geocentric bin from " << georadmin << " to " << georadmax << " AU\n";
-    if(binstatevecs.size()<dbscan_npt) {
+    if(binstatevecs.size()<cluster_minpts) {
       geobinct++;
       continue; // No clusters possible, skip to the next step.
     } else {      
@@ -39504,7 +39504,7 @@ int form_clusters_lowmem(const vector <point6ix2> &allstatevecs, const vector <h
 	clustrad = cluster_radius*(clustchangerad/REF_GEODIST);
       }
  
-      long clusternum = DBSCAN_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, dbscan_npt, INTEGERIZING_SCALEFAC, kdclust, verbose);
+      long clusternum = DBSCAN_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, cluster_minpts, INTEGERIZING_SCALEFAC, kdclust, verbose);
       if(verbose>=1) cout << "DBSCAN_6i01 finished, with " << clusternum << " = " << kdclust.size() << " clusters found\n";
       if(clusternum<0) return(8);
       for(clusterct=0; clusterct<long(kdclust.size()); clusterct++) {
@@ -39628,7 +39628,7 @@ int form_clusters_lowmem(const vector <point6ix2> &allstatevecs, const vector <h
   return(0);
 }
 
-int form_clusters_uint(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <uint_pair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
+int form_clusters_uint(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <uint_pair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double cluster_minpts, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
 {
   int geobinct = 0;
   long detnum = detvec.size();
@@ -39710,7 +39710,7 @@ int form_clusters_uint(const vector <point6ix2> &allstatevecs, const vector <hld
       }
     }
     if(verbose>=1) cout << "Found " << binstatevecs.size() << " state vectors in geocentric bin from " << georadmin << " to " << georadmax << " AU\n";
-    if(binstatevecs.size()<dbscan_npt) {
+    if(binstatevecs.size()<cluster_minpts) {
       geobinct++;
       continue; // No clusters possible, skip to the next step.
     } else {      
@@ -39734,7 +39734,7 @@ int form_clusters_uint(const vector <point6ix2> &allstatevecs, const vector <hld
 	clustrad = cluster_radius*(clustchangerad/REF_GEODIST);
       }
  
-      long clusternum = DBSCAN_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, dbscan_npt, INTEGERIZING_SCALEFAC, kdclust, verbose);
+      long clusternum = DBSCAN_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, cluster_minpts, INTEGERIZING_SCALEFAC, kdclust, verbose);
       if(verbose>=1) cout << "DBSCAN_6i01 finished, with " << clusternum << " = " << kdclust.size() << " clusters found\n";
       if(clusternum<0) return(8);
       for(clusterct=0; clusterct<long(kdclust.size()); clusterct++) {
@@ -39868,7 +39868,7 @@ int form_clusters_uint(const vector <point6ix2> &allstatevecs, const vector <hld
 // form_clusters_uint_lowmem: September 15, 2026:
 // Uses the DBSCAN algorithm, like form_clusters_uint, but
 // with lower memory output. 
-int form_clusters_uint_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <uint_pair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
+int form_clusters_uint_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <uint_pair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double cluster_minpts, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
 {
   long detnum = detvec.size();
   if(detnum>=UINT_MAX) {
@@ -39951,7 +39951,7 @@ int form_clusters_uint_lowmem(const vector <point6ix2> &allstatevecs, const vect
       }
     }
     if(verbose>=1) cout << "Found " << binstatevecs.size() << " state vectors in geocentric bin from " << georadmin << " to " << georadmax << " AU\n";
-    if(binstatevecs.size()<dbscan_npt) {
+    if(binstatevecs.size()<cluster_minpts) {
       geobinct++;
       continue; // No clusters possible, skip to the next step.
     } else {      
@@ -39975,7 +39975,7 @@ int form_clusters_uint_lowmem(const vector <point6ix2> &allstatevecs, const vect
 	clustrad = cluster_radius*(clustchangerad/REF_GEODIST);
       }
  
-      long clusternum = DBSCAN_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, dbscan_npt, INTEGERIZING_SCALEFAC, kdclust, verbose);
+      long clusternum = DBSCAN_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, cluster_minpts, INTEGERIZING_SCALEFAC, kdclust, verbose);
       if(verbose>=1) cout << "DBSCAN_6i01 finished, with " << clusternum << " = " << kdclust.size() << " clusters found\n";
       if(clusternum<0) return(8);
       for(clusterct=0; clusterct<long(kdclust.size()); clusterct++) {
@@ -40096,7 +40096,7 @@ int form_clusters_uint_lowmem(const vector <point6ix2> &allstatevecs, const vect
 // form_clusters_kd: December 04, 2023: 
 // Like form_clusters, but uses a simple KD range-query,
 // rather than DBSCAN, to create clusters.
-int form_clusters_kd(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
+int form_clusters_kd(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double cluster_minpts, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
 {
   int geobinct = 0;
   long detnum = detvec.size();
@@ -40177,7 +40177,7 @@ int form_clusters_kd(const vector <point6ix2> &allstatevecs, const vector <hldet
       }
     }
     if(verbose>=1) cout << "Found " << binstatevecs.size() << " state vectors in geocentric bin from " << georadmin << " to " << georadmax << " AU\n";
-    if(binstatevecs.size()<dbscan_npt) {
+    if(binstatevecs.size()<cluster_minpts) {
       geobinct++;
       continue; // No clusters possible, skip to the next step.
     } else {      
@@ -40190,7 +40190,7 @@ int form_clusters_kd(const vector <point6ix2> &allstatevecs, const vector <hldet
       if(verbose>=1) cout << "Created a KD tree with " << kdvec.size() << " branches\n";
 
       kdclust={};
-      long clusternum = KDRclust_6i01(kdvec, cluster_radius*(georadcen/REF_GEODIST)/INTEGERIZING_SCALEFAC, dbscan_npt, INTEGERIZING_SCALEFAC, kdclust, verbose);
+      long clusternum = KDRclust_6i01(kdvec, cluster_radius*(georadcen/REF_GEODIST)/INTEGERIZING_SCALEFAC, cluster_minpts, INTEGERIZING_SCALEFAC, kdclust, verbose);
       if(verbose>=1) cout << "DBSCAN_6i01 finished, with " << clusternum << " = " << kdclust.size() << " clusters found\n";
       if(clusternum<0) return(8);
       for(clusterct=0; clusterct<long(kdclust.size()); clusterct++) {
@@ -40428,7 +40428,7 @@ long blend_vector(vector<long> vec)
 // form_clusters_kd2: December 04, 2023: 
 // Like form_clusters_kd, but does filtering
 // to remove exact duplicates.
-int form_clusters_kd2(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
+int form_clusters_kd2(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double cluster_minpts, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
 {
   long detnum = detvec.size();
   double georadmin=0l;
@@ -40507,7 +40507,7 @@ int form_clusters_kd2(const vector <point6ix2> &allstatevecs, const vector <hlde
       }
     }
     if(verbose>=1) cout << "Found " << binstatevecs.size() << " state vectors in geocentric bin from " << georadmin << " to " << georadmax << " AU\n";
-    if(binstatevecs.size()<dbscan_npt) {
+    if(binstatevecs.size()<cluster_minpts) {
       continue; // No clusters possible, skip to the next step.
     } else {      
       vector <KD_point6ix2> kdvec;
@@ -40522,7 +40522,7 @@ int form_clusters_kd2(const vector <point6ix2> &allstatevecs, const vector <hlde
       cout << "Done with sleep1, q2 = " << q2 << "\n";
       
       vector <KD6i_clust> kdclust;
-      long clusternum = KDRclust_6i01(kdvec, cluster_radius*(georadcen/REF_GEODIST)/INTEGERIZING_SCALEFAC, dbscan_npt, INTEGERIZING_SCALEFAC, kdclust, verbose);
+      long clusternum = KDRclust_6i01(kdvec, cluster_radius*(georadcen/REF_GEODIST)/INTEGERIZING_SCALEFAC, cluster_minpts, INTEGERIZING_SCALEFAC, kdclust, verbose);
       cout << "KDRclust_6i01 finished in geobin " << georadct << ", with " << clusternum << " = " << kdclust.size() << " clusters found\n";
       long clustct,meanct,rmsct,maxct;
       clustct = meanct = rmsct = maxct = 0;
@@ -40692,7 +40692,7 @@ int form_clusters_kd2(const vector <point6ix2> &allstatevecs, const vector <hlde
 // intelligently than form_clusters_kd2, by not
 // invoking the .insert function, which is evil because
 // it's agonizingly slow for long vectors.
-int form_clusters_kd3(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
+int form_clusters_kd3(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double cluster_minpts, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
 {
   long detnum = detvec.size();
   double georadmin=0l;
@@ -40769,7 +40769,7 @@ int form_clusters_kd3(const vector <point6ix2> &allstatevecs, const vector <hlde
       }
     }
     if(verbose>=1) cout << "Found " << binstatevecs.size() << " state vectors in geocentric bin from " << georadmin << " to " << georadmax << " AU\n";
-    if(binstatevecs.size()<dbscan_npt) {
+    if(binstatevecs.size()<cluster_minpts) {
       continue; // No clusters possible, skip to the next step.
     } else {      
       vector <KD_point6ix2> kdvec;
@@ -40781,7 +40781,7 @@ int form_clusters_kd3(const vector <point6ix2> &allstatevecs, const vector <hlde
       if(verbose>=1) cout << "Created a KD tree with " << kdvec.size() << " branches\n";
 
       vector <KD6i_clust> kdclust;
-      long clusternum = KDRclust_6i01(kdvec, cluster_radius*(georadcen/REF_GEODIST)/INTEGERIZING_SCALEFAC, dbscan_npt, INTEGERIZING_SCALEFAC, kdclust, verbose);
+      long clusternum = KDRclust_6i01(kdvec, cluster_radius*(georadcen/REF_GEODIST)/INTEGERIZING_SCALEFAC, cluster_minpts, INTEGERIZING_SCALEFAC, kdclust, verbose);
       cout << "KDRclust_6i01 finished clustering geobin " << georadct << ", with " << clusternum << " = " << kdclust.size() << " clusters found\n";
       if(clusternum<0) return(8);
       
@@ -40971,7 +40971,7 @@ int form_clusters_kd3(const vector <point6ix2> &allstatevecs, const vector <hlde
 // geocentric distance in AU within which the clustering
 // radius will no longer change with geocentric distance.
 // Original behavior is recovered for clustchangerad = 0.0;
-int form_clusters_kd4(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
+int form_clusters_kd4(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double cluster_minpts, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
 {
   long detnum = detvec.size();
   double georadmin=0l;
@@ -41052,7 +41052,7 @@ int form_clusters_kd4(const vector <point6ix2> &allstatevecs, const vector <hlde
       }
     }
     if(verbose>=1) cout  << fixed << setprecision(2) << "Found " << binstatevecs.size() << " state vectors in geocentric bin from " << georadmin << " to " << georadmax << " AU\n";
-    if(binstatevecs.size()<dbscan_npt) {
+    if(binstatevecs.size()<cluster_minpts) {
       continue; // No clusters possible, skip to the next step.
     } else {      
       vector <KD_point6ix2> kdvec;
@@ -41076,7 +41076,7 @@ int form_clusters_kd4(const vector <point6ix2> &allstatevecs, const vector <hlde
 	clustrad = cluster_radius*(clustchangerad/REF_GEODIST);
 	if(verbose>=1) cout << "fixed minimum clustrad = " << clustrad << "\n";
       }
-      long clusternum = KDRclust_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, dbscan_npt, INTEGERIZING_SCALEFAC, kdclust, verbose);
+      long clusternum = KDRclust_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, cluster_minpts, INTEGERIZING_SCALEFAC, kdclust, verbose);
       cout << "KDRclust_6i01 finished clustering geobin " << georadct << ", with " << clusternum << " = " << kdclust.size() << " clusters found\n";
       if(clusternum<0) return(8);
       
@@ -41297,7 +41297,7 @@ int form_clusters_kd4(const vector <point6ix2> &allstatevecs, const vector <hlde
 // form_clusters_kd4_uint: September 08, 2026
 // Like form_clusters_kd4, but uses memory-efficient types
 // for the tracklets and trk2det vectors.
-int form_clusters_kd4_uint(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <uint_pair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
+int form_clusters_kd4_uint(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <uint_pair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double cluster_minpts, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
 {
   long ldetnum = detvec.size();
   if(ldetnum>=UINT_MAX) {
@@ -41385,7 +41385,7 @@ int form_clusters_kd4_uint(const vector <point6ix2> &allstatevecs, const vector 
       }
     }
     if(verbose>=1) cout  << fixed << setprecision(2) << "Found " << binstatevecs.size() << " state vectors in geocentric bin from " << georadmin << " to " << georadmax << " AU\n";
-    if(binstatevecs.size()<dbscan_npt) {
+    if(binstatevecs.size()<cluster_minpts) {
       continue; // No clusters possible, skip to the next step.
     } else {      
       vector <KD_point6ix2> kdvec;
@@ -41409,7 +41409,7 @@ int form_clusters_kd4_uint(const vector <point6ix2> &allstatevecs, const vector 
 	clustrad = cluster_radius*(clustchangerad/REF_GEODIST);
 	if(verbose>=1) cout << "fixed minimum clustrad = " << clustrad << "\n";
       }
-      long clusternum = KDRclust_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, dbscan_npt, INTEGERIZING_SCALEFAC, kdclust, verbose);
+      long clusternum = KDRclust_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, cluster_minpts, INTEGERIZING_SCALEFAC, kdclust, verbose);
       cout << "KDRclust_6i01 finished clustering geobin " << georadct << ", with " << clusternum << " = " << kdclust.size() << " clusters found\n";
       if(clusternum<0) return(8);
       
@@ -41811,7 +41811,7 @@ vector <long> uintvec2long(vector <unsigned int> uivec)
 // form_clusters_kd4_lowmem: July 08, 2024: 
 // Like form_clusters_kd4, but tries to minimize
 // heliolinc's memory usage.
-int form_clusters_kd4_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
+int form_clusters_kd4_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double cluster_minpts, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
 {
   long detnum = detvec.size();
   if(detnum>=UINT_MAX) {
@@ -41894,7 +41894,7 @@ int form_clusters_kd4_lowmem(const vector <point6ix2> &allstatevecs, const vecto
       }
     }
     if(verbose>=1) cout  << fixed << setprecision(2) << "Found " << binstatevecs.size() << " state vectors in geocentric bin from " << georadmin << " to " << georadmax << " AU\n";
-    if(binstatevecs.size()<dbscan_npt) {
+    if(binstatevecs.size()<cluster_minpts) {
       continue; // No clusters possible, skip to the next step.
     } else {      
       vector <KD_point6ix2> kdvec;
@@ -41916,7 +41916,7 @@ int form_clusters_kd4_lowmem(const vector <point6ix2> &allstatevecs, const vecto
 	// for very small geocentric radii.
 	clustrad = cluster_radius*(clustchangerad/REF_GEODIST);
       }
-      long clusternum = KDRclust_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, dbscan_npt, INTEGERIZING_SCALEFAC, kdclust, verbose);
+      long clusternum = KDRclust_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, cluster_minpts, INTEGERIZING_SCALEFAC, kdclust, verbose);
       cout << "KDRclust_6i01 finished clustering geobin " << georadct << ", with " << clusternum << " = " << kdclust.size() << " clusters found\n";
       if(clusternum<0) return(8);
       
@@ -42152,7 +42152,7 @@ int form_clusters_kd4_lowmem(const vector <point6ix2> &allstatevecs, const vecto
 // form_clusters_kd4_uint_lowmem: September 15, 2026:
 // Like form_clusters_kd4, but tries to minimize
 // heliolinc's memory usage. 
-int form_clusters_kd4_uint_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <uint_pair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
+int form_clusters_kd4_uint_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <uint_pair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double cluster_minpts, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
 {
   long detnum = detvec.size();
   if(detnum>=UINT_MAX) {
@@ -42235,7 +42235,7 @@ int form_clusters_kd4_uint_lowmem(const vector <point6ix2> &allstatevecs, const 
       }
     }
     if(verbose>=1) cout  << fixed << setprecision(2) << "Found " << binstatevecs.size() << " state vectors in geocentric bin from " << georadmin << " to " << georadmax << " AU\n";
-    if(binstatevecs.size()<dbscan_npt) {
+    if(binstatevecs.size()<cluster_minpts) {
       continue; // No clusters possible, skip to the next step.
     } else {      
       vector <KD_point6ix2> kdvec;
@@ -42257,7 +42257,7 @@ int form_clusters_kd4_uint_lowmem(const vector <point6ix2> &allstatevecs, const 
 	// for very small geocentric radii.
 	clustrad = cluster_radius*(clustchangerad/REF_GEODIST);
       }
-      long clusternum = KDRclust_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, dbscan_npt, INTEGERIZING_SCALEFAC, kdclust, verbose);
+      long clusternum = KDRclust_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, cluster_minpts, INTEGERIZING_SCALEFAC, kdclust, verbose);
       cout << "KDRclust_6i01 finished clustering geobin " << georadct << ", with " << clusternum << " = " << kdclust.size() << " clusters found\n";
       if(clusternum<0) return(8);
       
@@ -42482,7 +42482,7 @@ int form_clusters_kd4_uint_lowmem(const vector <point6ix2> &allstatevecs, const 
 // than position and velocity*chartimescale at mjdref, as in previous
 // form_clusters programs. Uses a simple KD range-query,
 // rather than DBSCAN, to create clusters.
-int form_clusters_RR(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
+int form_clusters_RR(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double cluster_minpts, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
 {
   long detnum = detvec.size();
   double georadmin=0l;
@@ -42561,7 +42561,7 @@ int form_clusters_RR(const vector <point6ix2> &allstatevecs, const vector <hldet
       }
     }
     if(verbose>=1) cout << fixed << setprecision(2) << "Found " << binstatevecs.size() << " state vectors in geocentric bin from " << georadmin << " to " << georadmax << " AU\n";
-    if(binstatevecs.size()<dbscan_npt) {
+    if(binstatevecs.size()<cluster_minpts) {
       continue; // No clusters possible, skip to the next step.
     } else {      
       vector <KD_point6ix2> kdvec;
@@ -42585,7 +42585,7 @@ int form_clusters_RR(const vector <point6ix2> &allstatevecs, const vector <hldet
 	clustrad = cluster_radius*(clustchangerad/REF_GEODIST);
 	if(verbose>=1) cout << "fixed minimum clustrad = " << clustrad << "\n";
       }
-      long clusternum = KDRclust_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, dbscan_npt, INTEGERIZING_SCALEFAC, kdclust, verbose);
+      long clusternum = KDRclust_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, cluster_minpts, INTEGERIZING_SCALEFAC, kdclust, verbose);
       cout << "KDRclust_6i01 finished clustering geobin " << georadct << ", with " << clusternum << " = " << kdclust.size() << " clusters found\n";
       if(clusternum<0) return(8);
       
@@ -42818,7 +42818,7 @@ int form_clusters_RR(const vector <point6ix2> &allstatevecs, const vector <hldet
 // form_clusters_RR_lowmem: July 11, 2025:
 // Like form_clusters_RR, but uses the uint_pair and the
 // shortclust classes to reduce memory usage.
-int form_clusters_RR_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
+int form_clusters_RR_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double cluster_minpts, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
 {
   long detnum = detvec.size();
   if(detnum>=UINT_MAX) {
@@ -42902,7 +42902,7 @@ int form_clusters_RR_lowmem(const vector <point6ix2> &allstatevecs, const vector
       }
     }
     if(verbose>=1) cout << "Found " << binstatevecs.size() << " state vectors in geocentric bin from " << georadmin << " to " << georadmax << " AU\n";
-    if(binstatevecs.size()<dbscan_npt) {
+    if(binstatevecs.size()<cluster_minpts) {
       continue; // No clusters possible, skip to the next step.
     } else {      
       vector <KD_point6ix2> kdvec;
@@ -42924,7 +42924,7 @@ int form_clusters_RR_lowmem(const vector <point6ix2> &allstatevecs, const vector
 	// for very small geocentric radii.
 	clustrad = cluster_radius*(clustchangerad/REF_GEODIST);
       }
-      long clusternum = KDRclust_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, dbscan_npt, INTEGERIZING_SCALEFAC, kdclust, verbose);
+      long clusternum = KDRclust_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, cluster_minpts, INTEGERIZING_SCALEFAC, kdclust, verbose);
       cout << "KDRclust_6i01 finished clustering geobin " << georadct << ", with " << clusternum << " = " << kdclust.size() << " clusters found\n";
       if(clusternum<0) return(8);
       
@@ -43175,7 +43175,7 @@ int form_clusters_RR_lowmem(const vector <point6ix2> &allstatevecs, const vector
 }
 
 // form_clusters_RR_uint: September 15, 2026
-int form_clusters_RR_uint(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <uint_pair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
+int form_clusters_RR_uint(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <uint_pair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double cluster_minpts, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
 {
   long detnum = detvec.size();
   double georadmin=0l;
@@ -43255,7 +43255,7 @@ int form_clusters_RR_uint(const vector <point6ix2> &allstatevecs, const vector <
       }
     }
     if(verbose>=1) cout << "Found " << binstatevecs.size() << " state vectors in geocentric bin from " << georadmin << " to " << georadmax << " AU\n";
-    if(binstatevecs.size()<dbscan_npt) {
+    if(binstatevecs.size()<cluster_minpts) {
       continue; // No clusters possible, skip to the next step.
     } else {      
       vector <KD_point6ix2> kdvec;
@@ -43277,7 +43277,7 @@ int form_clusters_RR_uint(const vector <point6ix2> &allstatevecs, const vector <
 	// for very small geocentric radii.
 	clustrad = cluster_radius*(clustchangerad/REF_GEODIST);
       }
-      long clusternum = KDRclust_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, dbscan_npt, INTEGERIZING_SCALEFAC, kdclust, verbose);
+      long clusternum = KDRclust_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, cluster_minpts, INTEGERIZING_SCALEFAC, kdclust, verbose);
       cout << "KDRclust_6i01 finished clustering geobin " << georadct << ", with " << clusternum << " = " << kdclust.size() << " clusters found\n";
       if(clusternum<0) return(8);
       
@@ -43516,7 +43516,7 @@ int form_clusters_RR_uint(const vector <point6ix2> &allstatevecs, const vector <
 // form_clusters_RR_uint_lowmem: September 25, 2026
 // Like form_clusters_RR, but uses the uint_pair and the
 // shortclust classes to reduce memory usage. 
-int form_clusters_RR_uint_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <uint_pair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
+int form_clusters_RR_uint_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <uint_pair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double cluster_minpts, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
 {
   long detnum = detvec.size();
   if(detnum>=UINT_MAX) {
@@ -43601,7 +43601,7 @@ int form_clusters_RR_uint_lowmem(const vector <point6ix2> &allstatevecs, const v
       }
     }
     if(verbose>=1) cout << "Found " << binstatevecs.size() << " state vectors in geocentric bin from " << georadmin << " to " << georadmax << " AU\n";
-    if(binstatevecs.size()<dbscan_npt) {
+    if(binstatevecs.size()<cluster_minpts) {
       continue; // No clusters possible, skip to the next step.
     } else {      
       vector <KD_point6ix2> kdvec;
@@ -43623,7 +43623,7 @@ int form_clusters_RR_uint_lowmem(const vector <point6ix2> &allstatevecs, const v
 	// for very small geocentric radii.
 	clustrad = cluster_radius*(clustchangerad/REF_GEODIST);
       }
-      long clusternum = KDRclust_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, dbscan_npt, INTEGERIZING_SCALEFAC, kdclust, verbose);
+      long clusternum = KDRclust_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, cluster_minpts, INTEGERIZING_SCALEFAC, kdclust, verbose);
       cout << "KDRclust_6i01 finished clustering geobin " << georadct << ", with " << clusternum << " = " << kdclust.size() << " clusters found\n";
       if(clusternum<0) return(8);
       
@@ -43874,7 +43874,7 @@ int form_clusters_RR_uint_lowmem(const vector <point6ix2> &allstatevecs, const v
 
 // form_clusters_dbscan_RR: November 04, 2026:
 // Like form_clusters_RR, but uses DBSCAN
-int form_clusters_dbscan_RR(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
+int form_clusters_dbscan_RR(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double cluster_minpts, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
 {
   long detnum = detvec.size();
   double georadmin=0l;
@@ -43948,7 +43948,7 @@ int form_clusters_dbscan_RR(const vector <point6ix2> &allstatevecs, const vector
       }
     }
     if(verbose>=1) cout << fixed << setprecision(2) << "Found " << binstatevecs.size() << " state vectors in geocentric bin from " << georadmin << " to " << georadmax << " AU\n";
-    if(binstatevecs.size()<dbscan_npt) {
+    if(binstatevecs.size()<cluster_minpts) {
       continue; // No clusters possible, skip to the next step.
     } else {      
       vector <KD_point6ix2> kdvec;
@@ -43972,7 +43972,7 @@ int form_clusters_dbscan_RR(const vector <point6ix2> &allstatevecs, const vector
 	clustrad = cluster_radius*(clustchangerad/REF_GEODIST);
 	if(verbose>=1) cout << "fixed minimum clustrad = " << clustrad << "\n";
       }
-      long clusternum = DBSCAN_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, dbscan_npt, INTEGERIZING_SCALEFAC, kdclust, verbose);
+      long clusternum = DBSCAN_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, cluster_minpts, INTEGERIZING_SCALEFAC, kdclust, verbose);
       cout << "DBSCAN_6i01 finished clustering geobin " << georadct << ", with " << clusternum << " = " << kdclust.size() << " clusters found\n";
       if(clusternum<0) return(8);
       for(clusterct=0; clusterct<long(kdclust.size()); clusterct++) {
@@ -44114,7 +44114,7 @@ int form_clusters_dbscan_RR(const vector <point6ix2> &allstatevecs, const vector
 
 // form_clusters_dbscan_RR_lowmem: November 04, 2026:
 // Like form_clusters_RR_lowmem, but uses DBSCAN
-int form_clusters_dbscan_RR_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
+int form_clusters_dbscan_RR_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double cluster_minpts, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
 {
   long detnum = detvec.size();
   if(detnum>=UINT_MAX) {
@@ -44191,7 +44191,7 @@ int form_clusters_dbscan_RR_lowmem(const vector <point6ix2> &allstatevecs, const
       }
     }
     if(verbose>=1) cout << fixed << setprecision(2) << "Found " << binstatevecs.size() << " state vectors in geocentric bin from " << georadmin << " to " << georadmax << " AU\n";
-    if(binstatevecs.size()<dbscan_npt) {
+    if(binstatevecs.size()<cluster_minpts) {
       continue; // No clusters possible, skip to the next step.
     } else {      
       vector <KD_point6ix2> kdvec;
@@ -44215,7 +44215,7 @@ int form_clusters_dbscan_RR_lowmem(const vector <point6ix2> &allstatevecs, const
 	clustrad = cluster_radius*(clustchangerad/REF_GEODIST);
 	if(verbose>=1) cout << "fixed minimum clustrad = " << clustrad << "\n";
       }
-      long clusternum = DBSCAN_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, dbscan_npt, INTEGERIZING_SCALEFAC, kdclust, verbose);
+      long clusternum = DBSCAN_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, cluster_minpts, INTEGERIZING_SCALEFAC, kdclust, verbose);
       cout << "DBSCAN_6i01 finished clustering geobin " << georadct << ", with " << clusternum << " = " << kdclust.size() << " clusters found\n";
       if(clusternum<0) return(8);
       for(clusterct=0; clusterct<long(kdclust.size()); clusterct++) {
@@ -44368,7 +44368,7 @@ int form_clusters_dbscan_RR_lowmem(const vector <point6ix2> &allstatevecs, const
 
 // form_clusters_dbscan_RR_uint: November 04, 2026:
 // Like form_clusters_RR, but uses DBSCAN
-int form_clusters_dbscan_RR_uint(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <uint_pair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
+int form_clusters_dbscan_RR_uint(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <uint_pair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, double chartimescale, vector <hlclust> &outclust, vector <longpair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double cluster_minpts, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
 {
   long detnum = detvec.size();
   double georadmin=0l;
@@ -44442,7 +44442,7 @@ int form_clusters_dbscan_RR_uint(const vector <point6ix2> &allstatevecs, const v
       }
     }
     if(verbose>=1) cout << fixed << setprecision(2) << "Found " << binstatevecs.size() << " state vectors in geocentric bin from " << georadmin << " to " << georadmax << " AU\n";
-    if(binstatevecs.size()<dbscan_npt) {
+    if(binstatevecs.size()<cluster_minpts) {
       continue; // No clusters possible, skip to the next step.
     } else {      
       vector <KD_point6ix2> kdvec;
@@ -44466,7 +44466,7 @@ int form_clusters_dbscan_RR_uint(const vector <point6ix2> &allstatevecs, const v
 	clustrad = cluster_radius*(clustchangerad/REF_GEODIST);
 	if(verbose>=1) cout << "fixed minimum clustrad = " << clustrad << "\n";
       }
-      long clusternum = DBSCAN_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, dbscan_npt, INTEGERIZING_SCALEFAC, kdclust, verbose);
+      long clusternum = DBSCAN_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, cluster_minpts, INTEGERIZING_SCALEFAC, kdclust, verbose);
       cout << "DBSCAN_6i01 finished clustering geobin " << georadct << ", with " << clusternum << " = " << kdclust.size() << " clusters found\n";
       if(clusternum<0) return(8);
       for(clusterct=0; clusterct<long(kdclust.size()); clusterct++) {
@@ -44608,7 +44608,7 @@ int form_clusters_dbscan_RR_uint(const vector <point6ix2> &allstatevecs, const v
 
 // form_clusters_dbscan_uint_RR_lowmem: November 04, 2026:
 // Like form_clusters_RR_uint_lowmem, but uses DBSCAN
-int form_clusters_dbscan_RR_uint_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <uint_pair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double dbscan_npt, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
+int form_clusters_dbscan_RR_uint_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <uint_pair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double cluster_minpts, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
 {
   long detnum = detvec.size();
   if(detnum>=UINT_MAX) {
@@ -44685,7 +44685,7 @@ int form_clusters_dbscan_RR_uint_lowmem(const vector <point6ix2> &allstatevecs, 
       }
     }
     if(verbose>=1) cout << fixed << setprecision(2) << "Found " << binstatevecs.size() << " state vectors in geocentric bin from " << georadmin << " to " << georadmax << " AU\n";
-    if(binstatevecs.size()<dbscan_npt) {
+    if(binstatevecs.size()<cluster_minpts) {
       continue; // No clusters possible, skip to the next step.
     } else {      
       vector <KD_point6ix2> kdvec;
@@ -44709,7 +44709,7 @@ int form_clusters_dbscan_RR_uint_lowmem(const vector <point6ix2> &allstatevecs, 
 	clustrad = cluster_radius*(clustchangerad/REF_GEODIST);
 	if(verbose>=1) cout << "fixed minimum clustrad = " << clustrad << "\n";
       }
-      long clusternum = DBSCAN_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, dbscan_npt, INTEGERIZING_SCALEFAC, kdclust, verbose);
+      long clusternum = DBSCAN_6i01(kdvec, clustrad/INTEGERIZING_SCALEFAC, cluster_minpts, INTEGERIZING_SCALEFAC, kdclust, verbose);
       cout << "DBSCAN_6i01 finished clustering geobin " << georadct << ", with " << clusternum << " = " << kdclust.size() << " clusters found\n";
       if(clusternum<0) return(8);
       for(clusterct=0; clusterct<long(kdclust.size()); clusterct++) {

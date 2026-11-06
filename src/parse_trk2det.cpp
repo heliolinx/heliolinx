@@ -121,10 +121,11 @@ int main(int argc, char *argv[])
 
   // Read paired detection file
   detvec={};
-  status=read_pairdet_file(pairdetfile, detvec, verbose);
+  int headerlines=1;
+  status=read_hldet_file(pairdetfile, detvec, headerlines, verbose);
   if(status!=0) {
     cerr << "ERROR: could not successfully read paired detection file " << pairdetfile << "\n";
-    cerr << "read_pairdet_file returned status = " << status << ".\n";
+    cerr << "read_hldet_file returned status = " << status << ".\n";
    return(1);
   }
   detnum = detvec.size();
@@ -230,16 +231,10 @@ int main(int argc, char *argv[])
 	outstream1 << fixed << setprecision(3) << posSTDEV << ",";
 	outstream1 << fixed << setprecision(6) << poleRA << "," << poleDec << "\n";	
 	// Write the individual points to the output file
-	outstream1 << "#MJD,RA,Dec,mag,trail_len,trail_PA,sigmag,sig_across,sig_along,image,idstring,band,obscode,known_obj,det_qual,trknum,origindex\n";
+	outstream1 << "#MJD,RA,Dec,mag,trail_len,trail_PA,sigmag,sig_across,sig_along,sig_RA,sig_Dec,radec_covar,image,idstring,band,obscode,known_obj,det_qual,origindex\n";
 	for(long j=0; j<long(trackvec.size()); j++) {
-	  outstream1 << fixed << setprecision(7) << trackvec[j].MJD << "," << trackvec[j].RA << "," << trackvec[j].Dec << ",";
-	  outstream1 << fixed << setprecision(4) << trackvec[j].mag << ",";
-	  outstream1 << fixed << setprecision(2) << trackvec[j].trail_len << "," << trackvec[j].trail_PA << ",";
-	  outstream1 << fixed << setprecision(4) << trackvec[j].sigmag << ",";
-	  outstream1 << fixed << setprecision(4) << trackvec[j].sig_across << "," << trackvec[j].sig_along << ",";
-	  outstream1 << trackvec[j].image << "," << trackvec[j].idstring << "," << trackvec[j].band << ",";
-	  outstream1 << trackvec[j].obscode << "," << trackvec[j].known_obj << ",";
-	  outstream1 << trackvec[j].det_qual << "," << trkct << "," << trackvec[j].index << "\n";
+	  int precstandard=1;
+	  write_hldetline(outstream1,trackvec[j],precstandard);
 	}
       }
       trackvec = {}; // Wipe trackvec

@@ -65,6 +65,7 @@ int main(int argc, char *argv[])
   double deg_matchtol = arcsec_matchtol/3600.0;
   vector <long> trkvec;
   longpair onepair = longpair(0,0);
+  int headerlines=1;
   
   if(argc!=8 && argc!=10) {
     cout << "Need argc=8 or 10, got " << argc << "\n";
@@ -152,10 +153,11 @@ int main(int argc, char *argv[])
   }
   cout << "Read " << masterimage.size() << " data lines from image file " << in_image_files[0] << "\n";
   masterpairdets={};
-  status=read_pairdet_file(in_pairdet_files[0], masterpairdets , verbose);
+  headerlines=1;
+  status=read_hldet_file(in_pairdet_files[0], masterpairdets, headerlines, verbose);
   if(status!=0) {
     cerr << "ERROR: could not successfully read paired detection file " << in_pairdet_files[0] << "\n";
-    cerr << "read_pairdet_file returned status = " << status << ".\n";
+    cerr << "read_hldet_file returned status = " << status << ".\n";
    return(1);
   }
   cout << "Read " << masterpairdets.size() << " data lines from paired detection file " << in_pairdet_files[0] << "\n";
@@ -187,10 +189,11 @@ int main(int argc, char *argv[])
     }
     cout << "Read " << inimage.size() << " data lines from image file " << in_image_files[filect] << "\n";
     inpairdets={};
-    status=read_pairdet_file(in_pairdet_files[filect], inpairdets, verbose);
+    headerlines=1;
+    status=read_hldet_file(in_pairdet_files[filect], inpairdets, headerlines, verbose);
     if(status!=0) {
       cerr << "ERROR: could not successfully read paired detection file " << in_pairdet_files[filect] << "\n";
-      cerr << "read_pairdet_file returned status = " << status << ".\n";
+      cerr << "read_hldet_file returned status = " << status << ".\n";
       return(1);
     }
     cout << "Read " << inpairdets.size() << " data lines from paired detection file " << in_pairdet_files[filect] << "\n";
@@ -582,16 +585,10 @@ int main(int argc, char *argv[])
   // Write paired detection file
   cout << "Writing paired detection file " << pairdetfile_out << " with " << masterpairdets.size() << " lines\n";
   outstream1.open(pairdetfile_out);
-  outstream1 << "#MJD,RA,Dec,mag,trail_len,trail_PA,sigmag,sig_across,sig_along,image,idstring,band,obscode,known_obj,det_qual,origindex\n";
+  outstream1 << "#MJD,RA,Dec,mag,trail_len,trail_PA,sigmag,sig_across,sig_along,sig_RA,sig_Dec,radec_covar,image,idstring,band,obscode,known_obj,det_qual,origindex\n";
   for(i=0;i<long(masterpairdets.size());i++) {
-    outstream1 << fixed << setprecision(7) << masterpairdets[i].MJD << "," << masterpairdets[i].RA << "," << masterpairdets[i].Dec << ",";
-    outstream1 << fixed << setprecision(4) << masterpairdets[i].mag << ",";
-    outstream1 << fixed << setprecision(2) << masterpairdets[i].trail_len << "," << masterpairdets[i].trail_PA << ",";
-    outstream1 << fixed << setprecision(4) << masterpairdets[i].sigmag << ",";
-    outstream1 << fixed << setprecision(3) << masterpairdets[i].sig_across << "," << masterpairdets[i].sig_along << ",";
-    outstream1 << masterpairdets[i].image << "," << masterpairdets[i].idstring << "," << masterpairdets[i].band << ",";
-    outstream1 << masterpairdets[i].obscode << "," << masterpairdets[i].known_obj << ","; 
-    outstream1 << masterpairdets[i].det_qual << "," << masterpairdets[i].index << "\n"; 
+    int precstandard=1;
+    write_hldetline(outstream1,masterpairdets[i],precstandard);
   }
   outstream1.close();
 

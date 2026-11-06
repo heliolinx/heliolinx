@@ -13,7 +13,7 @@
 
 static void show_usage()
 {
-  cerr << "Usage: heliovane -imgs imfile -pairdets paired detection file -tracklets tracklet file -trk2det tracklet-to-detection file -mjd mjdref -autorun 1=yes_auto-generate_MJDref -obspos observer_position_file -heliolon heliocentric_longitude_hypothesis_file -clustrad clustrad -clustchangerad min_distance_for_cluster_scaling -npt dbscan_npt -minobsnights minobsnights -mintimespan mintimespan -mingeodist minimum_geocentric_distance -maxgeodist maximum_geocentric_distance -geologstep logarithmic_step_size_for_geocentric_distance_bins -minsunelong minimum_solar_elongation(deg) -maxsunelong maximum_solar_elongation(deg) -min_incid_angle min_angle_of_incidence_between_observer_to_target_vector_and_heliocentric_vane(deg) -maxheliodist maximum_heliocentric_radius(AU) -mingeoobs min_geocentric_dist_at_observation(AU) -minimpactpar min_impact_parameter(km) -useunivar 1_for_univar_0_for_fgfunc -vinf max_v_inf -outsum summary_file -clust2det clust2detfile -verbose verbosity\n";
+  cerr << "Usage: heliovane -imgs imfile -pairdets paired detection file -tracklets tracklet file -trk2det tracklet-to-detection file -mjd mjdref -autorun 1=yes_auto-generate_MJDref -obspos observer_position_file -heliolon heliocentric_longitude_hypothesis_file -clustrad clustrad -clustchangerad min_distance_for_cluster_scaling -npt cluster_minpts -minobsnights minobsnights -mintimespan mintimespan -mingeodist minimum_geocentric_distance -maxgeodist maximum_geocentric_distance -geologstep logarithmic_step_size_for_geocentric_distance_bins -minsunelong minimum_solar_elongation(deg) -maxsunelong maximum_solar_elongation(deg) -min_incid_angle min_angle_of_incidence_between_observer_to_target_vector_and_heliocentric_vane(deg) -maxheliodist maximum_heliocentric_radius(AU) -mingeoobs min_geocentric_dist_at_observation(AU) -minimpactpar min_impact_parameter(km) -useunivar 1_for_univar_0_for_fgfunc -vinf max_v_inf -nightstep nightstep -outsum summary_file -clust2det clust2detfile -verbose verbosity\n";
   cerr << "\nor, at minimum:\n\n";
   cerr << "heliovane -imgs imfile -pairdets paired detection file -tracklets tracklet file -trk2det tracklet-to-detection file -obspos observer_position_file -heliolon heliocentric_longitude_hypothesis_file\n";
   cerr << "\nNote that the minimum invocation leaves some things set to defaults\n";
@@ -45,6 +45,7 @@ int main(int argc, char *argv[])
   default_mingeodist = default_maxgeodist = default_geologstep = default_clust2detfile = default_sumfile = 1;
   default_mingeoobs = default_minimpactpar = 1;
   default_use_univar = default_max_v_inf = 1;
+  int default_nightstep = 1;
   ofstream outstream1;
   long i=0;
   long clustct=0;
@@ -169,10 +170,10 @@ int main(int argc, char *argv[])
 	show_usage();
 	return(1);
       }
-    } else if(string(argv[i]) == "-npt" || string(argv[i]) == "-npoints" || string(argv[i]) == "-minpts" || string(argv[i]) == "-np" || string(argv[i]) == "--npt" || string(argv[i]) == "--dbscan_npt" || string(argv[i]) == "--DBSCANnpt") {
+    } else if(string(argv[i]) == "-npt" || string(argv[i]) == "-npoints" || string(argv[i]) == "-minpts" || string(argv[i]) == "-np" || string(argv[i]) == "--npt" || string(argv[i]) == "--cluster_minpts" || string(argv[i]) == "--DBSCANnpt") {
       if(i+1 < argc) {
 	//There is still something to read;
-	config.dbscan_npt=stoi(argv[++i]);
+	config.cluster_minpts=stoi(argv[++i]);
 	default_npt = 0;
 	i++;
       }
@@ -289,6 +290,18 @@ int main(int argc, char *argv[])
 	show_usage();
 	return(1);
       }
+    } else if(string(argv[i]) == "-nightstep" || string(argv[i]) == "-night_step" || string(argv[i]) == "-trackdiv") {
+      if(i+1 < argc) {
+	//There is still something to read;
+	config.nightstep=stod(argv[++i]);
+	default_nightstep = 0;
+	i++;
+      }
+      else {
+	cerr << "Nighstep keyword supplied with no corresponding argument\n";
+	show_usage();
+	return(1);
+      }
     } else if(string(argv[i]) == "-minsunelong" || string(argv[i]) == "-minelong" || string(argv[i]) == "-minse") {
       if(i+1 < argc) {
 	//There is still something to read;
@@ -388,7 +401,7 @@ int main(int argc, char *argv[])
       i++;
     }
   }
-  if(config.minobsnights > config.dbscan_npt) config.minobsnights = config.dbscan_npt; // Otherwise the low setting of dbscan_npt is not operative.
+  if(config.minobsnights > config.cluster_minpts) config.minobsnights = config.cluster_minpts; // Otherwise the low setting of cluster_minpts is not operative.
 
 
   if(argc<11)
@@ -447,8 +460,8 @@ int main(int argc, char *argv[])
   else cout << "input clustering radius " << config.clustrad << "km\n";
   if(default_clustchangerad==1) cout << "Defaulting to min. geocentric distance for cluster scaling = " << config.clustchangerad << "AU\n";
   else cout << "Min. geocentric distance for cluster scaling is " << config.clustchangerad << "AU\n";
-  if(default_npt==1) cout << "Defaulting to DBSCAN npt (min. no. of tracklets in a linkage) = " << config.dbscan_npt << "\n";
-  else cout << "input DBSCAN npt (min. no. of tracklets in a linkage) is " << config.dbscan_npt << "\n";
+  if(default_npt==1) cout << "Defaulting to DBSCAN npt (min. no. of tracklets in a linkage) = " << config.cluster_minpts << "\n";
+  else cout << "input DBSCAN npt (min. no. of tracklets in a linkage) is " << config.cluster_minpts << "\n";
   if(default_minobsnights==1) cout << "Defaulting to minimum number of unique nights = " << config.minobsnights << "\n";
   else cout << "minimum number of unique nights is " << config.minobsnights << "\n";
   if(default_mintimespan==1) cout << "Defaulting to minimum time span for a linkage = " << config.mintimespan << " days\n";
@@ -468,6 +481,8 @@ int main(int argc, char *argv[])
   else cout << "Using f and g functions for Keplerian integration\n";
   if(default_max_v_inf==1) cout << "Defaulting to maximum v_inf relative to the sun = " << config.max_v_inf << " km/sec\n";
   else cout << "Maximum v_inf relative to the sun is " << config.max_v_inf << " km\n";
+  if(default_nightstep==1) cout << "Defaulting to nightstep = " << config.nightstep << " days\n";
+  else cout << "Nightstep is " << config.nightstep << " days\n";
   if(default_minsunelong==1) cout << "Defaulting to minimum solar elongation = " << config.minsunelong << " deg\n";
   else cout << "Minimum solar elongation is " << config.minsunelong << " deg\n";
   if(default_maxsunelong==1) cout << "Defaulting to maximum solar elongation = " << config.maxsunelong << " deg\n";
@@ -503,10 +518,11 @@ int main(int argc, char *argv[])
   }
   
   detvec={};
-  status=read_pairdet_file(pairdetfile, detvec, config.verbose);
+  int headerlines = 1;
+  status=read_hldet_file(pairdetfile, detvec, headerlines, config.verbose);
   if(status!=0) {
     cerr << "ERROR: could not successfully read paired detection file " << pairdetfile << "\n";
-    cerr << "read_pairdet_file returned status = " << status << ".\n";
+    cerr << "read_hldet_file returned status = " << status << ".\n";
    return(1);
   }
   cout << "Read " << detvec.size() << " data lines from paired detection file " << pairdetfile << "\n";
@@ -570,7 +586,7 @@ int main(int argc, char *argv[])
   
   outstream1.open(sumfile);
   cout << "Writing " << outclust.size() << " lines to output cluster-summary file " << sumfile << "\n";
-  outstream1 << "#clusternum,posRMS,velRMS,totRMS,astromRMS,pairnum,timespan,uniquepoints,obsnights,metric,rating,reference_MJD,heliohyp0,heliohyp1,heliohyp2,posX,posY,posZ,velX,velY,velZ,orbit_a,orbit_e,orbit_MJD,orbitX,orbitY,orbitZ,orbitVX,orbitVY,orbitVZ,orbit_eval_count\n";
+  outstream1 << "#clusternum,posRMS,velRMS,totRMS,astromRMS,pairnum,timespan,uniquepoints,obsnights,metric,rating,reference_MJD,heliohyp0,heliohyp1,heliohyp2,posX,posY,posZ,velX,velY,velZ,orbit_a,orbit_e,orbit_incl,orbit_MJD,orbitX,orbitY,orbitZ,orbitVX,orbitVY,orbitVZ,orbit_eval_count\n";
   for(clustct=0 ; clustct<long(outclust.size()); clustct++) {
     outstream1 << fixed << setprecision(3) << outclust[clustct].clusternum << "," << outclust[clustct].posRMS << "," << outclust[clustct].velRMS << "," << outclust[clustct].totRMS << ",";
     outstream1 << fixed << setprecision(4) << outclust[clustct].astromRMS << ",";
@@ -578,7 +594,7 @@ int main(int argc, char *argv[])
     outstream1 << fixed << setprecision(6) << outclust[clustct].reference_MJD << "," << outclust[clustct].heliohyp0 << "," << outclust[clustct].heliohyp1 << "," << outclust[clustct].heliohyp2 << ",";
     outstream1 << fixed << setprecision(1) << outclust[clustct].posX << "," << outclust[clustct].posY << "," << outclust[clustct].posZ << ",";
     outstream1 << fixed << setprecision(4) << outclust[clustct].velX << "," << outclust[clustct].velY << "," << outclust[clustct].velZ << ",";
-    outstream1 << fixed << setprecision(6) << outclust[clustct].orbit_a << "," << outclust[clustct].orbit_e << "," << outclust[clustct].orbit_MJD << ",";
+    outstream1 << fixed << setprecision(6) << outclust[clustct].orbit_a << "," << outclust[clustct].orbit_e << "," << outclust[clustct].orbit_incl << "," << outclust[clustct].orbit_MJD << ",";
     outstream1 << fixed << setprecision(1) << outclust[clustct].orbitX << "," << outclust[clustct].orbitY << "," << outclust[clustct].orbitZ << ",";
     outstream1 << fixed << setprecision(4) << outclust[clustct].orbitVX << "," << outclust[clustct].orbitVY << "," << outclust[clustct].orbitVZ << "," << outclust[clustct].orbit_eval_count << "\n";
   }

@@ -779,7 +779,7 @@ int main(int argc, char *argv[])
   status=read_hldet_file(pairdetfile, detvec, headerlines, config.verbose);
   if(status!=0) {
     cerr << "ERROR: could not successfully read paired detection file " << pairdetfile << "\n";
-    cerr << "read_pairdet_file returned status = " << status << ".\n";
+    cerr << "read_hldet_file returned status = " << status << ".\n";
    return(1);
   }
   cout << "Read " << detvec.size() << " data lines from paired detection file " << pairdetfile << "\n";
