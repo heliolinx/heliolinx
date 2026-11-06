@@ -81,15 +81,17 @@ int main(int argc, char *argv[])
   int bandcol = BANDCOL;
   int obscodecol = OBSCODECOL;
   int trail_len_col, trail_PA_col, sigmag_col, sig_across_col, sig_along_col, known_obj_col, det_qual_col;
+  int sig_RA_col, sig_Dec_col, radec_covar_col;
   trail_len_col = trail_PA_col = sigmag_col = sig_across_col = -1;
   sig_along_col = known_obj_col = det_qual_col = -1;
+  sig_RA_col = sig_Dec_col = radec_covar_col = -1;
   int id_labcol = ID_LABCOL;
   int mjd_labcol = MJD_LABCOL;
   int ra_labcol = RA_LABCOL;
   int dec_labcol = DEC_LABCOL;
   int colformatfile1_set=0;
   int colformatfile2_set=0;
-
+  
   if(argc<7) {
     show_usage();
     return(1);
@@ -228,48 +230,58 @@ int main(int argc, char *argv[])
 	return(1);
       }
       colreadct=0;
+      colreadct=0;
       while(!instream1.eof() && !instream1.fail() && !instream1.bad() && colreadct<COLS_TO_READ) {
 	instream1 >> stest;
-	if(stest == "MJDCOL") {
+	if(stest == "MJDCOL" || stest == "MJD_COL") {
 	  instream1 >> mjdcol;
 	  if(!instream1.eof() && !instream1.fail() && !instream1.bad()) colreadct++;
-	} else if(stest == "RACOL") {
+	} else if(stest == "RACOL" || stest == "RA_COL") {
 	  instream1 >> racol;
 	  if(!instream1.eof() && !instream1.fail() && !instream1.bad()) colreadct++;
-	} else if(stest == "DECCOL") {
+	} else if(stest == "DECCOL" || stest == "DEC_COL") {
 	  instream1 >> deccol;
 	  if(!instream1.eof() && !instream1.fail() && !instream1.bad()) colreadct++;
-	} else if(stest == "MAGCOL") {
+	} else if(stest == "MAGCOL" || stest == "MAG_COL") {
 	  instream1 >> magcol;
 	  if(!instream1.eof() && !instream1.fail() && !instream1.bad()) colreadct++;
-	} else if(stest == "TRAILLENCOL") {
+	} else if(stest == "TRAILLENCOL" || stest == "TRAILLEN_COL"  || stest == "TRAIL_LENCOL" || stest == "TRAIL_LEN_COL") {
 	  instream1 >> trail_len_col;
 	  if(!instream1.eof() && !instream1.fail() && !instream1.bad()) colreadct++;
-	} else if(stest == "TRAILPACOL") {
+	} else if(stest == "TRAILPACOL" || stest == "TRAILPA_COL" || stest == "TRAIL_PACOL" || stest == "TRAIL_PA_COL") {
 	  instream1 >> trail_PA_col;
 	  if(!instream1.eof() && !instream1.fail() && !instream1.bad()) colreadct++;
-	} else if(stest == "SIGMAGCOL") {
+	} else if(stest == "SIGMAGCOL" || stest == "SIGMAG_COL" || stest == "SIG_MAGCOL" || stest == "SIG_MAG_COL") {
 	  instream1 >> sigmag_col;
 	  if(!instream1.eof() && !instream1.fail() && !instream1.bad()) colreadct++;
-	} else if(stest == "SIGACROSSCOL") {
+	} else if(stest == "SIGACROSSCOL" || stest == "SIG_ACROSSCOL" || stest == "SIGACROSS_COL" || stest == "SIG_ACROSS_COL") {
 	  instream1 >> sig_across_col;
 	  if(!instream1.eof() && !instream1.fail() && !instream1.bad()) colreadct++;
-	} else if(stest == "SIGALONGCOL") {
+	} else if(stest == "SIGALONGCOL" || stest == "SIG_ALONGCOL" || stest == "SIGALONG_COL" || stest == "SIG_ALONG_COL") {
 	  instream1 >> sig_along_col;
 	  if(!instream1.eof() && !instream1.fail() && !instream1.bad()) colreadct++;
-	} else if (stest == "IDCOL") {
+	} else if(stest == "SIGRACOL" || stest == "SIG_RACOL" || stest == "SIGRA_COL" || stest == "SIG_RA_COL") {
+	  instream1 >> sig_RA_col;
+	  if(!instream1.eof() && !instream1.fail() && !instream1.bad()) colreadct++;
+	} else if(stest == "SIGDECCOL" || stest == "SIG_DECCOL" || stest == "SIGDEC_COL" || stest == "SIG_DEC_COL") {
+	  instream1 >> sig_Dec_col;
+	  if(!instream1.eof() && !instream1.fail() && !instream1.bad()) colreadct++;
+	} else if(stest == "RADEC_COVARCOL" || stest == "RADECCOVARCOL" || stest == "RADEC_COVAR_COL") {
+	  instream1 >> radec_covar_col;
+	  if(!instream1.eof() && !instream1.fail() && !instream1.bad()) colreadct++;
+	} else if (stest == "IDCOL" || stest == "ID_COL") {
 	  instream1 >> idcol;
 	  if(!instream1.eof() && !instream1.fail() && !instream1.bad()) colreadct++;
-	} else if(stest == "BANDCOL") {
+	} else if(stest == "BANDCOL" || stest == "BAND_COL") {
 	  instream1 >> bandcol;
 	  if(!instream1.eof() && !instream1.fail() && !instream1.bad()) colreadct++;
-	} else if(stest == "OBSCODECOL") {
+	} else if(stest == "OBSCODECOL" || stest == "OBSCODE_COL" || stest == "OBS_CODE_COL") {
 	  instream1 >> obscodecol;
 	  if(!instream1.eof() && !instream1.fail() && !instream1.bad()) colreadct++;
-	} else if(stest == "KNOWNOBJCOL") {
+	} else if(stest == "KNOWNOBJCOL" || stest == "KNOWNOBJ_COL" || stest == "KNOWN_OBJ_COL") {
 	  instream1 >> known_obj_col;
 	  if(!instream1.eof() && !instream1.fail() && !instream1.bad()) colreadct++;
-	} else if(stest == "DETQUALCOL") {
+	} else if(stest == "DETQUALCOL" || stest == "DETQUAL_COL" || stest == "DET_QUAL_COL") {
 	  instream1 >> det_qual_col;
 	  if(!instream1.eof() && !instream1.fail() && !instream1.bad()) colreadct++;
 	} else {
@@ -318,7 +330,7 @@ int main(int argc, char *argv[])
   
   // Read input unlabeled file
   unlabeled_dets={};
-  status = read_detection_filemt2(unlabeled_file, mjdcol, racol, deccol, magcol, idcol, bandcol, obscodecol, trail_len_col, trail_PA_col, sigmag_col, sig_across_col, sig_along_col, known_obj_col, det_qual_col, unlabeled_dets, verbose, 1);  
+  status = read_detection_filemt2(unlabeled_file, mjdcol, racol, deccol, magcol, idcol, bandcol, obscodecol, trail_len_col, trail_PA_col, sigmag_col, sig_across_col, sig_along_col, sig_RA_col, sig_Dec_col, radec_covar_col, known_obj_col, det_qual_col, unlabeled_dets, verbose, 1);  
   if(status==0) { 
     cout << "Input file " << unlabeled_file << " read successfully to the end.\n";
   }
@@ -495,16 +507,10 @@ int main(int argc, char *argv[])
   }
   
   outstream1.open(outfile);
-  outstream1 << "#MJD,RA,Dec,mag,trail_len,trail_PA,sigmag,sig_across,sig_along,image,idstring,band,obscode,known_obj,det_qual,origindex\n";
-  for(ulct=0;ulct<ulnum;ulct++) {
-    outstream1 << fixed << setprecision(7) << unlabeled_dets[ulct].MJD << "," << unlabeled_dets[ulct].RA << "," << unlabeled_dets[ulct].Dec << ",";
-    outstream1 << fixed << setprecision(4) << unlabeled_dets[ulct].mag << ",";
-    outstream1 << fixed << setprecision(2) << unlabeled_dets[ulct].trail_len << "," << unlabeled_dets[ulct].trail_PA << ",";
-    outstream1 << fixed << setprecision(4) << unlabeled_dets[ulct].sigmag << ",";
-    outstream1 << fixed << setprecision(3) << unlabeled_dets[ulct].sig_across << "," << unlabeled_dets[ulct].sig_along << ",";
-    outstream1 << unlabeled_dets[ulct].image << "," << unlabeled_dets[ulct].idstring << "," << unlabeled_dets[ulct].band << ",";
-    outstream1 << unlabeled_dets[ulct].obscode << "," << unlabeled_dets[ulct].known_obj << ","; 
-    outstream1 << unlabeled_dets[ulct].det_qual << "," << unlabeled_dets[ulct].index << "\n"; 
+  outstream1 << "#MJD,RA,Dec,mag,trail_len,trail_PA,sigmag,sig_across,sig_along,sig_RA,sig_Dec,radec_covar,image,idstring,band,obscode,known_obj,det_qual,origindex\n";
+  for(i=0;i<long(unlabeled_dets.size());i++) {
+    int precstandard=1;
+    write_hldetline(outstream1,unlabeled_dets[i],precstandard);
   }
   outstream1.close();
 
