@@ -84,7 +84,7 @@ void fill_struct(longpair & out, longpair const& in) {
     out.i2 = in.i2;
 }
 
-void fill_struct(uint_pair & out, uint_pair const& in) {
+void fill_struct(uint_pair & out, longpair const& in) {
     out.i1 = in.i1;
     out.i2 = in.i2;
 }
@@ -191,6 +191,29 @@ std::vector<uint_tracklet> ndarray_uint_tracklet_to_vec(py::array_t<tracklet> py
     // Place the numpy data into the c++ type
     for (long int i = 0; i < data_ref.size(); i++) {
         uint_tracklet data_out;
+        auto &data_in = data_ref[i];
+
+        fill_struct(data_out, data_in);
+
+        vec.push_back(data_out);
+    }
+
+    return vec;
+}
+
+std::vector<uint_pair> ndarray_uint_pair_to_vec(py::array_t<longpair> py_vec) {
+    py::dtype expected_dtype = py::dtype::of<longpair>();
+    if (!py_vec.dtype().is(expected_dtype)) {
+	throw std::runtime_error("Array dtype does not match expected type 'foo'. See mjuric@astro.washington.edu for more details");
+    }
+    std::vector<uint_pair> vec = {};
+
+    // Get a reference to the py_array data
+    auto data_ref = py_vec.unchecked();
+
+    // Place the numpy data into the c++ type
+    for (long int i = 0; i < data_ref.size(); i++) {
+        uint_pair data_out;
         auto &data_in = data_ref[i];
 
         fill_struct(data_out, data_in);
@@ -395,7 +418,7 @@ std::tuple<py::array, py::array>heliolinc(
   std::vector <hlimage> image_log = ndarray_to_vec(py_imglog);
   std::vector <hldet> detvec = ndarray_to_vec(py_detvec);
   std::vector <uint_tracklet> tracklets = ndarray_uint_tracklet_to_vec(py_tracklets);
-  std::vector <uint_pair> trk2det = ndarray_to_vec(py_trk2det);
+  std::vector <uint_pair> trk2det = ndarray_uint_pair_to_vec(py_trk2det);
   std::vector <hlradhyp> radhyp = ndarray_to_vec(py_radhyp);
   std::vector <EarthState> earthpos = ndarray_to_vec(earthin);
   int status = 0;
