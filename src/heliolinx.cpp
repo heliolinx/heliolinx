@@ -599,7 +599,7 @@ PYBIND11_MODULE(heliolinx, m) {
       .def_readwrite("autorun", &HeliolincConfig::autorun)
       .def_readwrite("clustrad", &HeliolincConfig::clustrad) 
       .def_readwrite("clustchangerad", &HeliolincConfig::clustchangerad) 
-      .def_readwrite("dbscan_npt", &HeliolincConfig::dbscan_npt) 
+      .def_readwrite("cluster_minpts", &HeliolincConfig::cluster_minpts) 
       .def_readwrite("minobsnights", &HeliolincConfig::minobsnights) 
       .def_readwrite("mintimespan", &HeliolincConfig::mintimespan)
       .def_readwrite("mingeodist", &HeliolincConfig::mingeodist)
