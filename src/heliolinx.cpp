@@ -179,18 +179,18 @@ std::vector<T> ndarray_to_vec(py::array_t<T> py_vec) {
 
 
 std::vector<uint_tracklet> ndarray_uint_tracklet_to_vec(py::array_t<tracklet> py_vec) {
-    py::dtype expected_dtype = py::dtype::of<T>();
+    py::dtype expected_dtype = py::dtype::of<tracklet>();
     if (!py_vec.dtype().is(expected_dtype)) {
 	throw std::runtime_error("Array dtype does not match expected type 'foo'. See mjuric@astro.washington.edu for more details");
     }
-    std::vector<T> vec = {};
+    std::vector<uint_tracklet> vec = {};
 
     // Get a reference to the py_array data
     auto data_ref = py_vec.unchecked();
 
     // Place the numpy data into the c++ type
     for (long int i = 0; i < data_ref.size(); i++) {
-        T data_out;
+        uint_tracklet data_out;
         auto &data_in = data_ref[i];
 
         fill_struct(data_out, data_in);
