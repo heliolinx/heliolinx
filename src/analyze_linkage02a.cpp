@@ -644,7 +644,8 @@ int main(int argc, char *argv[])
   
   // Read input observation file.
   detvec={};
-  status=read_hldet_file(obsfile, detvec, verbose);
+  int headerlines = 0;
+  status=read_hldet_file(obsfile, detvec, headerlines, verbose);
   if(status!=0) {
     cerr << "ERROR: could not successfully read observation file " << obsfile << "\n";
     cerr << "read_hldet_file returned status = " << status << ".\n";
