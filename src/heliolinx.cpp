@@ -177,6 +177,31 @@ std::vector<T> ndarray_to_vec(py::array_t<T> py_vec) {
     return vec;
 }
 
+
+std::vector<uint_tracklet> ndarray_uint_tracklet_to_vec(py::array_t<tracklet> py_vec) {
+    py::dtype expected_dtype = py::dtype::of<T>();
+    if (!py_vec.dtype().is(expected_dtype)) {
+	throw std::runtime_error("Array dtype does not match expected type 'foo'. See mjuric@astro.washington.edu for more details");
+    }
+    std::vector<T> vec = {};
+
+    // Get a reference to the py_array data
+    auto data_ref = py_vec.unchecked();
+
+    // Place the numpy data into the c++ type
+    for (long int i = 0; i < data_ref.size(); i++) {
+        T data_out;
+        auto &data_in = data_ref[i];
+
+        fill_struct(data_out, data_in);
+
+        vec.push_back(data_out);
+    }
+
+    return vec;
+}
+
+
 template<typename T>
 py::array vec_to_ndarray(std::vector<T> const& vec) {
     // Allocate a structured numpy array of type T
@@ -369,7 +394,7 @@ std::tuple<py::array, py::array>heliolinc(
   
   std::vector <hlimage> image_log = ndarray_to_vec(py_imglog);
   std::vector <hldet> detvec = ndarray_to_vec(py_detvec);
-  std::vector <uint_tracklet> tracklets = ndarray_to_vec(py_tracklets);
+  std::vector <uint_tracklet> tracklets = ndarray_uint_tracklet_to_vec(py_tracklets);
   std::vector <uint_pair> trk2det = ndarray_to_vec(py_trk2det);
   std::vector <hlradhyp> radhyp = ndarray_to_vec(py_radhyp);
   std::vector <EarthState> earthpos = ndarray_to_vec(earthin);
