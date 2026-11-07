@@ -425,7 +425,7 @@ std::tuple<py::array, py::array>heliolinc(
   std::vector <hlclust> outclust;
   std::vector <longpair> clust2det;
      
-  status = heliolinc_alg_uint_lowmem(image_log, detvec, tracklets, trk2det, radhyp, earthpos, config, outclust, clust2det);
+  status = heliolinc_alg_uint(image_log, detvec, tracklets, trk2det, radhyp, earthpos, config, outclust, clust2det);
   if(status!=0) {
     cerr << "ERROR: heliolinc returned failure status " << status << "\n";
     auto py_clustout = vec_to_ndarray<hlclust>({});

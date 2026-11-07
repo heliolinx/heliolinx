@@ -183,9 +183,9 @@
 
 static void show_usage()
 {
-  cerr << "Usage: heliolinc_TNV -imgs imfile -pairdets paired detection file -tracklets tracklet file -trk2det tracklet-to-detection_file -autorun 0=do_not_auto-generate_MJDref -mjd mjdref -earth earthfile -heliodist heliocentric_dist_vel_acc_file -clustrad clustrad -clustchangerad min_distance_for_cluster_scaling -cluster_minpts cluster_minpts -minobsnights minobsnights -mintimespan mintimespan -mingeodist minimum_geocentric_distance -maxgeodist maximum_geocentric_distance -geologstep logarithmic_step_size_for_geocentric_distance_bins -mingeoobs min_geocentric_dist_at_observation(AU) -min_obstanvel min_tanvel_wrt_observer -minimpactpar min_impact_parameter(km) -tanveltol tanveltol -veltol_changerad veltol_changerad -vinf max_v_inf -nightstep nightstep -use_univar 1_for_universal_variables -use_rr 1_for_heliolincRR -use_dbscan 1_for_DBSCAN -use_taylor 1_for_TaylorSeries_hypotheses -use_smallclust 1_for_lowmem_clusters -use_smalltrk 1_for_lowmem_tracklets -use_streaming 1_for_output_streaming -outsum summary_file -clust2det clust2detfile -verbose verbosity\n";
+  cerr << "Usage: heliolinc -imgs imfile -pairdets paired detection file -tracklets tracklet file -trk2det tracklet-to-detection_file -autorun 0=do_not_auto-generate_MJDref -mjd mjdref -earth earthfile -heliodist heliocentric_dist_vel_acc_file -clustrad clustrad -clustchangerad min_distance_for_cluster_scaling -cluster_minpts cluster_minpts -minobsnights minobsnights -mintimespan mintimespan -mingeodist minimum_geocentric_distance -maxgeodist maximum_geocentric_distance -geologstep logarithmic_step_size_for_geocentric_distance_bins -mingeoobs min_geocentric_dist_at_observation(AU) -min_obstanvel min_tanvel_wrt_observer -minimpactpar min_impact_parameter(km) -tanveltol tanveltol -veltol_changerad veltol_changerad -vinf max_v_inf -nightstep nightstep -use_univar 1_for_universal_variables -use_rr 1_for_heliolincRR -use_dbscan 1_for_DBSCAN -use_taylor 1_for_TaylorSeries_hypotheses -use_smallclust 1_for_lowmem_clusters -use_smalltrk 1_for_lowmem_tracklets -use_streaming 1_for_output_streaming -outsum summary_file -clust2det clust2detfile -verbose verbosity\n";
   cerr << "\nor, at minimum:\n\n";
-  cerr << "heliolinc_TNV -imgs imfile -pairdets paired detection file -tracklets tracklet file -trk2det tracklet-to-detection file -earth earthfile -heliodist heliocentric_dist_vel_acc_file\n";
+  cerr << "heliolinc -imgs imfile -pairdets paired detection file -tracklets tracklet file -trk2det tracklet-to-detection file -earth earthfile -heliodist heliocentric_dist_vel_acc_file\n";
   cerr << "\nNote that the minimum invocation leaves some things set to defaults\n";
   cerr << "that you may well wish to specify: in particular, the output file names\n";
   
@@ -846,18 +846,10 @@ int main(int argc, char *argv[])
       return(1);
     }
     cout << "Read " << trk2det.size() << " data lines from trk2det file " << trk2detfile << "\n";
-    if(config.use_smallclust==1) {
-      status=heliolinc_alg_uint_lowmem(image_log, detvec, tracklets, trk2det, radhyp, earthpos, config, outclust, clust2det);
-      if(status!=0) {
-	cerr << "ERROR: heliolinc_alg_uint_lowmem failed with status " << status << "\n";
-	return(status);
-      }
-    } else {
-      status=heliolinc_alg_uint(image_log, detvec, tracklets, trk2det, radhyp, earthpos, config, outclust, clust2det);
-      if(status!=0) {
-	cerr << "ERROR: heliolinc_alg_uint failed with status " << status << "\n";
-	return(status);
-      }
+    status=heliolinc_alg_uint(image_log, detvec, tracklets, trk2det, radhyp, earthpos, config, outclust, clust2det);
+    if(status!=0) {
+      cerr << "ERROR: heliolinc_alg_uint failed with status " << status << "\n";
+      return(status);
     }
   } else {
     vector <tracklet> tracklets;

@@ -39397,7 +39397,7 @@ int form_clusters(const vector <point6ix2> &allstatevecs, const vector <hldet> &
 // form_clusters_lowmem: July 11, 2025:
 // Uses the DBSCAN algorithm, like form_clusters, but
 // with lower memory output.
-int form_clusters_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double cluster_minpts, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
+int form_clusters_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double cluster_minpts, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
 {
   long detnum = detvec.size();
   if(detnum>=UINT_MAX) {
@@ -41811,7 +41811,7 @@ vector <long> uintvec2long(vector <unsigned int> uivec)
 // form_clusters_kd4_lowmem: July 08, 2024: 
 // Like form_clusters_kd4, but tries to minimize
 // heliolinc's memory usage.
-int form_clusters_kd4_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double cluster_minpts, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
+int form_clusters_kd4_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double cluster_minpts, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
 {
   long detnum = detvec.size();
   if(detnum>=UINT_MAX) {
@@ -41933,7 +41933,6 @@ int form_clusters_kd4_lowmem(const vector <point6ix2> &allstatevecs, const vecto
 	vector <unsigned int> pointind_ui;
 	for(i=0; i<kdclust[clusterct].numpoints; i++) {
 	  pairct=kdvec[kdclust[clusterct].clustind[i]].point.i1;
-	  if(DEBUG >= 2) cout << "Looking up tracklet " << pairct << " out of " << tracklets.size() << "\n";
 	  vector <long> pointjunk;
 	  pointjunk = tracklet_lookup(trk2det, pairct);
 	  if(pointjunk.size()<=0) {
@@ -41995,7 +41994,6 @@ int form_clusters_kd4_lowmem(const vector <point6ix2> &allstatevecs, const vecto
 	vector <unsigned int> pointind_ui;
 	for(i=0; i<kdclust[clusterct].numpoints; i++) {
 	  pairct=kdvec[kdclust[clusterct].clustind[i]].point.i1;
-	  if(DEBUG >= 2) cout << "Looking up tracklet " << pairct << " out of " << tracklets.size() << "\n";
 	  vector <long> pointjunk;
 	  pointjunk = tracklet_lookup(trk2det, pairct);
 	  if(pointjunk.size()<=0) {
@@ -42818,7 +42816,7 @@ int form_clusters_RR(const vector <point6ix2> &allstatevecs, const vector <hldet
 // form_clusters_RR_lowmem: July 11, 2025:
 // Like form_clusters_RR, but uses the uint_pair and the
 // shortclust classes to reduce memory usage.
-int form_clusters_RR_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <tracklet> &tracklets, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double cluster_minpts, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
+int form_clusters_RR_lowmem(const vector <point6ix2> &allstatevecs, const vector <hldet> &detvec, const vector <longpair> &trk2det, const point3d &Earthrefpos, double reference_MJD, double heliodist, double heliovel, double helioacc, long hypindex, double chartimescale, vector <shortclust> &outclust, vector <uint_pair> &clust2det, long &realclusternum, double cluster_radius, double clustchangerad, double cluster_minpts, double mingeodist, double geologstep, double maxgeodist, int mintimespan, int minobsnights, double nightstep, int verbose)
 {
   long detnum = detvec.size();
   if(detnum>=UINT_MAX) {
@@ -42941,7 +42939,6 @@ int form_clusters_RR_lowmem(const vector <point6ix2> &allstatevecs, const vector
 	vector <unsigned int> pointind_ui;
 	for(i=0; i<kdclust[clusterct].numpoints; i++) {
 	  pairct=kdvec[kdclust[clusterct].clustind[i]].point.i1;
-	  if(DEBUG >= 2) cout << "Looking up tracklet " << pairct << " out of " << tracklets.size() << "\n";
 	  vector <long> pointjunk;
 	  pointjunk = tracklet_lookup(trk2det, pairct);
 	  if(pointjunk.size()<=0) {
@@ -43003,7 +43000,6 @@ int form_clusters_RR_lowmem(const vector <point6ix2> &allstatevecs, const vector
 	vector <unsigned int> pointind_ui;
 	for(i=0; i<kdclust[clusterct].numpoints; i++) {
 	  pairct=kdvec[kdclust[clusterct].clustind[i]].point.i1;
-	  if(DEBUG >= 2) cout << "Looking up tracklet " << pairct << " out of " << tracklets.size() << "\n";
 	  vector <long> pointjunk;
 	  pointjunk = tracklet_lookup(trk2det, pairct);
 	  if(pointjunk.size()<=0) {
@@ -48366,74 +48362,73 @@ int heliolinc_alg_all(const vector <hlimage> &image_log, const vector <hldet> &d
     gridpoint_clusternum=0;
     // Covert all tracklets into state vectors at the reference time, under
     // the assumption that the heliocentric distance hypothesis is correct.
-    if(use_sad==1) {
-      if(config.use_univar == 1) {
-	// Use the universal variable formulation of the Kepler problem for orbit propagation.
-	// This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
-	if(config.use_rr == 1) {
-	  // Integrate to perform clustering in the parameter space of Ben Engebreth's 
-	  // heliolinc_RR algorithm, which uses position vectors at two different
-	  // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
+    if(config.use_rr == 1) {
+      // Using the RR parameter space pioneered by Ben Engebreth: that is, 
+      // integrate to perform clustering in the parameter space of Ben Engebreth's 
+      // heliolinc_RR algorithm, which uses position vectors at two different
+      // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
+      if(use_sad == 1) {
+	// Using SAD tracklet rejection, pioneered by Ben Engebreth
+	if(config.use_univar == 1) {
+	  // Use the universal variable formulation of the Kepler problem for orbit propagation.
+	  // This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
+	  
+	  // RR parameter space, SAD tracklet rejection, universal variables
 	  cout << "heliolinc_alg_all is calling trk2statevec_univarRR_TNV\n";
 	  status = trk2statevec_univarRR_TNV(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
 	} else {
+	  // Use the Kepler f and g functions for orbit propagation
+	  // This is faster than the universal variable formulation, but cannot handle hyperbolic
+	  // (i.e., unbound, interstellar) orbits. Being fastest for normal orbits, it is the default.
+	  
+	  // RR parameter space, SAD tracklet rejection, f and g functions rather than universal variables
+	  cout << "heliolinc_alg_all is calling trk2statevec_fgfuncRR_TNV\n";
+	  status = trk2statevec_fgfuncRR_TNV(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+	}
+      } else {
+	// Still in the RR parameter space, but not using SAD tracklet rejection
+	if(config.use_univar == 1) {
+	  // RR parameter space, universal variables
+	  cout << "heliolinc_alg_all is calling trk2statevec_univarRR\n";
+	  status = trk2statevec_univarRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.use_taylor, config.verbose);
+	} else {
+
+	  // RR parameter space, f and g functions rather than universal variables
+	  cout << "heliolinc_alg_all is calling trk2statevec_fgfuncRR\n";
+	  status = trk2statevec_fgfuncRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.use_taylor, config.verbose);
+	}
+      }
+    } else {
+      // Using the R,V parameter space native to the
+      // Ari Heinze / Siegfried Eggl implentations of heliolinc
+      if(use_sad == 1) {
+	// Using SAD tracklet rejection, pioneered by Ben Engebreth
+	if(config.use_univar == 1) {
+	  // R,V parameter space, SAD tracklet rejection, universal variables
 	  // Integrate to perform clustering in the standard heliolinc3d parameter space
 	  // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
 	  cout << "heliolinc_alg_all is calling trk2statevec_univar_TNV\n";
 	  status = trk2statevec_univar_TNV(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
-	}
-      } else {
-	// Use the Kepler f and g functions for orbit propagation
-	// This is faster than the universal variable formulation, but cannot handle hyperbolic
-	// (i.e., unbound, interstellar) orbits. Being fastest for normal orbits, it is the default.
-	if(config.use_rr == 1) {
-	  // Integrate to perform clustering in the parameter space of Ben Engebreth's 
-	  // heliolinc_RR algorithm, which uses position vectors at two different
-	  // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
-	  cout << "heliolinc_alg_all is calling trk2statevec_fgfuncRR_TNV\n";
-	  status = trk2statevec_fgfuncRR_TNV(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
 	} else {
-	  // Integrate to perform clustering in the standard heliolinc3d parameter space
-	  // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
+	  // R,V parameter space, SAD tracklet rejection, f and g functions rather than universal variables
 	  cout << "heliolinc_alg_all is calling trk2statevec_fgfunc_TNV\n";
 	  status = trk2statevec_fgfunc_TNV(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
 	}
-      }
-    } else {
-      // tanveltol is not set, so rejection of SAD tracklets is off. This means the
-      // config.use_taylor==1 is allowed, as reflected in the trk2statevec calls.
-      // Note that config.use_taylor==1 remains (probably) a bad idea except for testing.
-      if(config.use_univar == 1) {
-	// Use the universal variable formulation of the Kepler problem for orbit propagation.
-	// This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
-	if(config.use_rr == 1) {
-	  // Integrate to perform clustering in the parameter space of Ben Engebreth's 
-	  // heliolinc_RR algorithm, which uses position vectors at two different
-	  // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
-	  cout << "heliolinc_alg_all is calling trk2statevec_univarRR\n";
-	  status = trk2statevec_univarRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.use_taylor, config.verbose);
-	} else {
-	  // Integrate to perform clustering in the standard heliolinc3d parameter space
-	  // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
+      } else {
+	// tanveltol is not set, so rejection of SAD tracklets is off. This means the
+	// config.use_taylor==1 is allowed, as reflected in the trk2statevec calls.
+	// Note that config.use_taylor==1 remains (probably) a bad idea except for testing.
+
+	// Still in the RR parameter space, but not using SAD tracklet rejection
+	if(config.use_univar == 1) {
+	  // R,V parameter space, universal variables
 	  cout << "heliolinc_alg_all is calling trk2statevec_univar\n";
 	  status = trk2statevec_univar(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.use_taylor, config.verbose);
-	}
-      } else {
-	// Use the Kepler f and g functions for orbit propagation
-	// This is faster than the universal variable formulation, but cannot handle hyperbolic
-	// (i.e., unbound, interstellar) orbits. Being fastest for normal orbits, it is the default.
-	if(config.use_rr == 1) {
-	  // Integrate to perform clustering in the parameter space of Ben Engebreth's 
-	  // heliolinc_RR algorithm, which uses position vectors at two different
-	  // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
-	  cout << "heliolinc_alg_all is calling trk2statevec_fgfuncRR\n";
-	  status = trk2statevec_fgfuncRR(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.use_taylor, config.verbose);
 	} else {
-	  // Integrate to perform clustering in the standard heliolinc3d parameter space
-	  // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
+	  // R,V parameter space, f and g functions rather than universal variables
 	  cout << "heliolinc_alg_all is calling trk2statevec_fgfunc\n";
 	  status = trk2statevec_fgfunc(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.use_taylor, config.verbose);
-	}
+        }
       }
     }
 
@@ -48451,57 +48446,66 @@ int heliolinc_alg_all(const vector <hlimage> &image_log, const vector <hldet> &d
   
     if(config.use_smallclust == 1) {
       // Use compressed cluster class to reduce memory demand
-      
       if(config.use_dbscan==1) {
 	// Use old DBSCAN algorithm in six dimensions for clustering the standard heliolinc parameter space
 	if(config.use_rr==1) {
 	  status = form_clusters_dbscan_RR_lowmem(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], accelct, chartimescale, outclust_lowmem, clust2det_lowmem, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
 	} else {
-	  status = form_clusters_lowmem(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], accelct, chartimescale, outclust_lowmem, clust2det_lowmem, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+	  status = form_clusters_lowmem(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], accelct, chartimescale, outclust_lowmem, clust2det_lowmem, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
 	  if(status!=0) {
 	    cerr << "ERROR: form_clusters_lowmem exited with error code " << status << "\n";
 	  }
 	}
-      } else if(config.use_rr==1) {
-	// Use a KDtree range-query in six dimensions for clustering the heliolinc_RR parameter space
-	status = form_clusters_RR_lowmem(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], accelct, chartimescale, outclust_lowmem, clust2det_lowmem, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
-	if(status!=0) {
-	  cerr << "ERROR: form_clusters_RR exited with error code " << status << "\n";
-	}
       } else {
-	// Use a KDtree range-query in six dimensions for clustering the standard heliolinc parameter space
-	status = form_clusters_kd4_lowmem(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], accelct, chartimescale, outclust_lowmem, clust2det_lowmem, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
-	if(status!=0) {
-	  cerr << "ERROR: form_clusters_kd4_lowmem exited with error code " << status << "\n";
+	// Use a KDtree range-query in six dimensions
+	if(config.use_rr==1) {
+	  // Perform clustering in the heliolinc_RR parameter space
+	  status = form_clusters_RR_lowmem(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], accelct, chartimescale, outclust_lowmem, clust2det_lowmem, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+	  if(status!=0) {
+	    cerr << "ERROR: form_clusters_RR exited with error code " << status << "\n";
+	  }
+	} else {
+	  // Perform clustering in the standard heliolinc parameter space
+	  status = form_clusters_kd4_lowmem(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], accelct, chartimescale, outclust_lowmem, clust2det_lowmem, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+	  if(status!=0) {
+	    cerr << "ERROR: form_clusters_kd4_lowmem exited with error code " << status << "\n";
+	  }
 	}
       }
-
     } else {
       // Use normal, full precision cluster class
       if(config.use_dbscan == 1) {
-	// Use old DBSCAN algorithm in six dimensions for clustering the standard heliolinc parameter space
-	
-	status = form_clusters(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
-	if(status!=0) {
-	  cerr << "ERROR: form_clusters exited with error code " << status << "\n";
-	}
-      } else if(config.use_rr==1) {
-	// Use a KDtree range-query in six dimensions for clustering the heliolinc_RR parameter space
-	status = form_clusters_RR(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
-	if(status!=0) {
-	  cerr << "ERROR: form_clusters_RR exited with error code " << status << "\n";
+	// Use old DBSCAN algorithm, rather than the simple KDtree range query, which usually works better 
+	if(config.use_rr==1) {
+	  // Perform clustering in the heliolincRR parameter space pioneered by Ben Engebreth
+	  status = form_clusters_dbscan_RR(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+	} else {
+	  // Perform clustering in in the standard heliolinc parameter space
+	  status = form_clusters(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+	   if(status!=0) {
+	     cerr << "ERROR: form_clusters exited with error code " << status << "\n";
+	   }
 	}
       } else {
-	// Use a KDtree range-query in six dimensions for clustering the standard heliolinc parameter space
-	status = form_clusters_kd4(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
-	if(status!=0) {
-	  cerr << "ERROR: form_clusters_kd4 exited with error code " << status << "\n";
+	// Use a simple KDtree range-query for clustering. This has been found superior to the
+	// more sophisticated DBSCAN algorithm in most tests.
+	if(config.use_rr==1) {
+	  // Perform clustering in the heliolinc_RR parameter space
+	  status = form_clusters_RR(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+	  if(status!=0) {
+	    cerr << "ERROR: form_clusters_RR exited with error code " << status << "\n";
+	  }
+	} else {
+	  // Perform clustering in the standard heliolinc parameter space
+	  status = form_clusters_kd4(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+	  if(status!=0) {
+	    cerr << "ERROR: form_clusters_kd4 exited with error code " << status << "\n";
+	  }
 	}
       }
     }
-  }
-  if(config.use_smallclust==1) {
-    
+  }  
+  if(config.use_smallclust == 1) {
     // De-duplicate the final output set, and convert to full-precision clusters
     cout << "De-duplicating output set of " << outclust_lowmem.size() << " candidate linkages totalling " << clust2det_lowmem.size() << " detections\n";
     vector <shortclust> outclust_lowmem2;
@@ -48721,250 +48725,6 @@ int heliolinc_alg_TNV_uint(const vector <hlimage> &image_log, const vector <hlde
       }
     }
 
-    if(status==1) {
-      cerr << "WARNING: hypothesis " << accelct << ": " << radhyp[accelct].HelioRad << " " << radhyp[accelct].R_dot << " " << radhyp[accelct].R_dubdot << " led to\nnegative heliocentric distance or other invalid result: SKIPPING\n";
-      continue;
-    } else if(status==2) {
-      // This is a weirder error case and is fatal.
-      cerr << "Fatal error case from trk2statevec.\n";
-      return(3);
-    }
-    // If we get here, trk2statevec probably ran OK.
-    if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
-    if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
-
-    if(config.use_dbscan == 1 && config.use_rr == 0) {
-      // Use old DBSCAN algorithm in six dimensions for clustering the standard heliolinc parameter space
-      status = form_clusters_uint(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
-      if(status!=0) {
-	cerr << "ERROR: form_clusters exited with error code " << status << "\n";
-      }
-    } else if(config.use_dbscan == 0 && config.use_rr == 1) {
-      // Use a KDtree range-query in six dimensions for clustering the heliolinc_RR parameter space
-      status = form_clusters_RR_uint(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
-      if(status!=0) {
-	cerr << "ERROR: form_clusters_RR exited with error code " << status << "\n";
-      }
-    } else if(config.use_dbscan == 1 && config.use_rr == 1) {
-      cerr << "ERROR: use_dbscan option is not available in combination with use_rr\n";
-      return(12);
-    } else {
-      // Use a KDtree range-query in six dimensions for clustering the standard heliolinc parameter space
-      status = form_clusters_kd4_uint(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
-      if(status!=0) {
-	cerr << "ERROR: form_clusters_kd4 exited with error code " << status << "\n";
-      }
-    }
-  }
-  
-  // De-duplicate the final output set
-  cout << "De-duplicating output set of " << outclust.size() << " candidate linkages totalling " << clust2det.size() << " detections\n";
-  vector <hlclust> outclust2;
-  vector  <longpair> outclust2det2;
-  link_dedup(outclust, clust2det, outclust2, outclust2det2);
-  outclust = outclust2;
-  for(long i=0; i<long(outclust.size()); i++) {
-    outclust[i].reference_MJD = config.MJDref;
-  }
-  clust2det = outclust2det2;
-  cout << "Final de-duplicated set contains " << outclust.size() << " linkages totalling " << clust2det.size() << " detections\n";
-  if(automjd) {
-    cout << "Automatically calculated reference MJD was " << config.MJDref << "\n";
-  }
-  return(0);    
-}
-
-// heliolinc_alg_uint: October 19, 2026:
-// Version of heliolinc that OPTIONALLY uses Ben Engebreth's concept of the
-// SAD tracklet AND stores tracklet information in more memory-efficient vectors.
-int heliolinc_alg_uint(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <uint_tracklet> &tracklets, const vector <uint_pair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, vector <hlclust> &outclust, vector <longpair> &clust2det)
-{
-  outclust = {};
-  clust2det = {};
-   
-  point3d Earthrefpos = point3d(0l,0l,0l);
-  long imnum = image_log.size();
-  long pairnum = tracklets.size();
-  long trk2detnum = trk2det.size();
-  long accelnum = radhyp.size();
-  long accelct=0;
-  
-  if(pairnum>=UINT_MAX) {
-    cerr << "ERROR: heliolinc_alg_uint has too many tracklets\n";
-    cerr << "(" << pairnum << " >= " << UINT_MAX << "). Re-run with a non-uint version of heliolinc\n";
-    return(1);
-  }
-
-  vector <double> heliodist;
-  vector <double> heliovel;
-  vector <double> helioacc;
-  long realclusternum, gridpoint_clusternum, status;
-  realclusternum = gridpoint_clusternum = status = 0;
-  vector <point6ix2> allstatevecs;
-  int automjd=0;
-  long i=0;
-  int use_sad=0;
-
-  // Catch case where max v_inf > 0 but universal variables are not set.
-  if(config.max_v_inf>0.0l && config.use_univar<=0) {
-    cerr << "ERROR: unbound orbits being probed (max_v_inf = " << config.max_v_inf << "),\n";
-    cerr << "but code is not set to use universal variables (use_univar = " << config.use_univar << ").\n";
-    return(1);
-  }
-
-  if(config.tanveltol>0.0) use_sad=1;
-  if(use_sad>0 && config.use_taylor>0) {
-    cerr << "ERROR: non-Keplerian (Taylor Series) interpretation of hypotheses\n";
-    cerr << "requested at the same time as intrinsically Keplerian tangential velocity\n";
-    cerr << "checking with tolerance " << config.tanveltol << "\n";
-    return(0);
-  }
-  if(use_sad==0 && config.min_obstanvel>0) {
-    cerr << "ERROR: min_obstanvel set to operative value (" << config.min_obstanvel << " km/sec without also\n";
-    cerr << "setting the heliocentric tangential velocity tolerance tanveltol, which\n";
-    cerr << "remains at its default, non-operative value of " << config.tanveltol << " km/sec.\n";
-    cerr << "Re-run with -tanveltol set. If you want tanveltol not to exclude any,\n";
-    cerr << "tracklets, set it to a very large positive value (e.g. -tanveltol 1000.0).\n";
-    cerr << "This, combined with your desired operative setting for min_obstanvel, will render\n";
-    cerr << "min_obstanvel operative while tanveltol is not.\n";
-    return(0);
-  }
-   
-  // Echo config struct
-  cout << "Configuration parameters:\n";
-  cout << "MJD of reference time: " << config.MJDref << "\n";
-  cout << "DBSCAN clustering radius: " << config.clustrad << " km\n";
-  cout << "DBSCAN npt: " << config.cluster_minpts << "\n";
-  cout << "Min number of distinct observing nights for a valid linkage: " << config.minobsnights << "\n";
-  cout << "Min time span for a valid linkage: " << config.mintimespan << " days\n";
-  cout << "Min geocentric distance (center of innermost bin): " << config.mingeodist << " AU\n";
-  cout << "Max geocentric distance (will be exceeded by center only of the outermost bin): " << config.maxgeodist << " AU\n";
-  cout << "Logarthmic step size (and bin width) for geocentric distance bins: " << config.geologstep << "\n";
-  cout << "Minimum inferred geocentric distance for a valid tracklet: " << config.mingeoobs << " AU\n";
-  cout << "Minimum inferred impact parameter (w.r.t. Earth) for a valid tracklet: " << config.minimpactpar << " km\n";
-  if(config.verbose) cout << "Verbose output selected\n";
-  
-  if(imnum<=0) {
-    cerr << "ERROR: heliolinc supplied with empty image catalog\n";
-    return(1);
-  } else if(pairnum<=0) {
-    cerr << "ERROR: heliolinc supplied with empty tracklet array\n";
-    return(1);
-  } else if(trk2detnum<=0) {
-    cerr << "ERROR: heliolinc supplied with empty trk2det array\n";
-    return(1);
-  } else if(accelnum<=0) {
-    cerr << "ERROR: heliolinc supplied with empty heliocentric hypothesis array\n";
-    return(1);
-  }
-  
-  // Find MJD for first and last detections.
-  double minMJD = detvec[0].MJD;
-  double maxMJD = detvec[0].MJD;
-  for(i=0; i<long(detvec.size()); i++) {
-    if(minMJD > detvec[i].MJD) minMJD = detvec[i].MJD;
-    if(maxMJD < detvec[i].MJD) maxMJD = detvec[i].MJD;
-  }
-  if(!isnormal(config.MJDref) || config.MJDref < minMJD || config.MJDref > maxMJD) {
-    if(config.autorun<=0) {
-      cout << "\nERROR: input positive-valued reference MJD is required\n";
-      cout << "MJD range is " << minMJD << " to " << maxMJD << "\n";
-      cout << fixed << setprecision(2) << "Suggested reference value is " << minMJD*0.5L + maxMJD*0.5L << "\n";
-      return(1);
-    } else {
-      cout << "\nUser did not input a positive-valued reference MJD in the\n";
-      cout << "acceptable range, so heliolinc will generate one internally\n";
-      cout << "MJD range is " << minMJD << " to " << maxMJD << "\n";
-      cout << fixed << setprecision(2) << "Suggested reference value is " << minMJD*0.5L + maxMJD*0.5L << "\n";
-      config.MJDref = round(minMJD*50.0l + maxMJD*50.0l)/100.0l;
-      cout << fixed << setprecision(2) << "Adopting reference MJD = " << config.MJDref << "\n";
-      automjd=1;
-    } 
-  }
-
-  double chartimescale = (maxMJD - minMJD)*SOLARDAY/TIMECONVSCALE; // Note that the units are seconds.
-  Earthrefpos = earthpos01(earthpos, config.MJDref);
-
-  // Convert heliocentric radial motion hypothesis matrix
-  // from units of AU, AU/day, and GMSun/R^2
-  // to units of km, km/day, and km/day^2.
-  heliodist = heliovel = helioacc = {};
-  for(accelct=0;accelct<accelnum;accelct++) {
-    heliodist.push_back(radhyp[accelct].HelioRad * AU_KM);
-    heliovel.push_back(radhyp[accelct].R_dot * AU_KM);
-    helioacc.push_back(radhyp[accelct].R_dubdot * (-GMSUN_KM3_SEC2*SOLARDAY*SOLARDAY/heliodist[accelct]/heliodist[accelct]));
-  }
-
-  // Begin master loop over heliocentric hypotheses
-  outclust={};
-  clust2det={};
-  realclusternum=0;
-  for(accelct=0;accelct<accelnum;accelct++) {
-    cout << "Working on hypothesis " << accelct << ": " << radhyp[accelct].HelioRad << " AU, " << radhyp[accelct].R_dot*AU_KM/SOLARDAY << " km/sec " << radhyp[accelct].R_dubdot << " GMsun/r^2\n";
-
-    gridpoint_clusternum=0;
-    // Covert all tracklets into state vectors at the reference time, under
-    // the assumption that the heliocentric distance hypothesis is correct.
-    if(use_sad==1) {
-      if(config.use_univar == 1) {
-	// Use the universal variable formulation of the Kepler problem for orbit propagation.
-	// This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
-	if(config.use_rr == 1) {
-	  // Integrate to perform clustering in the parameter space of Ben Engebreth's 
-	  // heliolinc_RR algorithm, which uses position vectors at two different
-	  // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
-	  status = trk2statevec_univarRR_TNV_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
-	} else {
-	  // Integrate to perform clustering in the standard heliolinc3d parameter space
-	  // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
-	  status = trk2statevec_univar_TNV_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
-	}
-      } else {
-	// Use the Kepler f and g functions for orbit propagation
-	// This is faster than the universal variable formulation, but cannot handle hyperbolic
-	if(config.use_rr == 1) {
-	  // Integrate to perform clustering in the parameter space of Ben Engebreth's 
-	  // heliolinc_RR algorithm, which uses position vectors at two different
-	  // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
-	  status = trk2statevec_fgfuncRR_TNV_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
-	} else {
-	  // Integrate to perform clustering in the standard heliolinc3d parameter space
-	  // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
-	  status = trk2statevec_fgfunc_TNV_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
-	}
-      }
-    } else {
-      // Do not use SAD tracklet rejection. Hence, use_taylor is allowed, though
-      // still not recommended.
-      if(config.use_univar == 1) {
-	// Use the universal variable formulation of the Kepler problem for orbit propagation.
-	// This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
-	if(config.use_rr == 1) {
-	  // Integrate to perform clustering in the parameter space of Ben Engebreth's 
-	  // heliolinc_RR algorithm, which uses position vectors at two different
-	  // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
-	  status = trk2statevec_univarRR_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.use_taylor, config.verbose);
-	} else {
-	  // Integrate to perform clustering in the standard heliolinc3d parameter space
-	  // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
-	  status = trk2statevec_univar_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.use_taylor, config.verbose);
-	}
-      } else {
-	// Use the Kepler f and g functions for orbit propagation
-	// This is faster than the universal variable formulation, but cannot handle hyperbolic
-	if(config.use_rr == 1) {
-	  // Integrate to perform clustering in the parameter space of Ben Engebreth's 
-	  // heliolinc_RR algorithm, which uses position vectors at two different
-	  // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
-	  status = trk2statevec_fgfuncRR_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.use_taylor, config.verbose);
-	} else {
-	  // Integrate to perform clustering in the standard heliolinc3d parameter space
-	  // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
-	  status = trk2statevec_fgfunc_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.use_taylor, config.verbose);
-	}
-      }
-    }
-    
     if(status==1) {
       cerr << "WARNING: hypothesis " << accelct << ": " << radhyp[accelct].HelioRad << " " << radhyp[accelct].R_dot << " " << radhyp[accelct].R_dubdot << " led to\nnegative heliocentric distance or other invalid result: SKIPPING\n";
       continue;
@@ -49563,7 +49323,7 @@ int heliolinc_alg_TNV_uint_lowmem(const vector <hlimage> &image_log, const vecto
 // SAD tracklet AND ALSO storing tracklet information in
 // more memory-efficient vectors AND also using more memory-efficient
 // 'lowmem' classes for storing internal cluster and clust2det vectors.
-int heliolinc_alg_uint_lowmem(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <uint_tracklet> &tracklets, const vector <uint_pair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, vector <hlclust> &outclust, vector <longpair> &clust2det)
+int heliolinc_alg_uint(const vector <hlimage> &image_log, const vector <hldet> &detvec, const vector <uint_tracklet> &tracklets, const vector <uint_pair> &trk2det, const vector <hlradhyp> &radhyp, const vector <EarthState> &earthpos, HeliolincConfig config, vector <hlclust> &outclust, vector <longpair> &clust2det)
 {
   long detnum = detvec.size();
   if(detnum>=UINT_MAX) {
@@ -49661,6 +49421,15 @@ int heliolinc_alg_uint_lowmem(const vector <hlimage> &image_log, const vector <h
     return(1);
   }
   
+  cout << "Inside heliolinc_alg_uint with use_univar = " << config.use_univar << ",\n";
+  cout << "Inside heliolinc_alg_uint with use_dbscan = " << config.use_dbscan << ",\n";
+  cout << "Inside heliolinc_alg_uint with use_rr = " << config.use_rr << ",\n";
+  cout << "Inside heliolinc_alg_uint with use_taylor = " << config.use_taylor << ",\n";
+  cout << "Inside heliolinc_alg_uint with use_smallclust = " << config.use_smallclust << ",\n";
+  cout << "Inside heliolinc_alg_uint with use_smalltrk = " << config.use_smalltrk << ",\n";
+  cout << "Inside heliolinc_alg_uint with use_streaming = " << config.use_streaming << ",\n";
+  cout << "Inside heliolinc_alg_uint with config.tanveltol = " << config.tanveltol << "\n";
+
   // Find MJD for first and last detections.
   double minMJD = detvec[0].MJD;
   double maxMJD = detvec[0].MJD;
@@ -49708,67 +49477,76 @@ int heliolinc_alg_uint_lowmem(const vector <hlimage> &image_log, const vector <h
     gridpoint_clusternum=0;
     // Covert all tracklets into state vectors at the reference time, under
     // the assumption that the heliocentric distance hypothesis is correct.
-    if(use_sad==1) {
-      // Reject tracklets with discrepant heliocentric tangential velocities (SAD tracklets)
-      if(config.use_univar == 1) {
-	// Use the universal variable formulation of the Kepler problem for orbit propagation.
-	// This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
-	if(config.use_rr == 1) {
-	  // Integrate to perform clustering in the parameter space of Ben Engebreth's 
-	  // heliolinc_RR algorithm, which uses position vectors at two different
-	  // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
+    if(config.use_rr == 1) {
+      // Using the RR parameter space pioneered by Ben Engebreth: that is, 
+      // integrate to perform clustering in the parameter space of Ben Engebreth's 
+      // heliolinc_RR algorithm, which uses position vectors at two different
+      // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
+      if(use_sad == 1) {
+	// Using SAD tracklet rejection, pioneered by Ben Engebreth
+	if(config.use_univar == 1) {
+	  // Use the universal variable formulation of the Kepler problem for orbit propagation.
+	  // This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
+	  
+	  // RR parameter space, SAD tracklet rejection, universal variables
+	  cout << "heliolinc_alg_all is calling trk2statevec_univarRR_TNV\n";
 	  status = trk2statevec_univarRR_TNV_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
 	} else {
-	  // Integrate to perform clustering in the standard heliolinc3d parameter space
-	  // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
-	  status = trk2statevec_univar_TNV_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+	  // Use the Kepler f and g functions for orbit propagation
+	  // This is faster than the universal variable formulation, but cannot handle hyperbolic
+	  // (i.e., unbound, interstellar) orbits. Being fastest for normal orbits, it is the default.
+	  
+	  // RR parameter space, SAD tracklet rejection, f and g functions rather than universal variables
+	  cout << "heliolinc_alg_all is calling trk2statevec_fgfuncRR_TNV\n";
+	  status = trk2statevec_fgfuncRR_TNV_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
 	}
       } else {
-	// Use the Kepler f and g functions for orbit propagation
-	// This is faster than the universal variable formulation, but cannot handle hyperbolic
-	if(config.use_rr == 1) {
-	  // Integrate to perform clustering in the parameter space of Ben Engebreth's 
-	  // heliolinc_RR algorithm, which uses position vectors at two different
-	  // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
-	  status = trk2statevec_fgfuncRR_TNV_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+	// Still in the RR parameter space, but not using SAD tracklet rejection
+	if(config.use_univar == 1) {
+	  // RR parameter space, universal variables
+	  cout << "heliolinc_alg_all is calling trk2statevec_univarRR\n";
+	  status = trk2statevec_univarRR_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.use_taylor, config.verbose);
 	} else {
-	  // Integrate to perform clustering in the standard heliolinc3d parameter space
-	  // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
-	  status = trk2statevec_fgfunc_TNV_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+
+	  // RR parameter space, f and g functions rather than universal variables
+	  cout << "heliolinc_alg_all is calling trk2statevec_fgfuncRR\n";
+	  status = trk2statevec_fgfuncRR_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.use_taylor, config.verbose);
 	}
       }
     } else {
-      // Do not use SAD tracklet rejection. This means use_taylor can be invoked, though
-      // it is still not recommended.
-      // Reject tracklets with discrepant heliocentric tangential velocities (SAD tracklets)
-      if(config.use_univar == 1) {
-	// Use the universal variable formulation of the Kepler problem for orbit propagation.
-	// This is slightly slower than the f and g functions, but it can handle hyperbolic orbits.
-	if(config.use_rr == 1) {
-	  // Integrate to perform clustering in the parameter space of Ben Engebreth's 
-	  // heliolinc_RR algorithm, which uses position vectors at two different
-	  // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
-	  status = trk2statevec_univarRR_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.use_taylor, config.verbose);
-	} else {
+      // Using the R,V parameter space native to the
+      // Ari Heinze / Siegfried Eggl implentations of heliolinc
+      if(use_sad == 1) {
+	// Using SAD tracklet rejection, pioneered by Ben Engebreth
+	if(config.use_univar == 1) {
+	  // R,V parameter space, SAD tracklet rejection, universal variables
 	  // Integrate to perform clustering in the standard heliolinc3d parameter space
 	  // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
-	  status = trk2statevec_univar_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.use_taylor, config.verbose);
+	  cout << "heliolinc_alg_all is calling trk2statevec_univar_TNV\n";
+	  status = trk2statevec_univar_TNV_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
+	} else {
+	  // R,V parameter space, SAD tracklet rejection, f and g functions rather than universal variables
+	  cout << "heliolinc_alg_all is calling trk2statevec_fgfunc_TNV\n";
+	  status = trk2statevec_fgfunc_TNV_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.min_obstanvel, config.max_v_inf, config.tanveltol, config.veltol_changerad, config.verbose);
 	}
       } else {
-	// Use the Kepler f and g functions for orbit propagation
-	// This is faster than the universal variable formulation, but cannot handle hyperbolic
-	if(config.use_rr == 1) {
-	  // Integrate to perform clustering in the parameter space of Ben Engebreth's 
-	  // heliolinc_RR algorithm, which uses position vectors at two different
-	  // reference times, so the clustering parameter space is X1, Y1, Z1, X2, Y2, and Z2
-	  status = trk2statevec_fgfuncRR_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.use_taylor, config.verbose);
+	// tanveltol is not set, so rejection of SAD tracklets is off. This means the
+	// config.use_taylor==1 is allowed, as reflected in the trk2statevec calls.
+	// Note that config.use_taylor==1 remains (probably) a bad idea except for testing.
+
+	// Still in the RR parameter space, but not using SAD tracklet rejection
+	if(config.use_univar == 1) {
+	  // R,V parameter space, universal variables
+	  cout << "heliolinc_alg_all is calling trk2statevec_univar\n";
+	  status = trk2statevec_univar_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.use_taylor, config.verbose);
 	} else {
-	  // Integrate to perform clustering in the standard heliolinc3d parameter space
-	  // of position and velocity at a single reference time: X, Y, Z, VX, VY, and VZ.
+	  // R,V parameter space, f and g functions rather than universal variables
+	  cout << "heliolinc_alg_all is calling trk2statevec_fgfunc\n";
 	  status = trk2statevec_fgfunc_uint(image_log, tracklets, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, allstatevecs, config.MJDref, config.mingeoobs, config.minimpactpar, config.max_v_inf, config.use_taylor, config.verbose);
-	}
+        }
       }
     }
+
     if(status==1) {
       cerr << "WARNING: hypothesis " << accelct << ": " << radhyp[accelct].HelioRad << " " << radhyp[accelct].R_dot << " " << radhyp[accelct].R_dubdot << " led to\nnegative heliocentric distance or other invalid result: SKIPPING\n";
       continue;
@@ -49781,96 +49559,147 @@ int heliolinc_alg_uint_lowmem(const vector <hlimage> &image_log, const vector <h
     if(allstatevecs.size()<=1) continue; // No clusters possible, skip to the next step.
     if(config.verbose>=0) cout << pairnum << " input pairs/tracklets led to " << allstatevecs.size() << " physically reasonable state vectors\n";
 
-    if(config.use_dbscan == 1 && config.use_rr == 0) {
-      // Use old DBSCAN algorithm in six dimensions for clustering the standard heliolinc parameter space
-      status = form_clusters_uint_lowmem(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], accelct, chartimescale, outclust_lowmem, clust2det_lowmem, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
-      if(status!=0) {
-	cerr << "ERROR: form_clusters exited with error code " << status << "\n";
+    if(config.use_smallclust == 1) {
+      // Use compressed cluster class to reduce memory demand
+      if(config.use_dbscan==1) {
+	// Use old DBSCAN algorithm in six dimensions for clustering the standard heliolinc parameter space
+	if(config.use_rr==1) {
+	  status = form_clusters_dbscan_RR_uint_lowmem(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], accelct, chartimescale, outclust_lowmem, clust2det_lowmem, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+	} else {
+	  status = form_clusters_uint_lowmem(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], accelct, chartimescale, outclust_lowmem, clust2det_lowmem, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+	  if(status!=0) {
+	    cerr << "ERROR: form_clusters_lowmem exited with error code " << status << "\n";
+	  }
+	}
+      } else {
+	// Use a KDtree range-query in six dimensions
+	if(config.use_rr==1) {
+	  // Perform clustering in the heliolinc_RR parameter space
+	  status = form_clusters_RR_uint_lowmem(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], accelct, chartimescale, outclust_lowmem, clust2det_lowmem, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+	  if(status!=0) {
+	    cerr << "ERROR: form_clusters_RR exited with error code " << status << "\n";
+	  }
+	} else {
+	  // Perform clustering in the standard heliolinc parameter space
+	  status = form_clusters_kd4_uint_lowmem(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], accelct, chartimescale, outclust_lowmem, clust2det_lowmem, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+	  if(status!=0) {
+	    cerr << "ERROR: form_clusters_kd4_lowmem exited with error code " << status << "\n";
+	  }
+	}
       }
-    } else if(config.use_dbscan == 0 && config.use_rr == 1) {
-      // Use a KDtree range-query in six dimensions for clustering the heliolinc_RR parameter space
-      status = form_clusters_RR_uint_lowmem(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], accelct, chartimescale, outclust_lowmem, clust2det_lowmem, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
-      if(status!=0) {
-	cerr << "ERROR: form_clusters_RR exited with error code " << status << "\n";
-      }
-    } else if(config.use_dbscan == 1 && config.use_rr == 1) {
-      cerr << "ERROR: use_dbscan option is not available in combination with use_rr\n";
-      return(12);
     } else {
-      // Use a KDtree range-query in six dimensions for clustering the standard heliolinc parameter space
-      status = form_clusters_kd4_uint_lowmem(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], accelct, chartimescale, outclust_lowmem, clust2det_lowmem, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
-      if(status!=0) {
-	cerr << "ERROR: form_clusters_kd4 exited with error code " << status << "\n";
+      // Use normal, full precision cluster class
+      if(config.use_dbscan == 1) {
+	// Use old DBSCAN algorithm, rather than the simple KDtree range query, which usually works better 
+	if(config.use_rr==1) {
+	  // Perform clustering in the heliolincRR parameter space pioneered by Ben Engebreth
+	  status = form_clusters_dbscan_RR_uint(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+	} else {
+	  // Perform clustering in in the standard heliolinc parameter space
+	  status = form_clusters_uint(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+	   if(status!=0) {
+	     cerr << "ERROR: form_clusters exited with error code " << status << "\n";
+	   }
+	}
+      } else {
+	// Use a simple KDtree range-query for clustering. This has been found superior to the
+	// more sophisticated DBSCAN algorithm in most tests.
+	if(config.use_rr==1) {
+	  // Perform clustering in the heliolinc_RR parameter space
+	  status = form_clusters_RR_uint(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+	  if(status!=0) {
+	    cerr << "ERROR: form_clusters_RR exited with error code " << status << "\n";
+	  }
+	} else {
+	  // Perform clustering in the standard heliolinc parameter space
+	  status = form_clusters_kd4_uint(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist[accelct], heliovel[accelct], helioacc[accelct], chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+	  if(status!=0) {
+	    cerr << "ERROR: form_clusters_kd4 exited with error code " << status << "\n";
+	  }
+	}
       }
     }
+  }  
+  if(config.use_smallclust == 1) {
+    // De-duplicate the final output set, and convert to full-precision clusters
+    cout << "De-duplicating output set of " << outclust_lowmem.size() << " candidate linkages totalling " << clust2det_lowmem.size() << " detections\n";
+    vector <shortclust> outclust_lowmem2;
+    vector  <uint_pair> outclust2det_lowmem2;
+    link_dedup_lowmem2(outclust_lowmem, clust2det_lowmem, outclust_lowmem2, outclust2det_lowmem2);
+    cout << "De-duplicated set contains " << outclust_lowmem2.size() << " linkages totalling " << outclust2det_lowmem2.size() << " detections.\n";
+    
+    // Convert from the low-memory classes uint_pair and shortclust
+    // into the desired output classes longpair and hlclust
+    outclust = {};
+    clust2det = {};
+    cout << "Converting from memory-efficient to normal:\n";
+    cout << "outclust_lowmem2 with size " << outclust_lowmem2.size() << " and outclust2det_lowmem2 with size " <<  outclust2det_lowmem2.size() << "\n";
+    // First step: outclust2det_lowmem2 (uint_pair) into clust2det (longpair)
+    for(i=0; i<long(outclust2det_lowmem2.size()); i++) {
+      onepair = longpair(long(outclust2det_lowmem2[i].i1),long(outclust2det_lowmem2[i].i2));
+      clust2det.push_back(onepair);
+    }
+    cout << "Conversion complete for clust2det: size is " << clust2det.size() << "\n";
+    // Now outclust_lowmem2 (shortclust) to outclust (hlclust)
+    for(clusterct=0; clusterct<long(outclust_lowmem2.size()); clusterct++) {
+      clustind = {};
+      if(long(outclust_lowmem2[clusterct].clusternum) != clusterct) {
+	cerr << "ERROR: cluster count mismatch " << outclust_lowmem2[clusterct].clusternum << " != " << clusterct << "\n";
+	return(4);
+      }
+      clustind = tracklet_lookup(clust2det, long(outclust_lowmem2[clusterct].clusternum));
+      long uniquepoints = clustind.size();
+      // Load vector of detections for this cluster
+      clusterdets={};
+      clustmjd={};
+      for(i=0; i<uniquepoints; i++) {
+	clusterdets.push_back(detvec[clustind[i]]);
+	clustmjd.push_back(detvec[clustind[i]].MJD);
+      }
+      // Sort vector of MJD's
+      sort(clustmjd.begin(), clustmjd.end());
+      timespan = clustmjd[clustmjd.size()-1] - clustmjd[0];
+      // Load vector of MJD steps
+      vector <double> mjdstep;
+      for(i=1; i<long(clustmjd.size()); i++) mjdstep.push_back(clustmjd[i]-clustmjd[i-1]);
+      // Count steps large enough to suggest a daytime period between nights.
+      daysteps=0;
+      for(i=0; i<long(mjdstep.size()); i++) {
+	if(mjdstep[i]>config.nightstep) daysteps++;
+      }
+      obsnights = daysteps+1;
+      // Check whether cluster is composed purely of detections from
+      // a single simulated object (i.e., would be a real discovery) or is a mixture
+      // of detections from two or more different simulated objects (i.e., spurious).
+      rating="PURE";
+      for(long i=1; i<long(clusterdets.size()); i++) {
+	if(stringnmatch01(clusterdets[i].idstring,clusterdets[i-1].idstring,SHORTSTRINGLEN)!=0) rating="MIXED";
+      }
+      // Calculate or assign trivial quantities for hlclust
+      posRMS = outclust_lowmem2[clusterct].posRMS;
+      totRMS = outclust_lowmem2[clusterct].totRMS;
+      if(totRMS>posRMS) velRMS = sqrt(totRMS*totRMS - posRMS*posRMS);
+      else velRMS = 0.0;
+      accelct = outclust_lowmem2[clusterct].hypindex;
+      // Load the new cluster as an item of class hlclust
+      onecluster = hlclust(outclust_lowmem2[clusterct].clusternum, posRMS, velRMS, totRMS, 0.0, outclust_lowmem2[clusterct].pairnum, timespan, uniquepoints, obsnights, outclust_lowmem2[clusterct].metric, rating, config.MJDref, heliodist[accelct]/AU_KM, heliovel[accelct]/SOLARDAY, helioacc[accelct]*1000.0/SOLARDAY/SOLARDAY, outclust_lowmem2[clusterct].posX, outclust_lowmem2[clusterct].posY, outclust_lowmem2[clusterct].posZ, outclust_lowmem2[clusterct].velX, outclust_lowmem2[clusterct].velY,outclust_lowmem2[clusterct].velZ, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0);
+      outclust.push_back(onecluster);
+    }
+    cout << "Conversion complete for outclust: size is " << outclust.size() << "\n";
+    cout << "Final de-duplicated set contains " << outclust.size() << " linkages totalling " << clust2det.size() << " detections\n";
+  } else {
+    // De-duplicate the final output set, which is already full-precision clusters
+    cout << "De-duplicating output set of " << outclust.size() << " candidate linkages totalling " << clust2det.size() << " detections\n";
+    vector <hlclust> outclust2;
+    vector  <longpair> outclust2det2;
+    link_dedup(outclust, clust2det, outclust2, outclust2det2);
+    outclust = outclust2;
+    for(long i=0; i<long(outclust.size()); i++) {
+      outclust[i].reference_MJD = config.MJDref;
+    }
+    clust2det = outclust2det2;
+    cout << "Final de-duplicated set contains " << outclust.size() << " linkages totalling " << clust2det.size() << " detections\n";
   }
-  
-  // De-duplicate the final output set
-  cout << "De-duplicating output set of " << outclust_lowmem.size() << " candidate linkages totalling " << clust2det_lowmem.size() << " detections\n";
-  vector <shortclust> outclust_lowmem2;
-  vector  <uint_pair> outclust2det_lowmem2;
-  link_dedup_lowmem2(outclust_lowmem, clust2det_lowmem, outclust_lowmem2, outclust2det_lowmem2);
-  cout << "De-duplicated set contains " << outclust_lowmem2.size() << " linkages totalling " << outclust2det_lowmem2.size() << " detections.\n";
-
-  // Convert from the low-memory classes uint_pair and shortclust
-  // into the desired output classes longpair and hlclust
-  outclust = {};
-  clust2det = {};
-  cout << "Converting from memory-efficient to normal:\n";
-  cout << "outclust_lowmem2 with size " << outclust_lowmem2.size() << " and outclust2det_lowmem2 with size " <<  outclust2det_lowmem2.size() << "\n";
-  // First step: outclust2det_lowmem2 (uint_pair) into clust2det (longpair)
-  for(i=0; i<long(outclust2det_lowmem2.size()); i++) {
-    onepair = longpair(long(outclust2det_lowmem2[i].i1),long(outclust2det_lowmem2[i].i2));
-    clust2det.push_back(onepair);
-  }
-  cout << "Conversion complete for clust2det: size is " << clust2det.size() << "\n";
-  // Now outclust_lowmem2 (shortclust) to outclust (hlclust)
-  for(clusterct=0; clusterct<long(outclust_lowmem2.size()); clusterct++) {
-    clustind = {};
-    if(long(outclust_lowmem2[clusterct].clusternum) != clusterct) {
-      cerr << "ERROR: cluster count mismatch " << outclust_lowmem2[clusterct].clusternum << " != " << clusterct << "\n";
-      return(4);
-    }
-    clustind = tracklet_lookup(clust2det, long(outclust_lowmem2[clusterct].clusternum));
-    long uniquepoints = clustind.size();
-    // Load vector of detections for this cluster
-    clusterdets={};
-    clustmjd={};
-    for(i=0; i<uniquepoints; i++) {
-      clusterdets.push_back(detvec[clustind[i]]);
-      clustmjd.push_back(detvec[clustind[i]].MJD);
-    }
-    // Sort vector of MJD's
-    sort(clustmjd.begin(), clustmjd.end());
-    timespan = clustmjd[clustmjd.size()-1] - clustmjd[0];
-    // Load vector of MJD steps
-    vector <double> mjdstep;
-    for(i=1; i<long(clustmjd.size()); i++) mjdstep.push_back(clustmjd[i]-clustmjd[i-1]);
-    // Count steps large enough to suggest a daytime period between nights.
-    daysteps=0;
-    for(i=0; i<long(mjdstep.size()); i++) {
-      if(mjdstep[i]>config.nightstep) daysteps++;
-    }
-    obsnights = daysteps+1;
-    // Check whether cluster is composed purely of detections from
-    // a single simulated object (i.e., would be a real discovery) or is a mixture
-    // of detections from two or more different simulated objects (i.e., spurious).
-    rating="PURE";
-    for(long i=1; i<long(clusterdets.size()); i++) {
-      if(stringnmatch01(clusterdets[i].idstring,clusterdets[i-1].idstring,SHORTSTRINGLEN)!=0) rating="MIXED";
-    }
-    // Calculate or assign trivial quantities for hlclust
-    posRMS = outclust_lowmem2[clusterct].posRMS;
-    totRMS = outclust_lowmem2[clusterct].totRMS;
-    if(totRMS>posRMS) velRMS = sqrt(totRMS*totRMS - posRMS*posRMS);
-    else velRMS = 0.0;
-    accelct = outclust_lowmem2[clusterct].hypindex;
-    // Load the new cluster as an item of class hlclust
-    onecluster = hlclust(outclust_lowmem2[clusterct].clusternum, posRMS, velRMS, totRMS, 0.0, outclust_lowmem2[clusterct].pairnum, timespan, uniquepoints, obsnights, outclust_lowmem2[clusterct].metric, rating, config.MJDref, heliodist[accelct]/AU_KM, heliovel[accelct]/SOLARDAY, helioacc[accelct]*1000.0/SOLARDAY/SOLARDAY, outclust_lowmem2[clusterct].posX, outclust_lowmem2[clusterct].posY, outclust_lowmem2[clusterct].posZ, outclust_lowmem2[clusterct].velX, outclust_lowmem2[clusterct].velY,outclust_lowmem2[clusterct].velZ, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0);
-    outclust.push_back(onecluster);
-  }
-  cout << "Conversion complete for outclust: size is " << outclust.size() << "\n";
-  cout << "Final de-duplicated set contains " << outclust.size() << " linkages totalling " << clust2det.size() << " detections\n";
   if(automjd) {
     cout << "Automatically calculated reference MJD was " << config.MJDref << "\n";
   }
@@ -65246,10 +65075,6 @@ static int decode_kernel_choice(const HeliolincConfig &config, bool uint_input, 
   if(config.use_taylor) kc.NotKepler = 1;
   kc.sad = (config.tanveltol > 0.0) ? 1 : 0;
 
-  if(kc.rr && kc.dbscan) {
-    cerr << "ERROR: use_rr and use_dbscan cannot both be set: there is no RR clustering with DBSCAN\n";
-    return(1);
-  }
   if((config.use_smalltrk ? 1 : 0) != kc.use_smalltrk) {
     cerr << "ERROR: use_smalltrk = " << config.use_smalltrk << " but the tracklet inputs are " << (kc.use_smalltrk ? "uint_tracklet" : "tracklet") << "\n";
     return(1);
@@ -65324,13 +65149,13 @@ static int lowmem_cluster_one_hyp(const vector <hlimage> &image_log, const vecto
   if(allstatevecs.size()<=1) return(0); // No clusters possible
 
   if(kc.dbscan) {
-    status = form_clusters_lowmem(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist, heliovel, helioacc, accelct, chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+    status = form_clusters_lowmem(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist, heliovel, helioacc, accelct, chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
   } else if(kc.rr) {
-    status = form_clusters_RR_lowmem(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist, heliovel, helioacc, accelct, chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+    status = form_clusters_RR_lowmem(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist, heliovel, helioacc, accelct, chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
   } else if(kc.kdR) {
     status = form_clusters_kdR_lowmem(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist, heliovel, helioacc, accelct, chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
   } else {
-    status = form_clusters_kd4_lowmem(allstatevecs, detvec, tracklets, trk2det, Earthrefpos, config.MJDref, heliodist, heliovel, helioacc, accelct, chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
+    status = form_clusters_kd4_lowmem(allstatevecs, detvec, trk2det, Earthrefpos, config.MJDref, heliodist, heliovel, helioacc, accelct, chartimescale, outclust, clust2det, realclusternum, config.clustrad, config.clustchangerad, config.cluster_minpts, config.mingeodist, config.geologstep, config.maxgeodist, config.mintimespan, config.minobsnights, config.nightstep, config.verbose);
   }
   if(status!=0) cerr << "ERROR: form_clusters exited with error code " << status << " for hypothesis " << accelct << "\n";
   return(0);
