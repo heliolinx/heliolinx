@@ -576,7 +576,7 @@ py::array_t<S> create_recarray(size_t n) {
 PYBIND11_MODULE(heliolinx, m) {
     m.doc() = "pybind11 I/O test"; // optional module docstring
     
-    PYBIND11_NUMPY_DTYPE(hldet, MJD, RA, Dec, mag, trail_len, trail_PA, sigmag, sig_across, sig_along, image, idstring, band, obscode, known_obj, det_qual, index);
+    PYBIND11_NUMPY_DTYPE(hldet, MJD, RA, Dec, mag, trail_len, trail_PA, sigmag, sig_across, sig_along, sig_RA, sig_Dec, radec_covar, image, idstring, band, obscode, known_obj, det_qual, index);
     PYBIND11_NUMPY_DTYPE(EarthState, MJD, x, y, z, vx, vy, vz);
     PYBIND11_NUMPY_DTYPE(hlimage, MJD, RA, Dec, obscode, X, Y, Z, VX, VY, VZ, startind, endind, exptime);
     PYBIND11_NUMPY_DTYPE(longpair, i1, i2);
