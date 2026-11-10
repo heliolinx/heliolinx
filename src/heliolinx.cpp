@@ -580,7 +580,9 @@ PYBIND11_MODULE(heliolinx, m) {
     PYBIND11_NUMPY_DTYPE(EarthState, MJD, x, y, z, vx, vy, vz);
     PYBIND11_NUMPY_DTYPE(hlimage, MJD, RA, Dec, obscode, X, Y, Z, VX, VY, VZ, startind, endind, exptime);
     PYBIND11_NUMPY_DTYPE(longpair, i1, i2);
+    PYBIND11_NUMPY_DTYPE(uint_pair, i1, i2);
     PYBIND11_NUMPY_DTYPE(tracklet, Img1, RA1, Dec1, Img2, RA2, Dec2, npts, trk_ID);
+    PYBIND11_NUMPY_DTYPE(uint_tracklet, Img1, RA1, Dec1, Img2, RA2, Dec2, npts, trk_ID);
     PYBIND11_NUMPY_DTYPE(hlradhyp, HelioRad, R_dot, R_dubdot);
     PYBIND11_NUMPY_DTYPE(hlclust, clusternum, posRMS, velRMS, totRMS, astromRMS, pairnum, timespan, uniquepoints, obsnights, metric, rating, reference_MJD, heliohyp0, heliohyp1, heliohyp2, posX, posY, posZ, velX, velY, velZ, orbit_a, orbit_e, orbit_MJD, orbitX, orbitY, orbitZ, orbitVX, orbitVY, orbitVZ, orbit_eval_count);
     PYBIND11_NUMPY_DTYPE(point3d_index, x, y, z, index);
@@ -590,7 +592,9 @@ PYBIND11_MODULE(heliolinx, m) {
     NDARRAY_FACTORY(EarthState)
     NDARRAY_FACTORY(hlimage)
     NDARRAY_FACTORY(longpair)
+    NDARRAY_FACTORY(uint_pair)
     NDARRAY_FACTORY(tracklet)
+    NDARRAY_FACTORY(uint_tracklet)
     NDARRAY_FACTORY(hlradhyp)
     NDARRAY_FACTORY(hlclust)
     NDARRAY_FACTORY(point3d_index)
@@ -649,14 +653,24 @@ PYBIND11_MODULE(heliolinx, m) {
       .def_readwrite("clustchangerad", &HeliolincConfig::clustchangerad) 
       .def_readwrite("cluster_minpts", &HeliolincConfig::cluster_minpts) 
       .def_readwrite("minobsnights", &HeliolincConfig::minobsnights) 
+      .def_readwrite("nightstep", &HeliolincConfig::nightstep)
       .def_readwrite("mintimespan", &HeliolincConfig::mintimespan)
       .def_readwrite("mingeodist", &HeliolincConfig::mingeodist)
       .def_readwrite("maxgeodist", &HeliolincConfig::maxgeodist)
       .def_readwrite("geologstep", &HeliolincConfig::geologstep)
       .def_readwrite("mingeoobs", &HeliolincConfig::mingeoobs)
       .def_readwrite("minimpactpar", &HeliolincConfig::minimpactpar)
+      .def_readwrite("min_obstanvel", &HeliolincConfig::min_obstanvel)
       .def_readwrite("use_univar", &HeliolincConfig::use_univar)
+      .def_readwrite("use_dbscan", &HeliolincConfig::use_dbscan)
+      .def_readwrite("use_rr", &HeliolincConfig::use_rr)
+      .def_readwrite("use_taylor", &HeliolincConfig::use_taylor)
       .def_readwrite("max_v_inf", &HeliolincConfig::max_v_inf)
+      .def_readwrite("use_smallclust", &HeliolincConfig::use_smallclust)
+      .def_readwrite("use_smalltrk", &HeliolincConfig::use_smalltrk)
+      .def_readwrite("use_streaming", &HeliolincConfig::use_streaming)
+      .def_readwrite("tanveltol", &HeliolincConfig::tanveltol)
+      .def_readwrite("veltol_changerad", &HeliolincConfig::veltol_changerad)
       .def_readwrite("verbose", &HeliolincConfig::verbose);
 
     // Config class for LinkRefine    
