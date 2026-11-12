@@ -27,7 +27,7 @@
 
 static void show_usage()
 {
-  cerr << "Usage: link_planarity -imgs imfile -pairdet pairdet_file -lflist link_file_list -simptype simplex_type -rejfrac max fraction of points that can be rejected -rejnum max number of points that can be rejected -max_astrom_rms max astrometric RMS (arcsec) -oop RMS out of plane deviation -minobsnights min number of distinct nights -minpointnum min number of individual detections -useorbMJD 1=use_orbitMJD_if_available -ptpow point_num_exponent -nightpow night_num_exponent -timepow timespan_exponent -rmspow astrom_rms_exponent -maxrms maxrms -ecc_penalty ecc_penalty -outsum summary_file -clust2det clust2detfile -heliovane 1 -verbose verbosity\n\nOR, at minimum:\nlink_planarity -imgs imfile -pairdet pairdet_file -lflist link_file_list\n";
+  cerr << "Usage: link_planarity -imgs imfile -pairdet pairdet_file -lflist link_file_list -simptype simplex_type -rejfrac max fraction of points that can be rejected -rejnum max number of points that can be rejected -max_astrom_rms max astrometric RMS (arcsec) -oop RMS out of plane deviation -minobsnights min number of distinct nights -minpointnum min number of individual detections -maxpointnum max number of individual detections -useorbMJD 1=use_orbitMJD_if_available -ptpow point_num_exponent -nightpow night_num_exponent -timepow timespan_exponent -rmspow astrom_rms_exponent -maxrms maxrms -ecc_penalty ecc_penalty -outsum summary_file -clust2det clust2detfile -heliovane 1 -verbose verbosity\n\nOR, at minimum:\nlink_planarity -imgs imfile -pairdet pairdet_file -lflist link_file_list\n";
 }
 
 int main(int argc, char *argv[])
@@ -59,6 +59,7 @@ int main(int argc, char *argv[])
   int default_maxrejnum, default_minpointnum, default_max_astrom_rms, default_minobsnights, default_rejfrac;
   default_maxrejnum = default_max_astrom_rms = default_minpointnum = default_minobsnights = default_rejfrac = 1;
   int default_ecc_penalty = 1;
+  int default_maxpointnum = 1;
   //  vector <long> pointind;
   //  vector <long> deletelist;
   //  vector <vector <long>> pointind_mat;
@@ -183,7 +184,7 @@ int main(int argc, char *argv[])
       if(i+1 < argc) {
 	//There is still something to read;
 	config.minobsnights=stoi(argv[++i]);
-	default_ptpow=0;
+	default_minobsnights=0;
 	i++;
       }
       else {
@@ -200,6 +201,18 @@ int main(int argc, char *argv[])
       }
       else {
 	cerr << "Keyword for min number of individual detections supplied with no corresponding argument\n";
+	show_usage();
+	return(1);
+      }
+    } else if(string(argv[i]) == "-maxpointnum" || string(argv[i]) == "-max_pts" || string(argv[i]) == "-maxpoints" || string(argv[i]) == "-max_point_num" || string(argv[i]) == "-max_points" || string(argv[i]) == "--max_point_num" || string(argv[i]) == "--maxpointnum" ) {
+      if(i+1 < argc) {
+	//There is still something to read;
+	config.maxpointnum=stoi(argv[++i]);
+	default_maxpointnum=0;
+	i++;
+      }
+      else {
+	cerr << "Keyword for max number of individual detections supplied with no corresponding argument\n";
 	show_usage();
 	return(1);
       }
@@ -350,6 +363,7 @@ int main(int argc, char *argv[])
   cout << "Maximum fraction of points to be rejected: " << config.rejfrac << "\n";
   cout << "Minimum number of observing nights: " << config.minobsnights << "\n";
   cout << "Minimum number of unique detections: " << config.minpointnum << "\n";
+  cout << "Maximum number of unique detections: " << config.maxpointnum << "\n";
   cout << "output cluster file " << outclust2detfile << "\n";
   cout << "output rms file " << outsumfile << "\n";
 
@@ -372,6 +386,9 @@ int main(int argc, char *argv[])
   else cout << ", as specified by the user\n";
   cout << "Minimum number of unique observations for a discovery is " << config.minpointnum;
   if(default_minpointnum==1) cout << ", which is the default.\n";
+  else cout << ", as specified by the user\n";
+  cout << "Maximum number of unique observations for a discovery is " << config.maxpointnum;
+  if(default_maxpointnum==1) cout << ", which is the default.\n";
   else cout << ", as specified by the user\n";
 
   if(config.ptpow>=0 && config.nightpow>=0) {

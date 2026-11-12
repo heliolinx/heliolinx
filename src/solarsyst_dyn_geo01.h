@@ -591,8 +591,9 @@ struct LinkPurifyConfig {
   double nightstep = NIGHTSTEP; // Minimum separation in days for two different tracklets to be
                                 // considered as being on different nights, e.g. for the purpose
                                 // of counting the number of observing nights in a linkage.
-  int minpointnum = 6;         // Minimum number of individual detections for a valid linkage
-  int use_heliovane = 0;       // Are we analyzing data from heliovane rather than heliolinc?
+  int minpointnum = 6;          // Minimum number of individual detections for a valid linkage
+  int maxpointnum = 1000;       // Maximum number of individual detections for a valid linkage
+  int use_heliovane = 0;        // Are we analyzing data from heliovane rather than heliolinc?
   int verbose=0;
 };
 
