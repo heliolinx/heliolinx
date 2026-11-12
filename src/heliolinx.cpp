@@ -702,6 +702,7 @@ PYBIND11_MODULE(heliolinx, m) {
       .def_readwrite("ecc_penalty", &LinkPurifyConfig::ecc_penalty)
       .def_readwrite("minobsnights", &LinkPurifyConfig::minobsnights) 
       .def_readwrite("minpointnum", &LinkPurifyConfig::minpointnum) 
+      .def_readwrite("maxpointnum", &LinkPurifyConfig::maxpointnum) 
       .def_readwrite("use_heliovane", &LinkPurifyConfig::use_heliovane) 
       .def_readwrite("verbose", &LinkPurifyConfig::verbose);
 
