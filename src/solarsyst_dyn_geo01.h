@@ -1762,6 +1762,8 @@ public:
   string permID = "";
   string provID = "";
   string artSat = "";
+  ADESdet(string trkSub, string obsSubID, string mode, string ObsCode, double MJD, double RA, double Dec, double rmsRA, double rmsDec, double rmsCorr, string astCat, string photCat, double mag, double rmsMag, string band, double logSNR, double uncTime, double rmsTime, string permID, string provID, string artSat) :trkSub(trkSub), obsSubID(obsSubID), mode(mode), ObsCode(ObsCode), MJD(MJD), RA(RA), Dec(Dec), rmsRA(rmsRA), rmsDec(rmsDec), rmsCorr(rmsCorr), astCat(astCat), photCat(photCat), mag(mag), rmsMag(rmsMag), band(band), logSNR(logSNR), uncTime(uncTime), rmsTime(rmsTime), permID(permID), provID(provID), artSat(artSat) {  }
+  ADESdet() = default;
 };
 
 class early_ADESdet{

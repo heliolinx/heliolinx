@@ -11470,7 +11470,7 @@ int mjd2mpcdate(double MJD,int &year,int &month,double &day)
   daynum = MJD - (double)15019; /*Days since Dec 31, 1899*/
   if(daynum<=0.0)
     {
-      cerr << "ERROR: date before 1900! ABORTING!\n";
+      cerr << "ERROR: date before 1900! (input MJD was " << MJD << ") ABORTING!\n";
       return(0);
     }
 
